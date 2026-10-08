@@ -280,15 +280,16 @@ export function renderPage({ title, bodyHtml, tableHtml, plainHtml, resume, mode
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 body{padding-left:76px}
 .rail{position:fixed;top:0;bottom:0;left:0;width:76px;border-right:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;align-items:center;padding-top:8px;z-index:4}
-.rail a{display:flex;flex-direction:column;align-items:center;gap:4px;width:64px;padding:8px 0;border-radius:8px;color:var(--accent);font-size:11px;text-decoration:none}
+.rail a{display:flex;flex-direction:column;align-items:center;gap:4px;width:64px;padding:8px 0;border-radius:8px;color:var(--fg);background:none;border:1px solid var(--line);font-size:11px;text-decoration:none}
 .rail a:hover{background:color-mix(in srgb,var(--line) 40%,transparent)}
 .rail svg{width:28px;height:28px}
 main{max-width:860px;margin:0 auto;padding:16px 20px 80px}
 .bar{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 20px;display:flex;gap:8px;align-items:center;z-index:2}
-.bar a,.bar button{font:inherit;font-size:13px;color:#0d1117;background:#fff;border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;text-decoration:none}
+.bar a,.bar button{font:inherit;font-size:13px;color:var(--fg);background:none;border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;text-decoration:none}
 .bar .seg{display:inline-flex;padding:0;overflow:hidden}
-.bar .seg span{padding:3px 10px;color:#8c959f}
-.bar .seg span.on{background:#d0d7de;color:#0d1117;font-weight:600}
+.bar .seg span{padding:4px 12px;color:var(--muted)}
+.bar .seg span+span{border-left:1px solid var(--line)}
+.bar .seg span.on{color:var(--fg);font-weight:700;box-shadow:inset 0 -2px 0 var(--fg)}
 .bar #copylink{margin-left:auto}
 .bar .model{font-size:13px;color:var(--muted);white-space:nowrap}
 .bar #copylink~.t{margin-left:0}
@@ -377,17 +378,17 @@ table.index tr[data-href]:hover,table.index tr[data-href]:focus{background:color
 #plain{display:none}
 body.show-md #plain{display:block}
 body.show-md #outline,body.show-md #outline-table,body.show-md .outline-only{display:none}
-body.view-table #outline,body:not(.view-table) #outline-table{display:none}
+body.has-table #outline{display:none}
 #plain h1,#plain h2,#plain h3{margin:1.2em 0 .5em;line-height:1.25}
 #plain h2{border-bottom:1px solid var(--line);padding-bottom:.25em}
 #plain ul{list-style:disc}
 #plain p{margin:.6em 0}
 .ask{color:var(--fg);margin-left:8px;opacity:.55;font-size:12px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:0 5px}
 summary:hover .ask,li:hover>.ask,.ask:focus{opacity:1}
-</style></head><body>
+</style></head><body${tableHtml === undefined ? '' : ' class="has-table"'}>
 <nav class="rail"><a href="/" title="All outlines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Discussions</a></nav>
-<div class="bar"><button id="mdview" class="seg" title="Switch between the collapsible outline and the plain rendered markdown"><span data-m="outline" class="on">Outline</span><span data-m="md">Markdown</span></button>${tableHtml === undefined ? '' : '<button id="view" class="outline-only" title="Switch between nested bullets and number / title / content tables">Bullets</button>'}<button id="expand" class="outline-only">Expand all</button><button id="collapse" class="outline-only">Collapse all</button><button id="fire" class="outline-only">Jump to 🔥</button><button id="onlyopen" class="outline-only">Hide ✅</button>${resume ? '<button id="copylink" title="Copy the link that reopens this chat">Copy chat link</button>' : ''}${model ? `<span class="model" title="Model and effort the agent wrote into the outline">${escapeHtml(model)}</span>` : ''}<span class="t" id="live">live</span></div>
-<main id="outline">${bodyHtml}</main>${tableHtml === undefined ? '' : `<main id="outline-table">${tableHtml}</main>`}${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}<div id="status" hidden></div>
+<div class="bar"><button id="mdview" class="seg" title="Switch between the collapsible outline and the plain rendered markdown"><span data-m="outline" class="on">Outline</span><span data-m="md">Markdown</span></button><button id="expand" class="outline-only">Expand all</button><button id="collapse" class="outline-only">Collapse all</button><button id="fire" class="outline-only">Jump to 🔥</button>${resume ? '<button id="copylink" title="Copy the link that reopens this chat">Copy chat link</button>' : ''}${model ? `<span class="model" title="Model and effort the agent wrote into the outline">${escapeHtml(model)}</span>` : ''}<span class="t" id="live">live</span></div>
+${bodyHtml === undefined ? '' : `<main id="outline">${bodyHtml}</main>`}${tableHtml === undefined ? '' : `<main id="outline-table">${tableHtml}</main>`}${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}<div id="status" hidden></div>
 <script>
 const KEY=${JSON.stringify(storageKey)};
 const RESUME=${JSON.stringify(resume || '').replace(/</g, '\\u003c')};
@@ -487,15 +488,12 @@ rows.forEach(r=>{
     pending().forEach(x=>{sent[rowKey(x)]=effective(x)});lsSet(':sent',sent);renderStatus();
     toast(b);}});
 renderStatus();
-const setView=t=>{document.body.classList.toggle('view-table',t);const v=document.getElementById('view');if(v)v.textContent=t?'Bullets':'Table';try{localStorage.setItem(KEY+':view',t?'table':'bullets')}catch(e){}};
-if(document.getElementById('view')){let t=true;try{t=localStorage.getItem(KEY+':view')!=='bullets'}catch(e){}setView(t);view.onclick=()=>setView(!document.body.classList.contains('view-table'))}
 const setMd=on=>{document.body.classList.toggle('show-md',on);mdview.querySelectorAll('span').forEach(x=>x.classList.toggle('on',(x.dataset.m==='md')===on));try{localStorage.setItem(KEY+':md',on?'1':'')}catch(e){}};
 if(document.getElementById('plain')){mdview.onclick=()=>setMd(!document.body.classList.contains('show-md'));try{if(localStorage.getItem(KEY+':md'))setMd(true)}catch(e){}}else mdview.remove();
 if(!document.querySelector('details,tr.r'))document.querySelectorAll('.outline-only').forEach(x=>x.style.display='none');
 const all=open=>{document.querySelectorAll('details').forEach(d=>d.open=open);document.querySelectorAll('tr.r').forEach(r=>{if(r.nextElementSibling&&r.nextElementSibling.classList.contains('kids'))r.classList.toggle('closed',!open)})};
 expand.onclick=()=>all(true);collapse.onclick=()=>all(false);
-onlyopen.onclick=()=>{document.body.classList.toggle('only-open');onlyopen.textContent=document.body.classList.contains('only-open')?'Show ✅':'Hide ✅'};
-fire.onclick=()=>{const all=document.querySelectorAll((document.body.classList.contains('view-table')?'#outline-table ':'#outline ')+'details.s-fire,tr.s-fire');const d=all[all.length-1];if(!d)return;
+fire.onclick=()=>{const all=document.querySelectorAll((document.getElementById('outline-table')?'#outline-table ':'#outline ')+'details.s-fire,tr.s-fire');const d=all[all.length-1];if(!d)return;
   for(let e=d.parentElement;e;e=e.parentElement){if(e.tagName==='DETAILS')e.open=true;if(e.tagName==='TR'&&e.classList.contains('kids'))e.previousElementSibling.classList.remove('closed')}
   if(d.tagName==='DETAILS')d.open=true;d.scrollIntoView({block:'center'})};
 const y=sessionStorage.getItem(KEY+':y');if(y)scrollTo(0,Number(y));

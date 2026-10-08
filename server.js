@@ -109,31 +109,30 @@ const server = http.createServer((req, res) => {
                     const pct = total ? Math.round((done / total) * 100) : 0
                     progress = `<div class="progress" title="${done} resolved of ${total}"><div class="meter"><span class="human" style="width:${pct}%"></span></div><span class="nums">✅ ${done} · ❓ ${open}</span></div>`
                 }
-                return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td class="progress-cell">${progress}</td><td>${m.resume ? `<button class="copy" data-copy="${escapeHtml(m.resume)}" title="Copy the link that reopens this chat">📋</button>` : ''}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString())}</td></tr>`
+                return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td class="progress-cell">${progress}</td><td>${m.resume ? `<button class="copy" data-copy="${escapeHtml(m.resume)}" title="Copy the link that reopens this chat">📋</button>` : ''}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString().replace(',', ''))}</td></tr>`
             })
             .join('')
-        const body = `<h1>Live discussion outlines</h1><table class="index"><thead><tr><th>Name</th><th>Repo</th><th>Progress</th><th>Chat</th><th>Updated</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No outlines yet.</td></tr>'}</tbody></table>`
-        return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: 'Live discussion outlines', bodyHtml: body, storageKey: 'index' }))
+        const body = `<h1>Discussions</h1><table class="index"><thead><tr><th>Name</th><th>Repo</th><th>Progress</th><th>Chat</th><th>Updated</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No outlines yet.</td></tr>'}</tbody></table>`
+        return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: 'Discussions', bodyHtml: body, storageKey: 'index' }))
     }
 
     const parts = pathname.split('/').filter(Boolean)
     if (parts.length === 2 && parts.every(p => !p.includes('..') && !p.includes('\\'))) {
         const file = path.join(ROOT, parts[0], `${parts[1]}.md`)
         if (path.resolve(file).startsWith(ROOT + path.sep) && fs.existsSync(file)) {
-            let bodyHtml, tableHtml, plainHtml, resume, model
+            let tableHtml, plainHtml, resume, model
             try {
                 const extracted = extractResume(fs.readFileSync(file, 'utf8'))
                 const withModel = extractModel(extracted.source)
                 const source = withModel.source
                 resume = extracted.resume
                 model = withModel.model
-                bodyHtml = renderMarkdown(source)
                 tableHtml = renderMarkdown(source, 'table')
                 plainHtml = renderPlain(source)
             } catch (e) {
                 return send(res, 500, 'text/plain', `render failed: ${e.message}`)
             }
-            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], bodyHtml, tableHtml, plainHtml, resume, model, storageKey: `map:${parts[0]}/${parts[1]}` }))
+            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], tableHtml, plainHtml, resume, model, storageKey: `map:${parts[0]}/${parts[1]}` }))
         }
     }
     send(res, 404, 'text/plain', 'not found')
