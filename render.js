@@ -32,6 +32,7 @@ function detailsOpen(summaryText, extraClass) {
 
 
 const SIDE_CHAT = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/><path d="M8 5.5v3M6.5 7h3"/></svg>'
+const TRIANGLE = '<svg viewBox="0 0 12 12" width="1em" height="1em" aria-hidden="true"><path d="M2 3.5h8L6 9.5z" fill="currentColor"/></svg>'
 const NUM_RE = /^\s*(🔥|❓|✅)?\s*(\d+(?:\.\d+)*)?\s*([\s\S]*)$/
 
 function closeOf(tokens, i) {
@@ -47,6 +48,7 @@ function listToHtml(tokens, i, j) {
         let text = null
         let extra = ''
         let kids = ''
+        let kidCount = 0
         for (let m = k + 1; m < itemEnd; m++) {
             const t = tokens[m]
             if (t.type === 'paragraph_open' && text === null) {
@@ -55,6 +57,7 @@ function listToHtml(tokens, i, j) {
             } else if (t.type === 'bullet_list_open') {
                 const end = closeOf(tokens, m)
                 kids += listToHtml(tokens, m, end)
+                for (let x = m + 1; x < end; x = closeOf(tokens, x) + 1) kidCount++
                 m = end
             } else {
                 const end = t.nesting === 1 ? closeOf(tokens, m) : m
@@ -62,46 +65,58 @@ function listToHtml(tokens, i, j) {
                 m = end
             }
         }
-        rows.push(rowHtml(text || '', extra, kids))
+        rows.push(rowHtml(text || '', extra, kids, kidCount))
     }
     return `<table class="ol"><tbody>\n${rows.join('')}</tbody></table>\n`
 }
 
-const CHECK_RE = /^\s*\[([ xX])\]\s*/
+const CHECK_RE = /^\s*\[([ xXaA])\]\s*/
 const TAG_RE = /^@(recommendation|options)\b\s*/i
+const REC_MARK = /@recommendation\.\s*/i
 
-function rowHtml(text, extra, kids) {
+function rowHtml(text, extra, kids, kidCount = 0) {
     // `- [ ] 2.1 @options **Title.** content`; legacy `- ✅ 2.1 …` / `- ❓ 2.1 …` still reads as checked / open.
     const check = text.match(CHECK_RE)
     if (check) text = text.slice(check[0].length)
     const [, emoji = '', num = '', afterNum] = text.match(NUM_RE)
-    const checked = check ? check[1] !== ' ' : emoji === '✅'
+    const mark = check ? check[1].toLowerCase() : emoji === '✅' ? 'x' : ' '
+    const fileCheck = mark === 'x' ? 'done' : mark === 'a' ? 'agent' : 'open'
+    const checked = fileCheck === 'done'
     let rest = afterNum
     const tags = new Set()
     for (let t; (t = rest.match(TAG_RE)); rest = rest.slice(t[0].length)) tags.add(t[1].toLowerCase())
     const bold = rest.match(/^\*\*([\s\S]+?)\*\*\s*([\s\S]*)$/)
     const title = bold ? bold[1] : ''
     const body = bold ? bold[2] : rest
+    const recAt = body.search(REC_MARK)
+    const prose = recAt < 0 ? body : body.slice(0, recAt).trim()
+    const recommendation = recAt < 0 ? '' : body.slice(recAt).replace(REC_MARK, '').trim()
     const parts = num ? num.split('.') : []
     const chain = parts.map((_, n) => parts.slice(0, n + 1).join('.')).join(' › ')
     const label = `${num} ${title || rest.slice(0, 60)}`.trim()
-    const content = md.renderInline(body) + extra
-    const toggle = kids ? '<span class="tg" role="button" tabindex="0" title="Collapse or expand">▾</span> ' : ''
-    const pill = tags.has('recommendation')
-        ? '<span class="pill rec" title="A recommendation is given for this bullet">💡 Recommendation</span>'
-        : tags.has('options')
-          ? '<span class="pill opt" title="Options proposed, no recommendation yet">❓ Options</span>'
-          : ''
-    const cells = bold
-        ? `<td class="t">${toggle}${md.renderInline(title)}${pill ? ' ' + pill : ''}</td><td class="c">${content}</td>`
-        : `<td class="c" colspan="2">${toggle}${pill ? pill + ' ' : ''}${content}</td>`
+    const recLine = recAt < 0
+        ? ''
+        : `<span class="rec-line"><span class="pill rec" title="A recommendation for this bullet">💡 Recommendation</span> ${md.renderInline(recommendation)}</span>`
+    const content = md.renderInline(prose) + recLine + extra
+    const count = kidCount
+        ? `<span class="kc" title="${kidCount} direct child${kidCount === 1 ? '' : 'ren'}"><span>${kidCount}</span></span>`
+        : ''
+    const toggle = kids ? `<span class="tg" role="button" tabindex="0" title="Collapse or expand">${TRIANGLE}</span>` : ''
+    const pill = !kids && tags.has('options')
+        ? '<span class="pill opt" title="Options proposed, no recommendation yet">❓ Options</span>'
+        : ''
+    const titleHtml = bold ? `${md.renderInline(title)}${pill ? ' ' + pill : ''}` : ''
     const cls = ['r', emoji === '🔥' && 's-fire', checked && 's-done', kids && checked && 'closed'].filter(Boolean).join(' ')
     return (
-        `<tr class="${cls}" data-num="${escapeHtml(num)}" data-ref="${escapeHtml(label)}" data-checked="${checked ? 1 : 0}">` +
-        `<td class="n" title="${escapeHtml(chain)}"><input type="checkbox" class="ck"${checked ? ' checked' : ''} title="${checked ? 'Approved' : 'Approve this bullet'}"> ` +
-        `<span class="st">${emoji === '🔥' ? '🔥' : ''}</span><span class="nm">${escapeHtml(parts.length ? parts[parts.length - 1] : '')}</span>` +
-        `<button class="ask" title="Open a side discussion on this bullet: copies its path (and any queued approvals)">${SIDE_CHAT}</button></td>${cells}</tr>\n` +
-        (kids ? `<tr class="kids"><td></td><td colspan="2">${kids}</td></tr>\n` : '')
+        `<tr class="${cls}" data-num="${escapeHtml(num)}" data-ref="${escapeHtml(label)}" data-check="${fileCheck}">` +
+        `<td class="n" title="${escapeHtml(chain)}"><div class="nh"><span class="nm">${escapeHtml(parts.length ? parts[parts.length - 1] : '')}</span>` +
+        `<button class="ask" title="Open a side discussion on this bullet: copies its path (and any queued approvals)">${SIDE_CHAT}</button></div>` +
+        `<div class="s"><input type="checkbox" class="ck"${fileCheck !== 'open' ? ' checked' : ''} title="${fileCheck === 'done' ? 'Approved' : fileCheck === 'agent' ? 'Agent-approved — click to queue a human approval' : 'Approve this bullet'}">` +
+        `<span class="st">${emoji === '🔥' ? '🔥' : ''}</span></div></td>` +
+        `<td class="g">${count}${toggle}</td>` +
+        `<td class="t">${titleHtml}</td>` +
+        `<td class="c">${content}</td></tr>\n` +
+        (kids ? `<tr class="kids"><td></td><td></td><td colspan="2">${kids}</td></tr>\n` : '')
     )
 }
 
@@ -228,25 +243,39 @@ details.s-done>summary{color:var(--done)}
 body.only-open details.s-done{display:none}
 table.ol{width:100%;border-collapse:collapse}
 table.ol td{vertical-align:top;padding:4px 8px;border-bottom:1px solid var(--line)}
-table.ol td.n{white-space:nowrap;width:1%;color:var(--muted);font-variant-numeric:tabular-nums}
-table.ol td.t{font-weight:600;width:26%}
+table.ol td.n{white-space:nowrap;width:1%;color:var(--muted);font-variant-numeric:tabular-nums;padding-right:8px}
+table.ol .nh{display:flex;align-items:center;gap:2px}
+table.ol .s{display:flex;align-items:center;margin-top:3px;min-height:14px}
+table.ol td.g{white-space:nowrap;width:calc(2em + 1ch);min-width:calc(2em + 1ch);padding:4px 4px;text-align:right;line-height:1.2}
+table.ol td.t{font-weight:600;width:26%;padding-left:4px}
 table.ol tr.kids>td{border-bottom:0;padding:0 0 4px}
 table.ol tr.kids>td:last-child{padding-left:8px}
 table.ol table.ol{border-left:2px solid var(--line)}
-table.ol .tg{cursor:pointer;color:var(--muted);display:inline-block;width:1em}
+table.ol .kc{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;margin-right:1ch;border:1.5px solid var(--muted);border-radius:50%;color:var(--muted);vertical-align:middle;user-select:none}
+table.ol .kc>span{font-size:.7em;font-variant-numeric:tabular-nums;line-height:1}
+table.ol .tg{cursor:pointer;color:var(--muted);display:inline-block;width:1em;height:1em;vertical-align:middle;line-height:0}
+table.ol .tg svg{display:block;width:1em;height:1em}
 table.ol tr.closed .tg{transform:rotate(-90deg)}
 table.ol tr.closed+tr.kids{display:none}
 table.ol tr.s-fire>td{background:var(--fire)}
 table.ol tr.s-fire>td.n{border-left:3px solid var(--fireline)}
 table.ol tr.s-done>td{color:var(--done)}
 body.only-open table.ol tr.s-done,body.only-open table.ol tr.s-done+tr.kids{display:none}
-table.ol .ask{color:var(--accent);opacity:.8;margin-left:6px;display:inline-flex;align-items:center;vertical-align:middle;padding:2px 5px}
+table.ol .ask{color:var(--fg);opacity:.8;margin-left:6px;display:inline-flex;align-items:center;vertical-align:middle;padding:2px 5px}
+table.ol tr.s-done .ask{color:var(--done)}
 table.ol .ck{appearance:none;-webkit-appearance:none;box-sizing:border-box;width:14px;height:14px;margin:0 4px 0 0;vertical-align:-2px;cursor:pointer;border:1.5px solid var(--muted);border-radius:3px;background:transparent center/11px 11px no-repeat;display:inline-block}
-table.ol .ck:checked{border-color:#2da44e;background-color:#2da44e;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.2 4.8 8.6 9.6 3.4' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
-table.ol .ck.pending:checked{background-color:transparent;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.2 4.8 8.6 9.6 3.4' fill='none' stroke='%232da44e' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+table.ol .ck:checked,table.ol .ck.on{border-color:#2da44e;background-color:#2da44e;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.2 4.8 8.6 9.6 3.4' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+table.ol .ck.agent:checked,table.ol .ck.agent.on{border-color:var(--accent);background-color:transparent;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.2 4.8 8.6 9.6 3.4' fill='none' stroke='%230969da' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+@media (prefers-color-scheme:dark){table.ol .ck.agent:checked,table.ol .ck.agent.on{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.2 4.8 8.6 9.6 3.4' fill='none' stroke='%2358a6ff' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}}
+table.ol .ck.pending:checked,table.ol .ck.pending.on{border-color:#2da44e;background-color:transparent;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.2 4.8 8.6 9.6 3.4' fill='none' stroke='%232da44e' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
 table.ol .ck:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+table.ol .cks-extra{display:inline-flex;align-items:center;vertical-align:middle}
+table.ol .ck.echo{cursor:pointer}
+table.ol .ck.rolled{position:absolute;width:1px;height:1px;opacity:0;margin:0;pointer-events:none}
 table.ol .pill{display:inline-block;margin-left:6px;font-size:11px;font-weight:500;border-radius:10px;padding:0 7px;white-space:nowrap;vertical-align:1px;cursor:default;user-select:none}
 table.ol .pill.rec{color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
+table.ol .rec-line{display:block;margin-top:6px}
+table.ol .rec-line .pill{margin:0 6px 0 0}
 table.ol .pill.opt{color:#d1242f;background:color-mix(in srgb,#d1242f 14%,transparent)}
 #status{position:fixed;left:0;right:0;bottom:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 20px;background:var(--bg);border-top:1px solid var(--line);z-index:3}
 .toast{position:fixed;transform:translate(-50%,-100%);background:var(--fg);color:var(--bg);font-size:12px;padding:3px 8px;border-radius:6px;pointer-events:none;z-index:5;white-space:nowrap}
@@ -312,19 +341,41 @@ const lsGet=k=>{try{return JSON.parse(localStorage.getItem(KEY+k)||'{}')}catch(e
 const lsSet=(k,v)=>{try{localStorage.setItem(KEY+k,JSON.stringify(v))}catch(e){}};
 const chk=lsGet(':chk'),sent=lsGet(':sent');   // chk: viewer overrides of the file's checkbox; sent: overrides already copied
 const rows=[...document.querySelectorAll('tr.r')];
-const fileState=r=>r.dataset.checked==='1';
-const effective=r=>{const k=rowKey(r);return k in chk?chk[k]:fileState(r)};
-const paint=r=>{const box=r.querySelector('.ck');const on=effective(r),file=fileState(r);
-  box.checked=on;box.classList.toggle('pending',on&&!file);
-  box.title=on&&!file?'Pending approval — filled once the agent records it':!on&&file?'Pending reopen — cleared once the agent records it':on?'Approved':'Approve this bullet';
-  r.classList.toggle('s-done',on&&file)};
-const pending=()=>rows.filter(r=>{const k=rowKey(r);return k in chk&&chk[k]!==fileState(r)&&sent[k]!==chk[k]});
+const fileCheck=r=>r.dataset.check||(r.dataset.checked==='1'?'done':'open');
+const fileDone=r=>fileCheck(r)==='done';
+const effective=r=>{const k=rowKey(r);return k in chk?chk[k]:fileDone(r)};
+const childRows=r=>{const n=r.nextElementSibling;return n&&n.classList.contains('kids')?[...n.querySelectorAll(':scope > td > table.ol > tbody > tr.r')]:[]};
+const descendants=r=>childRows(r).flatMap(k=>[k,...descendants(k)]);
+const KIND_ORDER=['open','agent','pending','done'];
+const KIND_TITLE={open:'Open',agent:'Agent-approved',pending:'Pending human approval',done:'Approved'};
+const ownKind=r=>{const file=fileCheck(r),on=effective(r);
+  if(on&&file!=='done')return 'pending';if(file==='done'&&on)return 'done';if(file==='agent')return 'agent';return 'open'};
+const kindsOf=r=>{const kids=childRows(r);if(!kids.length)return [ownKind(r)];
+  const seen={};kids.forEach(k=>kindsOf(k).forEach(kind=>{seen[kind]=1}));
+  return KIND_ORDER.filter(k=>seen[k])};
+const setWant=(r,want)=>{const key=rowKey(r);if(want===fileDone(r))delete chk[key];else chk[key]=want;delete sent[key]};
+const paint=r=>{const box=r.querySelector('input.ck');const on=effective(r),file=fileCheck(r);
+  const pendingOn=on&&file!=='done';const pendingOff=!on&&file==='done';
+  box.checked=on||(file==='agent'&&!(rowKey(r) in chk));
+  box.classList.toggle('pending',pendingOn);box.classList.toggle('agent',file==='agent'&&!pendingOn&&!pendingOff);
+  box.title=pendingOn?'Pending approval — filled once the agent records it':pendingOff?'Pending reopen — cleared once the agent records it':file==='agent'?'Agent-approved — click to queue a human approval':on?'Approved':'Approve this bullet';
+  const kids=childRows(r),kinds=kindsOf(r);
+  let extra=r.querySelector('.cks-extra');
+  if(!extra){extra=document.createElement('span');extra.className='cks-extra';box.after(extra);
+    extra.onclick=e=>{e.preventDefault();box.click()}}
+  extra.replaceChildren();
+  if(kids.length){box.classList.add('rolled');
+    kinds.forEach(kind=>{const s=document.createElement('span');s.className='ck echo'+(kind==='open'?'':kind==='agent'?' agent on':kind==='pending'?' pending on':' on');s.title=KIND_TITLE[kind];extra.appendChild(s)});
+    r.classList.toggle('s-done',kinds.length===1&&kinds[0]==='done')}
+  else{box.classList.remove('rolled');r.classList.toggle('s-done',on&&file==='done')}};
+const paintTree=()=>rows.forEach(paint);
+const pending=()=>rows.filter(r=>{const k=rowKey(r);return k in chk&&chk[k]!==fileDone(r)&&sent[k]!==chk[k]});
 const approvalText=()=>{const p=pending();const f=(v)=>p.filter(r=>effective(r)===v).map(r=>r.dataset.ref).join('; ');
   const a=f(true),o=f(false);return [a&&'Approved in the outline: '+a+'.',o&&'Reopened in the outline: '+o+'.'].filter(Boolean).join('\\n')};
 const sbar=document.getElementById('status');
 const renderStatus=()=>{const p=pending();sbar.hidden=!p.length;sbar.innerHTML='';if(!p.length)return;
   p.forEach(r=>{const t=document.createElement('span');const on=effective(r);t.className='tag'+(on?'':' reopen');t.textContent=(on?'✓ ':'↺ ')+r.dataset.ref;
-    const x=document.createElement('button');x.textContent='×';x.title='Drop this change';x.onclick=()=>{delete chk[rowKey(r)];lsSet(':chk',chk);paint(r);renderStatus()};t.appendChild(x);sbar.appendChild(t)});
+    const x=document.createElement('button');x.textContent='×';x.title='Drop this change';x.onclick=()=>{delete chk[rowKey(r)];lsSet(':chk',chk);paintTree();renderStatus()};t.appendChild(x);sbar.appendChild(t)});
   const g=document.createElement('span');g.className='grow';sbar.appendChild(g);
   const c=document.createElement('button');c.className='copyall';c.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg> Copy to clipboard';
   c.onclick=()=>{copyApprovals(approvalText());c.textContent='✓ Copied'};sbar.appendChild(c)};
@@ -334,9 +385,12 @@ rows.forEach(r=>{
   if(k){const s=state[rowKey(r)];if(s!==undefined)r.classList.toggle('closed',!s);
     const tg=r.querySelector('.tg');const flip=e=>{e.stopPropagation();r.classList.toggle('closed');state[rowKey(r)]=!r.classList.contains('closed');try{localStorage.setItem(KEY,JSON.stringify(state))}catch(err){}};
     tg.onclick=flip;tg.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();flip(e)}}}
-  const box=r.querySelector('.ck');
+  const box=r.querySelector('input.ck');
   paint(r);
-  box.onchange=()=>{const key=rowKey(r);if(box.checked===fileState(r))delete chk[key];else chk[key]=box.checked;delete sent[key];lsSet(':chk',chk);lsSet(':sent',sent);paint(r);renderStatus()};
+  box.onchange=()=>{const file=fileCheck(r);const want=box.checked||(file==='agent'&&!(rowKey(r) in chk));
+    [r,...descendants(r)].forEach(node=>setWant(node,want));
+    lsSet(':chk',chk);lsSet(':sent',sent);paintTree();renderStatus();
+    if(want){const text=approvalText();if(text){try{navigator.clipboard.writeText(text)}catch(e){}toast(box)}}};
   const b=r.querySelector('.ask');
   b.onclick=e=>{e.preventDefault();e.stopPropagation();const ap=approvalText();
     try{navigator.clipboard.writeText((ap?ap+'\\n':'')+'Re: outline "'+document.title+'" › '+headPath(r)+r.dataset.ref+' — ')}catch(err){}

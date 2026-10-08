@@ -32,9 +32,11 @@ Resume: <link or command that reopens this chat>
 
 ## 🔥 1. Title of numbered point
 Condensed content of that point.
-- [ ] 1.1 @options **Short title.** The question the user asked, with the options you proposed.
+- [ ] 🔥 1.1 @options **Short title.** The question the user asked, with the options you proposed.
   - [x] 1.1.1 **Short title.** A point the user approved.
-- [ ] 1.2 @recommendation **Short title.** An open point where the user said which way they lean.
+  - [a] 1.1.2 **Short title.** A claim you stated and are certain of.
+  - [ ] 🔥 1.1.3 **Short title.** The nested bullet being discussed now.
+- [ ] 1.2 **Short title.** The issue, or the options still open. @Recommendation. The way you recommend, and why.
 
 ## ❓ 2. Next point
 ...
@@ -51,15 +53,17 @@ Condensed content of that point.
 - **Every bullet has a bold title.** Write `- [ ] <number> **Title.** content`: a short bold title (2 to 6 words, ending in a period or colon inside the bold), then the content as normal text. The viewer renders each nesting level as a table with columns number, title, content. Never put the whole bullet in bold, and never leave the title out.
 - **Chat answers use the same numbering, always as full paths.** Once this skill is invoked, whenever you answer with points or suggest options, number them with their full path (`1.1`, `1.2`, `2.1`, `2.2`; never a bare `1`, `2`, `3` under a parent), so a reader scrolling back in the chat can tell where a point sits and what its parents are. Use exactly those numbers in the outline so the user can say "2.1" and mean the same thing in both places. New follow-ups continue the sequence under their parent; do not renumber existing items.
 - **Clarifications go into the bullet they clarify.** When the user asks about, corrects or narrows existing bullets (for example "what do you mean by 2.1.3?" or "clarify the bullets in 2.1"), edit those bullets in place: fold the answer into the wording of each affected bullet (`2.1.0` … `2.1.6`) and keep its number. Do not append a new bullet that restates or summarizes them (a `2.1.7 Clarification: …` after six bullets it explains). Add a new numbered bullet only for content that is new and does not belong in any existing bullet, such as a new question or a new sub-point. When an answer touches several bullets, update each one. If a bullet becomes much longer, keep its first line as the claim and put the detail in sub-bullets under it. Chat replies can still be longer than the outline; the outline holds the merged result.
-- **Headings** start with a status emoji: ❓ open / not yet discussed, 🔥 being discussed now, ✅ resolved.
-- **Every bullet starts with a checkbox**, `- [ ]` or `- [x]`:
-  - `[ ]` is open. `[x]` means the user approved it, and writing `[x]` is what turns the viewer's outlined pending tick into a filled checkbox. A tick the user makes in the viewer stays outlined until you record it. Tick a box only when the user approved that bullet, in chat or in a pasted line such as `Approved in the outline: 2.1.3 …; 2.1.5 ….` (the viewer writes these when the user ticks boxes). Never tick a box on your own judgment. A pasted `Reopened in the outline: …` line means untick those boxes.
-  - `@options` right after the checkbox and number marks an open bullet where you proposed several options and the user has not said which way they lean. The viewer shows a red "Options" tag.
-  - `@recommendation` marks an open bullet that has a recommendation (yours, or one the user stated in the chat); put the recommendation in the bullet's content. The viewer shows a blue "Recommendation" tag. If both would apply, use `@recommendation`.
-  - Remove the tag when the user approves (`[x]`). A bullet with neither tag is plain open.
-  - A bullet being discussed right now may carry 🔥 after the checkbox: `- [ ] 🔥 2.1 …`.
+- **Headings** start with a status emoji: ❓ open / not yet discussed, 🔥 on the path to the latest discussed bullet, ✅ resolved.
+- **Every bullet starts with a checkbox**, `- [ ]`, `- [a]`, or `- [x]`:
+  - `[ ]` is open. `[a]` is agent-approved: write it when you make a claim the conversation already settled, or a claim you are certain of (a fact, a constraint, or a conclusion you are stating as yours). The viewer shows a blue outlined tick. Do not write `[a]` for something that still needs a user decision.
+  - `[x]` means the **user** approved it, and writing `[x]` is what turns the viewer's green outlined pending tick into a filled checkbox. A tick the user makes in the viewer (on an open box or on a blue agent tick) stays green-outlined until you record it. Write `[x]` only when the user approved that bullet, in chat or in a pasted line such as `Approved in the outline: 2.1.3 …; 2.1.5 ….` (the viewer writes these when the user ticks boxes). Never write `[x]` on your own judgment; your own certainty is `[a]`. A pasted `Reopened in the outline: …` line means change those boxes back to `[ ]`.
+  - `@options` right after the checkbox and number marks an open **leaf** bullet where you proposed several options and the user has not said which way they lean. The viewer shows a red "Options" tag next to the title. Do not put `@options` on a parent that only groups nested bullets; those parents show the children's checkbox icons instead.
+  - When a bullet has a recommendation, put that recommendation at the end of the bullet's text, starting with the `@Recommendation` tag: `- [ ] 1.2 **Short title.** What the issue is, or the options still open. @Recommendation. The way you recommend, and why.` The explanation comes first; `@Recommendation.` and the recommendation text are the last thing in that bullet. Do not put `@recommendation` after the number. Drop `@options` once you add `@Recommendation.`. The viewer shows the explanation in the content cell and, below it in that same cell, a 💡 Recommendation tag immediately before the recommendation text.
+  - Remove `@options` or `@Recommendation.` when the user approves (`[x]`). You may keep them on `[a]` if the recommendation or options are still part of the claim. A bullet with neither tag is plain open or agent-approved.
+  - **🔥 follows the latest discussed bullet, including nested ones.** After each answer, put 🔥 on that bullet and on every ancestor in its path: the topic heading and each parent bullet (`## 🔥 2. …`, `- [ ] 🔥 2.1 …`, `- [ ] 🔥 2.1.3 …`). On a bullet, 🔥 goes after the checkbox: `- [ ] 🔥 2.1.3 …`. Remove 🔥 from every heading and bullet that is not on that path. Siblings of the current bullet stay without 🔥. If the latest discussion is a heading with no nested current bullet, only that heading keeps 🔥.
+  - **Roll up a parent only when every descendant shares the same file mark.** If every descendant bullet is `[x]`, write `[x]` on the parent (and drop `@options` / `@Recommendation.`). If every descendant is `[a]` and none is `[x]` or `[ ]`, write `[a]` on the parent. If every numbered bullet under a topic heading is `[x]`, set that heading to ✅. Repeat until no further parent qualifies. Do not write `[x]` on a parent while any descendant is still `[ ]` or `[a]`. When descendants are mixed, leave the parent's checkbox as it is; the viewer shows the unique set of child icons (open, blue agent tick, green pending human tick, filled human tick) on that parent, each icon once.
 - Do not write raw HTML (`<details>` etc.); the server escapes it.
-- When the user says a subject is resolved, switch its heading emoji to ✅ and tick the bullets they approved. Move 🔥 to wherever the discussion currently is. Only one 🔥 at a time.
+- When the user says a subject is resolved, switch its heading emoji to ✅ and tick the bullets they approved; apply the roll-up rule above. Then move 🔥 to the latest discussed bullet and every ancestor on its path.
 
 ## Workflow
 
