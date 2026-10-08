@@ -150,8 +150,8 @@ table.index td:last-child,table.index th:last-child{white-space:nowrap;color:var
 table.index tr[data-href]{cursor:pointer}
 table.index td.progress-cell{padding:0}
 table.index .progress{display:flex;align-items:center;gap:10px;white-space:nowrap}
-table.index .bar{flex:none;width:120px;height:8px;background:var(--line);overflow:hidden}
-table.index .bar>span{display:block;height:100%;background:#2da44e}
+table.index .meter{flex:none;width:120px;height:8px;background:var(--line);overflow:hidden}
+table.index .meter>span{display:block;height:100%;background:#2da44e}
 table.index .nums{font-size:13px;color:var(--muted)}
 table.index .nums{font-size:13px;color:var(--muted)}
 table.index tr[data-href]:hover,table.index tr[data-href]:focus{background:color-mix(in srgb,var(--line) 40%,transparent);outline:none}
