@@ -1,7 +1,7 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
-import { renderMarkdown, renderPage, escapeHtml } from './render.js'
+import { renderMarkdown, renderPlain, renderPage, escapeHtml } from './render.js'
 import { loadConfig } from './config.js'
 
 const { dir: ROOT, port: PORT, host: HOST } = loadConfig()
@@ -61,13 +61,15 @@ const server = http.createServer((req, res) => {
     if (parts.length === 2 && parts.every(p => !p.includes('..') && !p.includes('\\'))) {
         const file = path.join(ROOT, parts[0], `${parts[1]}.md`)
         if (path.resolve(file).startsWith(ROOT + path.sep) && fs.existsSync(file)) {
-            let bodyHtml
+            let bodyHtml, plainHtml
             try {
-                bodyHtml = renderMarkdown(fs.readFileSync(file, 'utf8'))
+                const source = fs.readFileSync(file, 'utf8')
+                bodyHtml = renderMarkdown(source)
+                plainHtml = renderPlain(source)
             } catch (e) {
                 return send(res, 500, 'text/plain', `render failed: ${e.message}`)
             }
-            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], bodyHtml, storageKey: `map:${parts[0]}/${parts[1]}` }))
+            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], bodyHtml, plainHtml, storageKey: `map:${parts[0]}/${parts[1]}` }))
         }
     }
     send(res, 404, 'text/plain', 'not found')

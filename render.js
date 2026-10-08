@@ -104,11 +104,17 @@ function collapsibleRule(state) {
 
 md.core.ruler.push('collapsible', collapsibleRule)
 
+const mdPlain = new MarkdownIt({ html: false, linkify: true })
+
 export function renderMarkdown(source) {
     return md.render(source)
 }
 
-export function renderPage({ title, bodyHtml, storageKey }) {
+export function renderPlain(source) {
+    return mdPlain.render(source)
+}
+
+export function renderPage({ title, bodyHtml, plainHtml, storageKey }) {
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
@@ -137,11 +143,18 @@ pre code{background:none;padding:0}
 details.s-fire>summary{background:var(--fire);border-left:3px solid var(--fireline)}
 details.s-done>summary{color:var(--done)}
 body.only-open details.s-done{display:none}
+#plain{display:none}
+body.show-md #plain{display:block}
+body.show-md #outline,body.show-md .outline-only{display:none}
+#plain h1,#plain h2,#plain h3{margin:1.2em 0 .5em;line-height:1.25}
+#plain h2{border-bottom:1px solid var(--line);padding-bottom:.25em}
+#plain ul{list-style:disc}
+#plain p{margin:.6em 0}
 .ask{margin-left:8px;opacity:.55;font-size:12px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:0 5px}
 summary:hover .ask,.ask:focus{opacity:1}
 </style></head><body>
-<div class="bar"><a href="/">All outlines</a><button id="expand">Expand all</button><button id="collapse">Collapse all</button><button id="fire">Jump to 🔥</button><button id="onlyopen">Hide ✅</button><span class="t" id="live">live</span></div>
-<main>${bodyHtml}</main>
+<div class="bar"><a href="/">All outlines</a><button id="mdview" title="Switch between the collapsible outline and the plain rendered markdown">Markdown</button><button id="expand" class="outline-only">Expand all</button><button id="collapse" class="outline-only">Collapse all</button><button id="fire" class="outline-only">Jump to 🔥</button><button id="onlyopen" class="outline-only">Hide ✅</button><span class="t" id="live">live</span></div>
+<main id="outline">${bodyHtml}</main>${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}
 <script>
 const KEY=${JSON.stringify(storageKey)};
 const load=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){return {}}};
@@ -155,6 +168,8 @@ document.querySelectorAll('details>summary').forEach(sm=>{const b=document.creat
     try{navigator.clipboard.writeText(ref)}catch(err){}
     b.textContent='✓';setTimeout(()=>b.textContent='📋',1200)};
   sm.appendChild(b)});
+const setMd=on=>{document.body.classList.toggle('show-md',on);mdview.textContent=on?'Outline':'Markdown';try{localStorage.setItem(KEY+':md',on?'1':'')}catch(e){}};
+if(document.getElementById('plain')){mdview.onclick=()=>setMd(!document.body.classList.contains('show-md'));try{if(localStorage.getItem(KEY+':md'))setMd(true)}catch(e){}}else mdview.remove();
 const all=open=>document.querySelectorAll('details').forEach(d=>d.open=open);
 expand.onclick=()=>all(true);collapse.onclick=()=>all(false);
 onlyopen.onclick=()=>{document.body.classList.toggle('only-open');onlyopen.textContent=document.body.classList.contains('only-open')?'Show ✅':'Hide ✅'};
