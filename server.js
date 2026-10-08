@@ -74,7 +74,7 @@ const server = http.createServer((req, res) => {
                 const { done, open, now } = m.counts
                 const total = done + open + now
                 const pct = total ? Math.round((done / total) * 100) : 0
-                const progress = `<div class="progress" title="${done} resolved of ${total}"><div class="bar"><span style="width:${pct}%"></span></div><div class="pct-line"><span class="pct">${pct}%</span><span class="nums">✅ ${done} · ❓ ${open}</span></div></div>`
+                const progress = `<div class="progress" title="${done} resolved of ${total}"><div class="bar"><span style="width:${pct}%"></span></div><span class="nums">✅ ${done} · ❓ ${open}</span></div>`
                 return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td class="progress-cell">${progress}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString())}</td></tr>`
             })
             .join('')

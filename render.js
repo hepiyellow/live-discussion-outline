@@ -148,13 +148,11 @@ table.index th{text-align:left;color:var(--muted);font-weight:600;font-size:13px
 table.index td{padding:8px 10px;border-bottom:1px solid var(--line)}
 table.index td:last-child,table.index th:last-child{white-space:nowrap;color:var(--muted);text-align:right}
 table.index tr[data-href]{cursor:pointer}
-table.index td.progress-cell{padding:0;width:180px;vertical-align:middle}
-table.index .progress{padding:8px 0}
-table.index .bar{display:block;width:100%;height:8px;background:var(--line);overflow:hidden}
+table.index td.progress-cell{padding:0}
+table.index .progress{display:flex;align-items:center;gap:10px;white-space:nowrap}
+table.index .bar{flex:none;width:120px;height:8px;background:var(--line);overflow:hidden}
 table.index .bar>span{display:block;height:100%;background:#2da44e}
-table.index .pct-line{display:flex;align-items:baseline;gap:8px;margin-top:4px;padding:0 10px}
-table.index .pct{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
-table.index .nums{font-size:12px;color:var(--muted)}
+table.index .nums{font-size:13px;color:var(--muted)}
 table.index .nums{font-size:13px;color:var(--muted)}
 table.index tr[data-href]:hover,table.index tr[data-href]:focus{background:color-mix(in srgb,var(--line) 40%,transparent);outline:none}
 #plain{display:none}
