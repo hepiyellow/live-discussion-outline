@@ -26,6 +26,7 @@ Run `node __REPO_DIR__/bin/ensure.js`. It starts the server in the background if
 
 ```markdown
 # Topic
+Session: <session-id>
 
 ## 🔥 1. Title of numbered point
 Condensed content of that point.
@@ -37,7 +38,8 @@ Condensed content of that point.
 ...
 ```
 
-- Line 1 is `# <topic>`. Each numbered or bulleted point from your answers is a `##` heading that keeps its number (`## ❓ 2. Title`). Deeper levels use `###`.
+- Line 1 is `# <topic>`. Line 2 is `Session: <session-id>`: the id of this conversation as your tool names it (for example the session folder name in your scratch or transcript path). It lets the user reopen this chat later from the outline page. Omit the line if you cannot determine the id; never invent one.
+- Each numbered or bulleted point from your answers is a `##` heading that keeps its number (`## ❓ 2. Title`). Deeper levels use `###`.
 - Body content under a heading is the substance of that point: claims, reasons, commands, code blocks. Trim filler; do not paste whole answers.
 - The user's follow-up questions and your answers nest as `-` bullets under the point they belong to; a bullet with sub-bullets becomes collapsible in the page.
 - **Number every heading and every bullet with its full path**: `1`, `1.1`, `1.1.1`, `2`, `2.1`, … Numbers follow the structure and restart under each parent. Never leave a nested bullet unnumbered.

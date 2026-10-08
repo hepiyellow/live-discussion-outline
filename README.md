@@ -19,6 +19,7 @@ Features:
 - Every point and sub-point is numbered with its full path (`1`, `1.1`, `2.3.1`), in the chat and in the page, so "2.1" means the same thing in both places.
 - Status emoji on each item: ❓ open, 🔥 being discussed now, ✅ resolved. Resolved items start collapsed; the 🔥 item is highlighted.
 - The all-outlines table shows, per outline, how many items are ✅ resolved and ❓ open, with a bar for the resolved share.
+- **Resume later:** each outline can carry the id of the chat it came from (`Session: <id>` on line 2). The page has a **Copy chat link** button and the all-outlines table has a **Chat** column with a 📋 button, so you can find a paused discussion and reopen the chat it belongs to. See `resumeUri` below.
 - A **Markdown** button at the top switches to the plain rendered markdown (a normal preview, nothing collapsible) and back; the choice is remembered per outline.
 - Page bar: expand all, collapse all, jump to 🔥, hide ✅. Which items you opened or closed, and your scroll position, survive reloads.
 - Every row has a 📋 button; click it to copy a reference (`Re: outline "…" › 2.1 …`) to paste into the chat and continue about that item.
@@ -64,14 +65,17 @@ Settings come from environment variables, then the config file, then defaults.
 | Folder for the markdown outlines | `OUTLINE_DIR` | `dir` | `~/live-discussion-outlines` |
 | Server port | `OUTLINE_PORT` | `port` | `4577` |
 | Bind address | `OUTLINE_HOST` | `host` | `127.0.0.1` |
+| Link that reopens a chat, `{session}` is replaced by the outline's session id | `OUTLINE_RESUME_URI` | `resumeUri` | none (copies the bare session id) |
 
 The config file is `~/.config/live-discussion-outline/config.json` (override the path with `OUTLINE_CONFIG`):
 
 ```json
-{ "dir": "~/Documents/outlines", "port": 4577 }
+{ "dir": "~/Documents/outlines", "port": 4577, "resumeUri": "myagent://open?session={session}" }
 ```
 
 Outlines are stored as `<dir>/<project>/<date>-<topic>.md`, one folder per project, outside your repos. The page for a file is `http://localhost:<port>/<project>/<date>-<topic>`; `/` lists them all.
+
+`resumeUri` is whatever your agent or editor accepts to reopen a chat (a URI handler, or a command line such as `myagent --resume {session}`). The outline stores only the neutral session id, so the same outlines work with any agent.
 
 To apply new settings, stop the server (`pkill -f live-discussion-outline/server.js`) and start it again with `npm start` (or the next `/outline` starts it).
 

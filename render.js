@@ -114,7 +114,7 @@ export function renderPlain(source) {
     return mdPlain.render(source)
 }
 
-export function renderPage({ title, bodyHtml, plainHtml, storageKey }) {
+export function renderPage({ title, bodyHtml, plainHtml, resume, storageKey }) {
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
@@ -150,6 +150,7 @@ table.index td:last-child,table.index th:last-child{white-space:nowrap;color:var
 table.index tr[data-href]{cursor:pointer}
 table.index td.progress-cell{padding:0}
 table.index .progress{display:flex;align-items:center;gap:10px;white-space:nowrap}
+table.index .copy{font-size:13px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:1px 7px}
 table.index .meter{flex:none;width:120px;height:8px;background:var(--line);overflow:hidden}
 table.index .meter>span{display:block;height:100%;background:#2da44e}
 table.index .nums{font-size:13px;color:var(--muted)}
@@ -165,10 +166,11 @@ body.show-md #outline,body.show-md .outline-only{display:none}
 .ask{margin-left:8px;opacity:.55;font-size:12px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:0 5px}
 summary:hover .ask,.ask:focus{opacity:1}
 </style></head><body>
-<div class="bar"><a href="/">All outlines</a><button id="mdview" title="Switch between the collapsible outline and the plain rendered markdown">Markdown</button><button id="expand" class="outline-only">Expand all</button><button id="collapse" class="outline-only">Collapse all</button><button id="fire" class="outline-only">Jump to 🔥</button><button id="onlyopen" class="outline-only">Hide ✅</button><span class="t" id="live">live</span></div>
+<div class="bar"><a href="/">All outlines</a><button id="mdview" title="Switch between the collapsible outline and the plain rendered markdown">Markdown</button>${resume ? '<button id="copylink" title="Copy the link that reopens this chat">Copy chat link</button>' : ''}<button id="expand" class="outline-only">Expand all</button><button id="collapse" class="outline-only">Collapse all</button><button id="fire" class="outline-only">Jump to 🔥</button><button id="onlyopen" class="outline-only">Hide ✅</button><span class="t" id="live">live</span></div>
 <main id="outline">${bodyHtml}</main>${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}
 <script>
 const KEY=${JSON.stringify(storageKey)};
+const RESUME=${JSON.stringify(resume || '').replace(/</g, '\\u003c')};
 const load=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){return {}}};
 const state=load();
 const path=d=>{const k=[];for(let e=d;e;e=e.parentElement&&e.parentElement.closest('details'))k.unshift(e.dataset.key);return k.join(' > ')};
@@ -191,6 +193,9 @@ const y=sessionStorage.getItem(KEY+':y');if(y)scrollTo(0,Number(y));
 addEventListener('scroll',()=>sessionStorage.setItem(KEY+':y',String(scrollY)));
 document.querySelectorAll('tr[data-href]').forEach(tr=>{const go=e=>{if(e.metaKey||e.ctrlKey)open(tr.dataset.href,'_blank');else location.href=tr.dataset.href};
   tr.onclick=go;tr.onkeydown=e=>{if(e.key==='Enter')go(e)}});
+const copyText=(text,btn)=>{try{navigator.clipboard.writeText(text)}catch(e){};const old=btn.textContent;btn.textContent='✓';setTimeout(()=>btn.textContent=old,1200)};
+const cl=document.getElementById('copylink');if(cl)cl.onclick=()=>copyText(RESUME,cl);
+document.querySelectorAll('button[data-copy]').forEach(b=>b.onclick=e=>{e.stopPropagation();copyText(b.dataset.copy,b)});
 const es=new EventSource('/events');
 es.onmessage=()=>location.reload();
 es.onerror=()=>{live.textContent='disconnected'};

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { renderMarkdown, renderPlain, renderPage, escapeHtml } from './render.js'
 import { loadConfig } from './config.js'
 
-const { dir: ROOT, port: PORT, host: HOST } = loadConfig()
+const { dir: ROOT, port: PORT, host: HOST, resumeUri: RESUME_URI } = loadConfig()
 
 fs.mkdirSync(ROOT, { recursive: true })
 
@@ -19,9 +19,26 @@ fs.watch(ROOT, { recursive: true }, () => {
 
 const STATUS_KEYS = ['✅', '❓', '🔥']
 
+const SESSION_LINE = 'Session: '
+const SESSION_OK = /^[A-Za-z0-9._:-]{1,128}$/
+
+/** Pulls the `Session: <id>` line (if any) out of the source; returns the id and the source without it. */
+function extractSession(source) {
+    const lines = source.split('\n')
+    const i = lines.slice(0, 8).findIndex(line => line.startsWith(SESSION_LINE))
+    if (i < 0) return { session: '', source }
+    const id = lines[i].slice(SESSION_LINE.length).trim()
+    lines.splice(i, 1)
+    return { session: SESSION_OK.test(id) ? id : '', source: lines.join('\n') }
+}
+
+/** What the copy button puts on the clipboard: the configured resume link, else the bare session id. */
+const resumeFor = session => (!session ? '' : RESUME_URI ? RESUME_URI.replaceAll('{session}', session) : session)
+
 /** Title from the first "# " line, plus counts of status emoji on headings and bullets. */
 function summarize(file, fallback) {
-    const lines = fs.readFileSync(file, 'utf8').split('\n')
+    const { session, source } = extractSession(fs.readFileSync(file, 'utf8'))
+    const lines = source.split('\n')
     const heading = lines.find(line => line.startsWith('# '))
     const counts = { done: 0, open: 0, now: 0 }
     for (const line of lines) {
@@ -31,7 +48,7 @@ function summarize(file, fallback) {
         else if (text.startsWith(STATUS_KEYS[1])) counts.open++
         else if (text.startsWith(STATUS_KEYS[2])) counts.now++
     }
-    return { title: heading ? heading.slice(2).trim() : fallback, counts }
+    return { title: heading ? heading.slice(2).trim() : fallback, counts, resume: resumeFor(session) }
 }
 
 function listMaps() {
@@ -75,10 +92,10 @@ const server = http.createServer((req, res) => {
                 const total = done + open + now
                 const pct = total ? Math.round((done / total) * 100) : 0
                 const progress = `<div class="progress" title="${done} resolved of ${total}"><div class="meter"><span style="width:${pct}%"></span></div><span class="nums">✅ ${done} · ❓ ${open}</span></div>`
-                return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td class="progress-cell">${progress}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString())}</td></tr>`
+                return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td class="progress-cell">${progress}</td><td>${m.resume ? `<button class="copy" data-copy="${escapeHtml(m.resume)}" title="Copy the link that reopens this chat">📋</button>` : ''}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString())}</td></tr>`
             })
             .join('')
-        const body = `<h1>Live discussion outlines</h1><table class="index"><thead><tr><th>Name</th><th>Repo</th><th>Progress</th><th>Updated</th></tr></thead><tbody>${rows || '<tr><td colspan="4">No outlines yet.</td></tr>'}</tbody></table>`
+        const body = `<h1>Live discussion outlines</h1><table class="index"><thead><tr><th>Name</th><th>Repo</th><th>Progress</th><th>Chat</th><th>Updated</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No outlines yet.</td></tr>'}</tbody></table>`
         return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: 'Live discussion outlines', bodyHtml: body, storageKey: 'index' }))
     }
 
@@ -86,15 +103,16 @@ const server = http.createServer((req, res) => {
     if (parts.length === 2 && parts.every(p => !p.includes('..') && !p.includes('\\'))) {
         const file = path.join(ROOT, parts[0], `${parts[1]}.md`)
         if (path.resolve(file).startsWith(ROOT + path.sep) && fs.existsSync(file)) {
-            let bodyHtml, plainHtml
+            let bodyHtml, plainHtml, resume
             try {
-                const source = fs.readFileSync(file, 'utf8')
+                const { session, source } = extractSession(fs.readFileSync(file, 'utf8'))
+                resume = resumeFor(session)
                 bodyHtml = renderMarkdown(source)
                 plainHtml = renderPlain(source)
             } catch (e) {
                 return send(res, 500, 'text/plain', `render failed: ${e.message}`)
             }
-            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], bodyHtml, plainHtml, storageKey: `map:${parts[0]}/${parts[1]}` }))
+            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], bodyHtml, plainHtml, resume, storageKey: `map:${parts[0]}/${parts[1]}` }))
         }
     }
     send(res, 404, 'text/plain', 'not found')
