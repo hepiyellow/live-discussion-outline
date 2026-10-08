@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "license": "MIT",
   "engines": { "node": ">=18" },
-  "description": "Watches markdown outlines of a Claude conversation and serves them as collapsible, live-reloading HTML.",
+  "description": "Watches markdown outlines of an AI-agent conversation and serves them as collapsible, live-reloading HTML.",
   "type": "module",
   "scripts": { "start": "node server.js", "ensure": "node bin/ensure.js", "install-skill": "node bin/install-skill.js" },
   "dependencies": { "markdown-it": "^14.1.0" }

@@ -15,7 +15,7 @@ export function loadConfig() {
     } catch (e) {
         if (e.code !== 'ENOENT') console.error(`ignoring unreadable config ${configFile}: ${e.message}`)
     }
-    const dir = path.resolve(expandHome(process.env.OUTLINE_DIR || file.dir || '~/.claude/outlines'))
+    const dir = path.resolve(expandHome(process.env.OUTLINE_DIR || file.dir || '~/live-discussion-outlines'))
     const port = Number(process.env.OUTLINE_PORT || file.port || 4577)
     const host = process.env.OUTLINE_HOST || file.host || '127.0.0.1'
     return { dir, port, host, configFile }
