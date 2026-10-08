@@ -149,8 +149,9 @@ table.index td{padding:8px 10px;border-bottom:1px solid var(--line)}
 table.index td:last-child,table.index th:last-child{white-space:nowrap;color:var(--muted);text-align:right}
 table.index tr[data-href]{cursor:pointer}
 table.index .progress{display:inline-flex;align-items:center;gap:10px;white-space:nowrap}
-table.index .bar{display:inline-block;width:90px;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+table.index .bar{display:inline-block;width:120px;height:8px;border-radius:4px;border:1px solid var(--muted);background:transparent;overflow:hidden}
 table.index .bar>span{display:block;height:100%;background:#2da44e}
+table.index .pct{font-size:13px;font-weight:600;min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
 table.index .nums{font-size:13px;color:var(--muted)}
 table.index tr[data-href]:hover,table.index tr[data-href]:focus{background:color-mix(in srgb,var(--line) 40%,transparent);outline:none}
 #plain{display:none}
