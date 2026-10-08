@@ -17,9 +17,21 @@ fs.watch(ROOT, { recursive: true }, () => {
     }, 120)
 })
 
-function titleOf(file, fallback) {
-    const heading = fs.readFileSync(file, 'utf8').split('\n').find(line => line.startsWith('# '))
-    return heading ? heading.slice(2).trim() : fallback
+const STATUS_KEYS = ['✅', '❓', '🔥']
+
+/** Title from the first "# " line, plus counts of status emoji on headings and bullets. */
+function summarize(file, fallback) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n')
+    const heading = lines.find(line => line.startsWith('# '))
+    const counts = { done: 0, open: 0, now: 0 }
+    for (const line of lines) {
+        const text = line.trimStart().replace(/^(#+|[-*])\s+/, '')
+        if (text === line.trimStart()) continue
+        if (text.startsWith(STATUS_KEYS[0])) counts.done++
+        else if (text.startsWith(STATUS_KEYS[1])) counts.open++
+        else if (text.startsWith(STATUS_KEYS[2])) counts.now++
+    }
+    return { title: heading ? heading.slice(2).trim() : fallback, counts }
 }
 
 function listMaps() {
@@ -30,7 +42,7 @@ function listMaps() {
             if (!f.endsWith('.md')) continue
             const full = path.join(ROOT, project.name, f)
             const slug = f.slice(0, -3)
-            out.push({ project: project.name, file: slug, title: titleOf(full, slug), mtime: fs.statSync(full).mtimeMs })
+            out.push({ project: project.name, file: slug, ...summarize(full, slug), mtime: fs.statSync(full).mtimeMs })
         }
     }
     return out.sort((a, b) => b.mtime - a.mtime)
@@ -59,10 +71,14 @@ const server = http.createServer((req, res) => {
         const rows = listMaps()
             .map(m => {
                 const href = `/${encodeURIComponent(m.project)}/${encodeURIComponent(m.file)}`
-                return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString())}</td></tr>`
+                const { done, open, now } = m.counts
+                const total = done + open + now
+                const pct = total ? Math.round((done / total) * 100) : 0
+                const progress = `<span class="progress" title="${done} resolved of ${total}"><span class="bar"><span style="width:${pct}%"></span></span><span class="nums">✅ ${done} · ❓ ${open} · 🔥 ${now}</span></span>`
+                return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td>${progress}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString())}</td></tr>`
             })
             .join('')
-        const body = `<h1>Live discussion outlines</h1><table class="index"><thead><tr><th>Name</th><th>Repo</th><th>Updated</th></tr></thead><tbody>${rows || '<tr><td colspan="3">No outlines yet.</td></tr>'}</tbody></table>`
+        const body = `<h1>Live discussion outlines</h1><table class="index"><thead><tr><th>Name</th><th>Repo</th><th>Progress</th><th>Updated</th></tr></thead><tbody>${rows || '<tr><td colspan="4">No outlines yet.</td></tr>'}</tbody></table>`
         return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: 'Live discussion outlines', bodyHtml: body, storageKey: 'index' }))
     }
 

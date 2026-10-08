@@ -18,6 +18,7 @@ Features:
 
 - Every point and sub-point is numbered with its full path (`1`, `1.1`, `2.3.1`), in the chat and in the page, so "2.1" means the same thing in both places.
 - Status emoji on each item: ❓ open, 🔥 being discussed now, ✅ resolved. Resolved items start collapsed; the 🔥 item is highlighted.
+- The all-outlines table shows, per outline, how many items are ✅ resolved, ❓ open and 🔥 in progress, with a bar for the resolved share.
 - A **Markdown** button at the top switches to the plain rendered markdown (a normal preview, nothing collapsible) and back; the choice is remembered per outline.
 - Page bar: expand all, collapse all, jump to 🔥, hide ✅. Which items you opened or closed, and your scroll position, survive reloads.
 - Every row has a 📋 button; click it to copy a reference (`Re: outline "…" › 2.1 …`) to paste into the chat and continue about that item.
