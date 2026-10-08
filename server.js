@@ -17,14 +17,20 @@ fs.watch(ROOT, { recursive: true }, () => {
     }, 120)
 })
 
+function titleOf(file, fallback) {
+    const heading = fs.readFileSync(file, 'utf8').split('\n').find(line => line.startsWith('# '))
+    return heading ? heading.slice(2).trim() : fallback
+}
+
 function listMaps() {
     const out = []
     for (const project of fs.readdirSync(ROOT, { withFileTypes: true })) {
         if (!project.isDirectory()) continue
         for (const f of fs.readdirSync(path.join(ROOT, project.name))) {
             if (!f.endsWith('.md')) continue
-            const mtime = fs.statSync(path.join(ROOT, project.name, f)).mtimeMs
-            out.push({ project: project.name, file: f.slice(0, -3), mtime })
+            const full = path.join(ROOT, project.name, f)
+            const slug = f.slice(0, -3)
+            out.push({ project: project.name, file: slug, title: titleOf(full, slug), mtime: fs.statSync(full).mtimeMs })
         }
     }
     return out.sort((a, b) => b.mtime - a.mtime)
@@ -51,9 +57,12 @@ const server = http.createServer((req, res) => {
 
     if (pathname === '/') {
         const rows = listMaps()
-            .map(m => `<li><a href="/${encodeURIComponent(m.project)}/${encodeURIComponent(m.file)}">${escapeHtml(m.file)}</a> <small>${escapeHtml(m.project)} · ${new Date(m.mtime).toLocaleString()}</small></li>`)
+            .map(m => {
+                const href = `/${encodeURIComponent(m.project)}/${encodeURIComponent(m.file)}`
+                return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString())}</td></tr>`
+            })
             .join('')
-        const body = `<h1>Live discussion outlines</h1><ul>${rows || '<li>No outlines yet.</li>'}</ul>`
+        const body = `<h1>Live discussion outlines</h1><table class="index"><thead><tr><th>Name</th><th>Repo</th><th>Updated</th></tr></thead><tbody>${rows || '<tr><td colspan="3">No outlines yet.</td></tr>'}</tbody></table>`
         return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: 'Live discussion outlines', bodyHtml: body, storageKey: 'index' }))
     }
 

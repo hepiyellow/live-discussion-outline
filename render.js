@@ -143,6 +143,12 @@ pre code{background:none;padding:0}
 details.s-fire>summary{background:var(--fire);border-left:3px solid var(--fireline)}
 details.s-done>summary{color:var(--done)}
 body.only-open details.s-done{display:none}
+table.index{width:100%;border-collapse:collapse}
+table.index th{text-align:left;color:var(--muted);font-weight:600;font-size:13px;padding:6px 10px;border-bottom:1px solid var(--line)}
+table.index td{padding:8px 10px;border-bottom:1px solid var(--line)}
+table.index td:last-child,table.index th:last-child{white-space:nowrap;color:var(--muted);text-align:right}
+table.index tr[data-href]{cursor:pointer}
+table.index tr[data-href]:hover,table.index tr[data-href]:focus{background:color-mix(in srgb,var(--line) 40%,transparent);outline:none}
 #plain{display:none}
 body.show-md #plain{display:block}
 body.show-md #outline,body.show-md .outline-only{display:none}
@@ -170,12 +176,15 @@ document.querySelectorAll('details>summary').forEach(sm=>{const b=document.creat
   sm.appendChild(b)});
 const setMd=on=>{document.body.classList.toggle('show-md',on);mdview.textContent=on?'Outline':'Markdown';try{localStorage.setItem(KEY+':md',on?'1':'')}catch(e){}};
 if(document.getElementById('plain')){mdview.onclick=()=>setMd(!document.body.classList.contains('show-md'));try{if(localStorage.getItem(KEY+':md'))setMd(true)}catch(e){}}else mdview.remove();
+if(!document.querySelector('details'))document.querySelectorAll('.outline-only').forEach(x=>x.style.display='none');
 const all=open=>document.querySelectorAll('details').forEach(d=>d.open=open);
 expand.onclick=()=>all(true);collapse.onclick=()=>all(false);
 onlyopen.onclick=()=>{document.body.classList.toggle('only-open');onlyopen.textContent=document.body.classList.contains('only-open')?'Show ✅':'Hide ✅'};
 fire.onclick=()=>{const d=document.querySelector('details.s-fire');if(!d)return;for(let e=d;e;e=e.parentElement&&e.parentElement.closest('details'))e.open=true;d.scrollIntoView({block:'center'})};
 const y=sessionStorage.getItem(KEY+':y');if(y)scrollTo(0,Number(y));
 addEventListener('scroll',()=>sessionStorage.setItem(KEY+':y',String(scrollY)));
+document.querySelectorAll('tr[data-href]').forEach(tr=>{const go=e=>{if(e.metaKey||e.ctrlKey)open(tr.dataset.href,'_blank');else location.href=tr.dataset.href};
+  tr.onclick=go;tr.onkeydown=e=>{if(e.key==='Enter')go(e)}});
 const es=new EventSource('/events');
 es.onmessage=()=>location.reload();
 es.onerror=()=>{live.textContent='disconnected'};
