@@ -4,6 +4,18 @@ When an AI agent answers with several numbered points and you drill into one, th
 
 It is agent-agnostic. The server only watches a folder of markdown files; any agent that can write a file (Cursor, Codex, Gemini CLI, Aider, …) can feed it. A ready-made `/outline` skill is included for agents that support skills; for the others you give the agent the same instructions as a rule.
 
+The solution has three parts:
+
+1. **A skill you invoke.** `/outline` in a skills-capable agent. Other agents get the same instructions as a rules file.
+2. **Instructions that make the agent write a markdown mirror of the discussion.** The agent keeps one file per conversation, with numbered points, status emoji and nested details, and edits it as the discussion moves.
+3. **A small local server that renders that markdown as HTML.** It serves the outlines at `http://localhost:4577`, collapses and expands sections, and reloads the page when the file changes.
+
+![A rendered outline: collapsed resolved topics, the 🔥 topic highlighted, and three levels of nesting](docs/screenshot.png)
+
+The example in [`examples/demo/rate-limiting.md`](examples/demo/rate-limiting.md) is the markdown behind this screenshot.
+
+Features:
+
 - Every point and sub-point is numbered with its full path (`1`, `1.1`, `2.3.1`), in the chat and in the page, so "2.1" means the same thing in both places.
 - Status emoji on each item: ❓ open, 🔥 being discussed now, ✅ resolved. Resolved items start collapsed; the 🔥 item is highlighted.
 - A **Markdown** button at the top switches to the plain rendered markdown (a normal preview, nothing collapsible) and back; the choice is remembered per outline.
