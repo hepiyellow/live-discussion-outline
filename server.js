@@ -1,7 +1,7 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
-import { renderMarkdown, renderPlain, renderPage, escapeHtml } from './render.js'
+import { renderMarkdown, renderPlain, renderPage, escapeHtml, countCheckboxProgress } from './render.js'
 import { loadConfig } from './config.js'
 
 const { dir: ROOT, port: PORT, host: HOST } = loadConfig()
@@ -44,7 +44,7 @@ function summarize(file, fallback) {
         else if (text.startsWith(STATUS_KEYS[1])) counts.open++
         else if (text.startsWith(STATUS_KEYS[2])) counts.now++
     }
-    return { title: heading ? heading.slice(2).trim() : fallback, counts, resume }
+    return { title: heading ? heading.slice(2).trim() : fallback, counts, checkbox: countCheckboxProgress(source), resume }
 }
 
 function listMaps() {
@@ -84,10 +84,18 @@ const server = http.createServer((req, res) => {
         const rows = listMaps()
             .map(m => {
                 const href = `/${encodeURIComponent(m.project)}/${encodeURIComponent(m.file)}`
-                const { done, open, now } = m.counts
-                const total = done + open + now
-                const pct = total ? Math.round((done / total) * 100) : 0
-                const progress = `<div class="progress" title="${done} resolved of ${total}"><div class="meter"><span style="width:${pct}%"></span></div><span class="nums">✅ ${done} · ❓ ${open}</span></div>`
+                const cb = m.checkbox
+                let progress
+                if (cb.total) {
+                    const hPct = Math.round((cb.done / cb.total) * 100)
+                    const aPct = Math.round((cb.agent / cb.total) * 100)
+                    progress = `<div class="progress" title="${cb.done} human-approved · ${cb.agent} agent-approved · ${cb.open} open (of ${cb.total} checkboxes)"><div class="meter"><span class="human" style="width:${hPct}%"></span><span class="agent" style="width:${aPct}%"></span></div><span class="nums">✅ ${cb.done} · <span class="agent-n">${cb.agent}</span> agent · ☐ ${cb.open}</span></div>`
+                } else {
+                    const { done, open, now } = m.counts
+                    const total = done + open + now
+                    const pct = total ? Math.round((done / total) * 100) : 0
+                    progress = `<div class="progress" title="${done} resolved of ${total}"><div class="meter"><span class="human" style="width:${pct}%"></span></div><span class="nums">✅ ${done} · ❓ ${open}</span></div>`
+                }
                 return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td class="progress-cell">${progress}</td><td>${m.resume ? `<button class="copy" data-copy="${escapeHtml(m.resume)}" title="Copy the link that reopens this chat">📋</button>` : ''}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString())}</td></tr>`
             })
             .join('')
