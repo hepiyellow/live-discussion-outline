@@ -1,5 +1,5 @@
 ---
-name: outline
+name: live-discussion-outline
 description: Start and maintain a numbered markdown outline of the current conversation, served as collapsible live-reloading HTML by the local live-discussion-outline server. User-invoked only.
 disable-model-invocation: true
 argument-hint: "[topic]"

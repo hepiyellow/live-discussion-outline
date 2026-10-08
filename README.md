@@ -2,11 +2,11 @@
 
 When an AI agent answers with several numbered points and you drill into one, then go back to another, the chat scrolls away from you. This tool mirrors the conversation into a markdown outline that the agent keeps up to date, and serves it as a collapsible web page that reloads itself on every change.
 
-It is agent-agnostic. The server only watches a folder of markdown files; any agent that can write a file (Cursor, Codex, Gemini CLI, Aider, …) can feed it. A ready-made `/outline` skill is included for agents that support skills; for the others you give the agent the same instructions as a rule.
+It is agent-agnostic. The server only watches a folder of markdown files; any agent that can write a file (Cursor, Codex, Gemini CLI, Aider, …) can feed it. A ready-made `/live-discussion-outline` skill is included for agents that support skills; for the others you give the agent the same instructions as a rule.
 
 The solution has three parts:
 
-1. **A skill you invoke.** `/outline` in a skills-capable agent. Other agents get the same instructions as a rules file.
+1. **A skill you invoke.** `/live-discussion-outline` in a skills-capable agent. Other agents get the same instructions as a rules file.
 2. **Instructions that make the agent write a markdown mirror of the discussion.** The agent keeps one file per conversation, with numbered points, status emoji and nested details, and edits it as the discussion moves.
 3. **A small local server that renders that markdown as HTML.** It serves the outlines at `http://localhost:4577`, collapses and expands sections, and reloads the page when the file changes.
 
@@ -38,11 +38,11 @@ npm install
 ### Agents with skills support
 
 ```bash
-npm run install-skill                # installs the /outline skill into the default skills folder
+npm run install-skill                # installs the /live-discussion-outline skill into the default skills folder
 npm run install-skill -- <folder>    # or into a skills folder of your choice
 ```
 
-Then, in any conversation, type `/outline` (optionally `/outline some topic`). The agent starts the server if it is not running, writes the outline, and replies with a link. The skill is user-invoked only (`disable-model-invocation: true`); remove that line from `skill/SKILL.md` and re-run `npm run install-skill` if you want the agent to start outlines itself.
+Then, in any conversation, type `/live-discussion-outline` (optionally `/live-discussion-outline some topic`). The agent starts the server if it is not running, writes the outline, and replies with a link. The skill is user-invoked only (`disable-model-invocation: true`); remove that line from `skill/SKILL.md` and re-run `npm run install-skill` if you want the agent to start outlines itself.
 
 ### Any other agent
 
@@ -77,7 +77,7 @@ Outlines are stored as `<dir>/<project>/<date>-<topic>.md`, one folder per proje
 
 ### Resuming a chat
 
-How to reopen a chat depends on the agent, so the template is yours to configure. The `/outline` skill reads it from `bin/ensure.js` (`resume=` line), fills in the chat's session id, and writes the finished link or command as the outline's `Resume:` line. The page copies that line as written; the server never interprets it.
+How to reopen a chat depends on the agent, so the template is yours to configure. The `/live-discussion-outline` skill reads it from `bin/ensure.js` (`resume=` line), fills in the chat's session id, and writes the finished link or command as the outline's `Resume:` line. The page copies that line as written; the server never interprets it.
 
 Examples (check your tool's docs for the exact form; these are the ones I know):
 
@@ -91,7 +91,7 @@ Web-only chat products (ChatGPT, Grok, …) cannot write files, so they cannot r
 
 If the template is empty, the agent writes a `Resume:` line only when it knows its own way to reopen a chat, and otherwise leaves it out.
 
-To apply new settings, stop the server (`pkill -f live-discussion-outline/server.js`) and start it again with `npm start` (or the next `/outline` starts it).
+To apply new settings, stop the server (`pkill -f live-discussion-outline/server.js`) and start it again with `npm start` (or the next `/live-discussion-outline` starts it).
 
 ## Notes
 
