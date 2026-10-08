@@ -99,17 +99,18 @@ const server = http.createServer((req, res) => {
     if (parts.length === 2 && parts.every(p => !p.includes('..') && !p.includes('\\'))) {
         const file = path.join(ROOT, parts[0], `${parts[1]}.md`)
         if (path.resolve(file).startsWith(ROOT + path.sep) && fs.existsSync(file)) {
-            let bodyHtml, plainHtml, resume
+            let bodyHtml, tableHtml, plainHtml, resume
             try {
                 const extracted = extractResume(fs.readFileSync(file, 'utf8'))
                 const source = extracted.source
                 resume = extracted.resume
                 bodyHtml = renderMarkdown(source)
+                tableHtml = renderMarkdown(source, 'table')
                 plainHtml = renderPlain(source)
             } catch (e) {
                 return send(res, 500, 'text/plain', `render failed: ${e.message}`)
             }
-            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], bodyHtml, plainHtml, resume, storageKey: `map:${parts[0]}/${parts[1]}` }))
+            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], bodyHtml, tableHtml, plainHtml, resume, storageKey: `map:${parts[0]}/${parts[1]}` }))
         }
     }
     send(res, 404, 'text/plain', 'not found')

@@ -30,7 +30,82 @@ function detailsOpen(summaryText, extraClass) {
     return `<details class="${cls}" data-key="${escapeHtml(summaryText.trim())}"${open}>`
 }
 
-/** Headings become nested <details>; list items that own a sub-list become <details> too. */
+
+const SIDE_CHAT = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/><path d="M8 5.5v3M6.5 7h3"/></svg>'
+const NUM_RE = /^\s*(🔥|❓|✅)?\s*(\d+(?:\.\d+)*)?\s*([\s\S]*)$/
+
+function closeOf(tokens, i) {
+    for (let j = i + 1; j < tokens.length; j++) if (tokens[j].nesting === -1 && tokens[j].level === tokens[i].level) return j
+    return tokens.length - 1
+}
+
+/** A bullet list becomes a table: number | title (bold) | content. Items with a sub-list get a nested table in a child row. */
+function listToHtml(tokens, i, j) {
+    const rows = []
+    for (let k = i + 1; k < j; k = closeOf(tokens, k) + 1) {
+        const itemEnd = closeOf(tokens, k)
+        let text = null
+        let extra = ''
+        let kids = ''
+        for (let m = k + 1; m < itemEnd; m++) {
+            const t = tokens[m]
+            if (t.type === 'paragraph_open' && text === null) {
+                text = tokens[m + 1].content
+                m += 2
+            } else if (t.type === 'bullet_list_open') {
+                const end = closeOf(tokens, m)
+                kids += listToHtml(tokens, m, end)
+                m = end
+            } else {
+                const end = t.nesting === 1 ? closeOf(tokens, m) : m
+                extra += md.renderer.render(tokens.slice(m, end + 1), md.options, {})
+                m = end
+            }
+        }
+        rows.push(rowHtml(text || '', extra, kids))
+    }
+    return `<table class="ol"><tbody>\n${rows.join('')}</tbody></table>\n`
+}
+
+const CHECK_RE = /^\s*\[([ xX])\]\s*/
+const TAG_RE = /^@(recommendation|options)\b\s*/i
+
+function rowHtml(text, extra, kids) {
+    // `- [ ] 2.1 @options **Title.** content`; legacy `- ✅ 2.1 …` / `- ❓ 2.1 …` still reads as checked / open.
+    const check = text.match(CHECK_RE)
+    if (check) text = text.slice(check[0].length)
+    const [, emoji = '', num = '', afterNum] = text.match(NUM_RE)
+    const checked = check ? check[1] !== ' ' : emoji === '✅'
+    let rest = afterNum
+    const tags = new Set()
+    for (let t; (t = rest.match(TAG_RE)); rest = rest.slice(t[0].length)) tags.add(t[1].toLowerCase())
+    const bold = rest.match(/^\*\*([\s\S]+?)\*\*\s*([\s\S]*)$/)
+    const title = bold ? bold[1] : ''
+    const body = bold ? bold[2] : rest
+    const parts = num ? num.split('.') : []
+    const chain = parts.map((_, n) => parts.slice(0, n + 1).join('.')).join(' › ')
+    const label = `${num} ${title || rest.slice(0, 60)}`.trim()
+    const content = md.renderInline(body) + extra
+    const toggle = kids ? '<span class="tg" role="button" tabindex="0" title="Collapse or expand">▾</span> ' : ''
+    const pill = tags.has('recommendation')
+        ? '<span class="pill rec" title="A recommendation is given for this bullet">💡 Recommendation</span>'
+        : tags.has('options')
+          ? '<span class="pill opt" title="Options proposed, no recommendation yet">❓ Options</span>'
+          : ''
+    const cells = bold
+        ? `<td class="t">${toggle}${md.renderInline(title)}${pill ? ' ' + pill : ''}</td><td class="c">${content}</td>`
+        : `<td class="c" colspan="2">${toggle}${pill ? pill + ' ' : ''}${content}</td>`
+    const cls = ['r', emoji === '🔥' && 's-fire', checked && 's-done', kids && checked && 'closed'].filter(Boolean).join(' ')
+    return (
+        `<tr class="${cls}" data-num="${escapeHtml(num)}" data-ref="${escapeHtml(label)}" data-checked="${checked ? 1 : 0}">` +
+        `<td class="n" title="${escapeHtml(chain)}"><input type="checkbox" class="ck"${checked ? ' checked' : ''} title="${checked ? 'Approved' : 'Approve this bullet'}"> ` +
+        `<span class="st">${emoji === '🔥' ? '🔥' : ''}</span><span class="nm">${escapeHtml(parts.length ? parts[parts.length - 1] : '')}</span>` +
+        `<button class="ask" title="Open a side discussion on this bullet: copies its path (and any queued approvals)">${SIDE_CHAT}</button></td>${cells}</tr>\n` +
+        (kids ? `<tr class="kids"><td></td><td colspan="2">${kids}</td></tr>\n` : '')
+    )
+}
+
+/** Headings become nested <details>. Bullets view: list items that own a sub-list become <details>. Table view: bullet lists become number | title | content tables. */
 function collapsibleRule(state) {
     Token = state.Token
     const src = state.tokens
@@ -63,7 +138,7 @@ function collapsibleRule(state) {
             continue
         }
 
-        if (tok.type === 'list_item_open') {
+        if (state.env.view !== 'table' && tok.type === 'list_item_open') {
             let depth = 0
             let hasSubList = false
             let paraIdx = -1
@@ -96,6 +171,13 @@ function collapsibleRule(state) {
         if (tok.type === 'list_item_close' && tok.meta && tok.meta.closeDetails) {
             out.push(html('</details>\n'))
         }
+
+        if (state.env.view === 'table' && tok.type === 'bullet_list_open') {
+            const end = closeOf(src, i)
+            out.push(html(listToHtml(src, i, end)))
+            i = end
+            continue
+        }
         out.push(tok)
     }
     closeHeadings(0)
@@ -106,15 +188,16 @@ md.core.ruler.push('collapsible', collapsibleRule)
 
 const mdPlain = new MarkdownIt({ html: false, linkify: true })
 
-export function renderMarkdown(source) {
-    return md.render(source)
+/** view: 'bullets' (collapsible nested lists) or 'table' (number | title | content). */
+export function renderMarkdown(source, view = 'bullets') {
+    return md.render(source, { view })
 }
 
 export function renderPlain(source) {
     return mdPlain.render(source)
 }
 
-export function renderPage({ title, bodyHtml, plainHtml, resume, storageKey }) {
+export function renderPage({ title, bodyHtml, tableHtml, plainHtml, resume, storageKey }) {
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
@@ -143,6 +226,37 @@ pre code{background:none;padding:0}
 details.s-fire>summary{background:var(--fire);border-left:3px solid var(--fireline)}
 details.s-done>summary{color:var(--done)}
 body.only-open details.s-done{display:none}
+table.ol{width:100%;border-collapse:collapse}
+table.ol td{vertical-align:top;padding:4px 8px;border-bottom:1px solid var(--line)}
+table.ol td.n{white-space:nowrap;width:1%;color:var(--muted);font-variant-numeric:tabular-nums}
+table.ol td.t{font-weight:600;width:26%}
+table.ol tr.kids>td{border-bottom:0;padding:0 0 4px}
+table.ol tr.kids>td:last-child{padding-left:8px}
+table.ol table.ol{border-left:2px solid var(--line)}
+table.ol .tg{cursor:pointer;color:var(--muted);display:inline-block;width:1em}
+table.ol tr.closed .tg{transform:rotate(-90deg)}
+table.ol tr.closed+tr.kids{display:none}
+table.ol tr.s-fire>td{background:var(--fire)}
+table.ol tr.s-fire>td.n{border-left:3px solid var(--fireline)}
+table.ol tr.s-done>td{color:var(--done)}
+body.only-open table.ol tr.s-done,body.only-open table.ol tr.s-done+tr.kids{display:none}
+table.ol .ask{color:var(--accent);opacity:.8;margin-left:6px;display:inline-flex;align-items:center;vertical-align:middle;padding:2px 5px}
+table.ol .ck{appearance:none;-webkit-appearance:none;box-sizing:border-box;width:14px;height:14px;margin:0 4px 0 0;vertical-align:-2px;cursor:pointer;border:1.5px solid var(--muted);border-radius:3px;background:transparent center/11px 11px no-repeat;display:inline-block}
+table.ol .ck:checked{border-color:#2da44e;background-color:#2da44e;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.2 4.8 8.6 9.6 3.4' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+table.ol .ck.pending:checked{background-color:transparent;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.4 6.2 4.8 8.6 9.6 3.4' fill='none' stroke='%232da44e' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+table.ol .ck:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+table.ol .pill{display:inline-block;margin-left:6px;font-size:11px;font-weight:500;border-radius:10px;padding:0 7px;white-space:nowrap;vertical-align:1px;cursor:default;user-select:none}
+table.ol .pill.rec{color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
+table.ol .pill.opt{color:#d1242f;background:color-mix(in srgb,#d1242f 14%,transparent)}
+#status{position:fixed;left:0;right:0;bottom:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 20px;background:var(--bg);border-top:1px solid var(--line);z-index:3}
+.toast{position:fixed;transform:translate(-50%,-100%);background:var(--fg);color:var(--bg);font-size:12px;padding:3px 8px;border-radius:6px;pointer-events:none;z-index:5;white-space:nowrap}
+#status[hidden]{display:none}
+#status .tag{font-size:12px;border:1px solid var(--accent);color:var(--accent);border-radius:12px;padding:1px 4px 1px 9px;display:inline-flex;gap:4px;align-items:center}
+#status .tag.reopen{border-color:var(--muted);color:var(--muted)}
+#status .tag button{border:0;background:none;color:inherit;cursor:pointer;font-size:13px;padding:0 3px}
+#status .grow{flex:1}
+#status .copyall{font:inherit;font-size:13px;color:var(--bg);background:var(--accent);border:0;border-radius:6px;padding:4px 10px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+table.ol tr:hover>td.n .ask,table.ol .ask:focus{opacity:1}
 table.index{width:100%;border-collapse:collapse}
 table.index th{text-align:left;color:var(--muted);font-weight:600;font-size:13px;padding:6px 10px;border-bottom:1px solid var(--line)}
 table.index td{padding:8px 10px;border-bottom:1px solid var(--line)}
@@ -158,16 +272,17 @@ table.index .nums{font-size:13px;color:var(--muted)}
 table.index tr[data-href]:hover,table.index tr[data-href]:focus{background:color-mix(in srgb,var(--line) 40%,transparent);outline:none}
 #plain{display:none}
 body.show-md #plain{display:block}
-body.show-md #outline,body.show-md .outline-only{display:none}
+body.show-md #outline,body.show-md #outline-table,body.show-md .outline-only{display:none}
+body.view-table #outline,body:not(.view-table) #outline-table{display:none}
 #plain h1,#plain h2,#plain h3{margin:1.2em 0 .5em;line-height:1.25}
 #plain h2{border-bottom:1px solid var(--line);padding-bottom:.25em}
 #plain ul{list-style:disc}
 #plain p{margin:.6em 0}
-.ask{margin-left:8px;opacity:.55;font-size:12px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:0 5px}
-summary:hover .ask,.ask:focus{opacity:1}
+.ask{color:var(--fg);margin-left:8px;opacity:.55;font-size:12px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:0 5px}
+summary:hover .ask,li:hover>.ask,.ask:focus{opacity:1}
 </style></head><body>
-<div class="bar"><a href="/">All outlines</a><button id="mdview" title="Switch between the collapsible outline and the plain rendered markdown">Markdown</button>${resume ? '<button id="copylink" title="Copy the link that reopens this chat">Copy chat link</button>' : ''}<button id="expand" class="outline-only">Expand all</button><button id="collapse" class="outline-only">Collapse all</button><button id="fire" class="outline-only">Jump to 🔥</button><button id="onlyopen" class="outline-only">Hide ✅</button><span class="t" id="live">live</span></div>
-<main id="outline">${bodyHtml}</main>${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}
+<div class="bar"><a href="/">All outlines</a><button id="mdview" title="Switch between the collapsible outline and the plain rendered markdown">Markdown</button>${resume ? '<button id="copylink" title="Copy the link that reopens this chat">Copy chat link</button>' : ''}${tableHtml === undefined ? '' : '<button id="view" class="outline-only" title="Switch between nested bullets and number / title / content tables">Bullets</button>'}<button id="expand" class="outline-only">Expand all</button><button id="collapse" class="outline-only">Collapse all</button><button id="fire" class="outline-only">Jump to 🔥</button><button id="onlyopen" class="outline-only">Hide ✅</button><span class="t" id="live">live</span></div>
+<main id="outline">${bodyHtml}</main>${tableHtml === undefined ? '' : `<main id="outline-table">${tableHtml}</main>`}${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}<div id="status" hidden></div>
 <script>
 const KEY=${JSON.stringify(storageKey)};
 const RESUME=${JSON.stringify(resume || '').replace(/</g, '\\u003c')};
@@ -182,13 +297,63 @@ document.querySelectorAll('details>summary').forEach(sm=>{const b=document.creat
     try{navigator.clipboard.writeText(ref)}catch(err){}
     b.textContent='✓';setTimeout(()=>b.textContent='📋',1200)};
   sm.appendChild(b)});
+document.querySelectorAll('#outline li').forEach(li=>{if(li.querySelector(':scope>details'))return;
+  const b=document.createElement('button');b.className='ask';b.textContent='📋';b.title='Copy a reference to paste into the chat';
+  b.onclick=e=>{e.preventDefault();e.stopPropagation();const d=li.closest('details');const own=[...li.childNodes].filter(n=>!/^(UL|OL|BUTTON)$/.test(n.nodeName)).map(n=>n.textContent).join('').trim();
+    const ref='Re: outline "'+document.title+'" › '+(d?path(d).split(' > ').join(' › ')+' › ':'')+own+' — ';
+    try{navigator.clipboard.writeText(ref)}catch(err){}
+    b.textContent='✓';setTimeout(()=>b.textContent='📋',1200)};
+  li.insertBefore(b,li.querySelector(':scope>ul,:scope>ol'))});
+const headPath=el=>{const d=el.closest('details');return d?path(d).split(' > ').join(' › ')+' › ':''};
+const toast=el=>{document.querySelectorAll('.toast').forEach(t=>t.remove());const t=document.createElement('div');t.className='toast';t.textContent='Copied to clipboard';
+  const r=el.getBoundingClientRect();t.style.left=r.left+r.width/2+'px';t.style.top=r.top-6+'px';document.body.appendChild(t);setTimeout(()=>t.remove(),2000)};
+const rowKey=r=>'row:'+(r.dataset.num||r.dataset.ref);
+const lsGet=k=>{try{return JSON.parse(localStorage.getItem(KEY+k)||'{}')}catch(e){return {}}};
+const lsSet=(k,v)=>{try{localStorage.setItem(KEY+k,JSON.stringify(v))}catch(e){}};
+const chk=lsGet(':chk'),sent=lsGet(':sent');   // chk: viewer overrides of the file's checkbox; sent: overrides already copied
+const rows=[...document.querySelectorAll('tr.r')];
+const fileState=r=>r.dataset.checked==='1';
+const effective=r=>{const k=rowKey(r);return k in chk?chk[k]:fileState(r)};
+const paint=r=>{const box=r.querySelector('.ck');const on=effective(r),file=fileState(r);
+  box.checked=on;box.classList.toggle('pending',on&&!file);
+  box.title=on&&!file?'Pending approval — filled once the agent records it':!on&&file?'Pending reopen — cleared once the agent records it':on?'Approved':'Approve this bullet';
+  r.classList.toggle('s-done',on&&file)};
+const pending=()=>rows.filter(r=>{const k=rowKey(r);return k in chk&&chk[k]!==fileState(r)&&sent[k]!==chk[k]});
+const approvalText=()=>{const p=pending();const f=(v)=>p.filter(r=>effective(r)===v).map(r=>r.dataset.ref).join('; ');
+  const a=f(true),o=f(false);return [a&&'Approved in the outline: '+a+'.',o&&'Reopened in the outline: '+o+'.'].filter(Boolean).join('\\n')};
+const sbar=document.getElementById('status');
+const renderStatus=()=>{const p=pending();sbar.hidden=!p.length;sbar.innerHTML='';if(!p.length)return;
+  p.forEach(r=>{const t=document.createElement('span');const on=effective(r);t.className='tag'+(on?'':' reopen');t.textContent=(on?'✓ ':'↺ ')+r.dataset.ref;
+    const x=document.createElement('button');x.textContent='×';x.title='Drop this change';x.onclick=()=>{delete chk[rowKey(r)];lsSet(':chk',chk);paint(r);renderStatus()};t.appendChild(x);sbar.appendChild(t)});
+  const g=document.createElement('span');g.className='grow';sbar.appendChild(g);
+  const c=document.createElement('button');c.className='copyall';c.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg> Copy to clipboard';
+  c.onclick=()=>{copyApprovals(approvalText());c.textContent='✓ Copied'};sbar.appendChild(c)};
+const copyApprovals=text=>{try{navigator.clipboard.writeText(text)}catch(e){};pending().forEach(r=>{sent[rowKey(r)]=effective(r)});lsSet(':sent',sent);setTimeout(renderStatus,600)};
+rows.forEach(r=>{
+  const k=r.nextElementSibling&&r.nextElementSibling.classList.contains('kids');
+  if(k){const s=state[rowKey(r)];if(s!==undefined)r.classList.toggle('closed',!s);
+    const tg=r.querySelector('.tg');const flip=e=>{e.stopPropagation();r.classList.toggle('closed');state[rowKey(r)]=!r.classList.contains('closed');try{localStorage.setItem(KEY,JSON.stringify(state))}catch(err){}};
+    tg.onclick=flip;tg.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();flip(e)}}}
+  const box=r.querySelector('.ck');
+  paint(r);
+  box.onchange=()=>{const key=rowKey(r);if(box.checked===fileState(r))delete chk[key];else chk[key]=box.checked;delete sent[key];lsSet(':chk',chk);lsSet(':sent',sent);paint(r);renderStatus()};
+  const b=r.querySelector('.ask');
+  b.onclick=e=>{e.preventDefault();e.stopPropagation();const ap=approvalText();
+    try{navigator.clipboard.writeText((ap?ap+'\\n':'')+'Re: outline "'+document.title+'" › '+headPath(r)+r.dataset.ref+' — ')}catch(err){}
+    pending().forEach(x=>{sent[rowKey(x)]=effective(x)});lsSet(':sent',sent);renderStatus();
+    toast(b);}});
+renderStatus();
+const setView=t=>{document.body.classList.toggle('view-table',t);const v=document.getElementById('view');if(v)v.textContent=t?'Bullets':'Table';try{localStorage.setItem(KEY+':view',t?'table':'bullets')}catch(e){}};
+if(document.getElementById('view')){let t=true;try{t=localStorage.getItem(KEY+':view')!=='bullets'}catch(e){}setView(t);view.onclick=()=>setView(!document.body.classList.contains('view-table'))}
 const setMd=on=>{document.body.classList.toggle('show-md',on);mdview.textContent=on?'Outline':'Markdown';try{localStorage.setItem(KEY+':md',on?'1':'')}catch(e){}};
 if(document.getElementById('plain')){mdview.onclick=()=>setMd(!document.body.classList.contains('show-md'));try{if(localStorage.getItem(KEY+':md'))setMd(true)}catch(e){}}else mdview.remove();
-if(!document.querySelector('details'))document.querySelectorAll('.outline-only').forEach(x=>x.style.display='none');
-const all=open=>document.querySelectorAll('details').forEach(d=>d.open=open);
+if(!document.querySelector('details,tr.r'))document.querySelectorAll('.outline-only').forEach(x=>x.style.display='none');
+const all=open=>{document.querySelectorAll('details').forEach(d=>d.open=open);document.querySelectorAll('tr.r').forEach(r=>{if(r.nextElementSibling&&r.nextElementSibling.classList.contains('kids'))r.classList.toggle('closed',!open)})};
 expand.onclick=()=>all(true);collapse.onclick=()=>all(false);
 onlyopen.onclick=()=>{document.body.classList.toggle('only-open');onlyopen.textContent=document.body.classList.contains('only-open')?'Show ✅':'Hide ✅'};
-fire.onclick=()=>{const d=document.querySelector('details.s-fire');if(!d)return;for(let e=d;e;e=e.parentElement&&e.parentElement.closest('details'))e.open=true;d.scrollIntoView({block:'center'})};
+fire.onclick=()=>{const all=document.querySelectorAll((document.body.classList.contains('view-table')?'#outline-table ':'#outline ')+'details.s-fire,tr.s-fire');const d=all[all.length-1];if(!d)return;
+  for(let e=d.parentElement;e;e=e.parentElement){if(e.tagName==='DETAILS')e.open=true;if(e.tagName==='TR'&&e.classList.contains('kids'))e.previousElementSibling.classList.remove('closed')}
+  if(d.tagName==='DETAILS')d.open=true;d.scrollIntoView({block:'center'})};
 const y=sessionStorage.getItem(KEY+':y');if(y)scrollTo(0,Number(y));
 addEventListener('scroll',()=>sessionStorage.setItem(KEY+':y',String(scrollY)));
 document.querySelectorAll('tr[data-href]').forEach(tr=>{const go=e=>{if(e.metaKey||e.ctrlKey)open(tr.dataset.href,'_blank');else location.href=tr.dataset.href};

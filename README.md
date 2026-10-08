@@ -21,6 +21,8 @@ Features:
 - The all-outlines table shows, per outline, how many items are ✅ resolved and ❓ open, with a bar for the resolved share.
 - **Resume later:** an outline can carry a `Resume:` line (a link or command that reopens the chat it came from). The page has a **Copy chat link** button and the all-outlines table has a **Chat** column with a 📋 button, so you can find a paused discussion and reopen its chat. See `resumeTemplate` below.
 - A **Markdown** button at the top switches to the plain rendered markdown (a normal preview, nothing collapsible) and back; the choice is remembered per outline.
+- A **Table / Bullets** button switches how bullets are shown: nested collapsible bullets, or one table per nesting level with columns number (last segment, full path on hover, 📋 copy), bold title and content. Table is the default; the choice is remembered per outline. Write bullets as `- ❓ 2.1 **Title.** content` for the table view.
+- In the table view each bullet has a checkbox (`- [ ]` / `- [x]` in the markdown). Ticking one in the page queues an approval and draws an outlined tick (pending, not filled). Queued approvals show as tags in a bottom bar with a **Copy to clipboard** button, and are also included whenever you click a row's side-chat button (which copies that bullet's path). Copying clears the tags. The tick stays outlined until the agent writes `[x]` for that bullet; that file change is what fills the checkbox. `@options` (red "Options" tag) and `@recommendation` (blue "Recommendation" tag) after the number are written by the agent. Bullets view shows the raw `[ ]` text.
 - Page bar: expand all, collapse all, jump to 🔥, hide ✅. Which items you opened or closed, and your scroll position, survive reloads.
 - Every row has a 📋 button; click it to copy a reference (`Re: outline "…" › 2.1 …`) to paste into the chat and continue about that item.
 - The agent only writes markdown (cheap to edit, easy to diff). The server renders it.
@@ -38,7 +40,7 @@ npm install
 ### Agents with skills support
 
 ```bash
-npm run install-skill                # installs the /live-discussion-outline skill into the default skills folder
+npm run install-skill                # links the /live-discussion-outline skill into the default skills folder
 npm run install-skill -- <folder>    # or into a skills folder of your choice
 ```
 
@@ -46,7 +48,7 @@ Then, in any conversation, type `/live-discussion-outline` (optionally `/live-di
 
 ### Any other agent
 
-1. Put the instructions in [`skill/SKILL.md`](skill/SKILL.md) (everything below the frontmatter) into your agent's rules file: `AGENTS.md`, `.cursor/rules`, `GEMINI.md`, `CONVENTIONS.md`, and so on. Replace `__REPO_DIR__` with the path of this checkout.
+1. Put the instructions in [`skill/SKILL.md`](skill/SKILL.md) (everything below the frontmatter) into your agent's rules file: `AGENTS.md`, `.cursor/rules`, `GEMINI.md`, `CONVENTIONS.md`, and so on. The skill tells the agent to resolve this checkout from the skill file's path.
 2. Start the server yourself with `npm start` (or `node bin/ensure.js`, which starts it in the background and prints the outlines folder and URL).
 3. Tell the agent to start an outline. It writes `<outlines folder>/<project>/<date>-<topic>.md` in the documented format and keeps editing the same file.
 
