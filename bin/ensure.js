@@ -7,7 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadConfig } from '../config.js'
 
-const { dir, port, host } = loadConfig()
+const { dir, port, resumeTemplate } = loadConfig()
 const url = `http://localhost:${port}`
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const logFile = path.join(os.tmpdir(), 'live-discussion-outline.log')
@@ -31,3 +31,4 @@ if (!(await alive())) {
 }
 console.log(`dir=${dir}`)
 console.log(`url=${url}`)
+console.log(`resume=${resumeTemplate}`)

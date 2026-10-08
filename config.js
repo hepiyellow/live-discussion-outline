@@ -18,6 +18,6 @@ export function loadConfig() {
     const dir = path.resolve(expandHome(process.env.OUTLINE_DIR || file.dir || '~/live-discussion-outlines'))
     const port = Number(process.env.OUTLINE_PORT || file.port || 4577)
     const host = process.env.OUTLINE_HOST || file.host || '127.0.0.1'
-    const resumeUri = process.env.OUTLINE_RESUME_URI || file.resumeUri || ''
-    return { dir, port, host, resumeUri, configFile }
+    const resumeTemplate = process.env.OUTLINE_RESUME_TEMPLATE || file.resumeTemplate || ''
+    return { dir, port, host, resumeTemplate, configFile }
 }

@@ -11,7 +11,7 @@ Mirror this conversation into a markdown file. A local server (`__REPO_DIR__`) r
 
 ## Start
 
-Run `node __REPO_DIR__/bin/ensure.js`. It starts the server in the background if needed and prints two lines: `dir=<outlines folder>` and `url=<base url>`. Use those values below.
+Run `node __REPO_DIR__/bin/ensure.js`. It starts the server in the background if needed and prints three lines: `dir=<outlines folder>`, `url=<base url>` and `resume=<template>` (the template may be empty). Use those values below.
 
 ## Where the file lives
 
@@ -26,7 +26,7 @@ Run `node __REPO_DIR__/bin/ensure.js`. It starts the server in the background if
 
 ```markdown
 # Topic
-Session: <session-id>
+Resume: <link or command that reopens this chat>
 
 ## 🔥 1. Title of numbered point
 Condensed content of that point.
@@ -38,7 +38,10 @@ Condensed content of that point.
 ...
 ```
 
-- Line 1 is `# <topic>`. Line 2 is `Session: <session-id>`: the id of this conversation as your tool names it (for example the session folder name in your scratch or transcript path). It lets the user reopen this chat later from the outline page. Omit the line if you cannot determine the id; never invent one.
+- Line 1 is `# <topic>`. Line 2 is `Resume: <link or command>` that reopens this chat later; the page turns it into a copy button.
+  - If the `resume=` template from the Start step is not empty, replace `{session}` in it with this conversation's session id (the id your tool uses for the chat, for example the session folder name in your scratch or transcript path) and write the result, exactly once, without code quotes.
+  - If the template is empty and you know your own way to reopen a chat (a link or a command), write that.
+  - Otherwise omit the line. Never invent an id or a command.
 - Each numbered or bulleted point from your answers is a `##` heading that keeps its number (`## ❓ 2. Title`). Deeper levels use `###`.
 - Body content under a heading is the substance of that point: claims, reasons, commands, code blocks. Trim filler; do not paste whole answers.
 - The user's follow-up questions and your answers nest as `-` bullets under the point they belong to; a bullet with sub-bullets becomes collapsible in the page.

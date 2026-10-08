@@ -4,7 +4,7 @@ import path from 'node:path'
 import { renderMarkdown, renderPlain, renderPage, escapeHtml } from './render.js'
 import { loadConfig } from './config.js'
 
-const { dir: ROOT, port: PORT, host: HOST, resumeUri: RESUME_URI } = loadConfig()
+const { dir: ROOT, port: PORT, host: HOST } = loadConfig()
 
 fs.mkdirSync(ROOT, { recursive: true })
 
@@ -19,25 +19,21 @@ fs.watch(ROOT, { recursive: true }, () => {
 
 const STATUS_KEYS = ['✅', '❓', '🔥']
 
-const SESSION_LINE = 'Session: '
-const SESSION_OK = /^[A-Za-z0-9._:-]{1,128}$/
+const RESUME_LINE = 'Resume: '
 
-/** Pulls the `Session: <id>` line (if any) out of the source; returns the id and the source without it. */
-function extractSession(source) {
+/** Pulls the `Resume: <link or command>` line (if any) out of the source; the value is copied verbatim by the page. */
+function extractResume(source) {
     const lines = source.split('\n')
-    const i = lines.slice(0, 8).findIndex(line => line.startsWith(SESSION_LINE))
-    if (i < 0) return { session: '', source }
-    const id = lines[i].slice(SESSION_LINE.length).trim()
+    const i = lines.slice(0, 8).findIndex(line => line.startsWith(RESUME_LINE))
+    if (i < 0) return { resume: '', source }
+    const value = lines[i].slice(RESUME_LINE.length).trim().replace(/^`+|`+$/g, '')
     lines.splice(i, 1)
-    return { session: SESSION_OK.test(id) ? id : '', source: lines.join('\n') }
+    return { resume: value.length <= 500 ? value : '', source: lines.join('\n') }
 }
-
-/** What the copy button puts on the clipboard: the configured resume link, else the bare session id. */
-const resumeFor = session => (!session ? '' : RESUME_URI ? RESUME_URI.replaceAll('{session}', session) : session)
 
 /** Title from the first "# " line, plus counts of status emoji on headings and bullets. */
 function summarize(file, fallback) {
-    const { session, source } = extractSession(fs.readFileSync(file, 'utf8'))
+    const { resume, source } = extractResume(fs.readFileSync(file, 'utf8'))
     const lines = source.split('\n')
     const heading = lines.find(line => line.startsWith('# '))
     const counts = { done: 0, open: 0, now: 0 }
@@ -48,7 +44,7 @@ function summarize(file, fallback) {
         else if (text.startsWith(STATUS_KEYS[1])) counts.open++
         else if (text.startsWith(STATUS_KEYS[2])) counts.now++
     }
-    return { title: heading ? heading.slice(2).trim() : fallback, counts, resume: resumeFor(session) }
+    return { title: heading ? heading.slice(2).trim() : fallback, counts, resume }
 }
 
 function listMaps() {
@@ -105,8 +101,9 @@ const server = http.createServer((req, res) => {
         if (path.resolve(file).startsWith(ROOT + path.sep) && fs.existsSync(file)) {
             let bodyHtml, plainHtml, resume
             try {
-                const { session, source } = extractSession(fs.readFileSync(file, 'utf8'))
-                resume = resumeFor(session)
+                const extracted = extractResume(fs.readFileSync(file, 'utf8'))
+                const source = extracted.source
+                resume = extracted.resume
                 bodyHtml = renderMarkdown(source)
                 plainHtml = renderPlain(source)
             } catch (e) {
