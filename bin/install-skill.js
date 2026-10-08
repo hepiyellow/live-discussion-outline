@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Install the /outline skill into Claude Code's user skills folder, pointing at this checkout.
+// Install the /outline skill into a skills folder (default: ~/.claude/skills), pointing at this checkout.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'

@@ -2,7 +2,7 @@
 
 When an AI agent answers with several numbered points and you drill into one, then go back to another, the chat scrolls away from you. This tool mirrors the conversation into a markdown outline that the agent keeps up to date, and serves it as a collapsible web page that reloads itself on every change.
 
-It is agent-agnostic. The server only watches a folder of markdown files; any agent that can write a file (Claude Code, Cursor, Codex, Gemini CLI, Aider, …) can feed it. A ready-made skill is included for Claude Code; for other agents you give the agent the same instructions as a rule.
+It is agent-agnostic. The server only watches a folder of markdown files; any agent that can write a file (Cursor, Codex, Gemini CLI, Aider, …) can feed it. A ready-made `/outline` skill is included for agents that support skills; for the others you give the agent the same instructions as a rule.
 
 - Every point and sub-point is numbered with its full path (`1`, `1.1`, `2.3.1`), in the chat and in the page, so "2.1" means the same thing in both places.
 - Status emoji on each item: ❓ open, 🔥 being discussed now, ✅ resolved. Resolved items start collapsed; the 🔥 item is highlighted.
@@ -21,13 +21,14 @@ cd live-discussion-outline
 npm install
 ```
 
-### Claude Code
+### Agents with skills support
 
 ```bash
-npm run install-skill     # installs the /outline skill into ~/.claude/skills/outline
+npm run install-skill                # installs the /outline skill into the default skills folder
+npm run install-skill -- <folder>    # or into a skills folder of your choice
 ```
 
-Then, in any conversation, type `/outline` (optionally `/outline some topic`). Claude starts the server if it is not running, writes the outline, and replies with a link. The skill is user-invoked only (`disable-model-invocation: true`); remove that line from `skill/SKILL.md` and re-run `npm run install-skill` if you want Claude to start outlines itself.
+Then, in any conversation, type `/outline` (optionally `/outline some topic`). The agent starts the server if it is not running, writes the outline, and replies with a link. The skill is user-invoked only (`disable-model-invocation: true`); remove that line from `skill/SKILL.md` and re-run `npm run install-skill` if you want the agent to start outlines itself.
 
 ### Any other agent
 
@@ -59,13 +60,13 @@ The config file is `~/.config/live-discussion-outline/config.json` (override the
 
 Outlines are stored as `<dir>/<project>/<date>-<topic>.md`, one folder per project, outside your repos. The page for a file is `http://localhost:<port>/<project>/<date>-<topic>`; `/` lists them all.
 
-To apply new settings, stop the server (`pkill -f live-discussion-outline/server.js`) and start it again with `npm start` (or the next `/outline` in Claude Code starts it).
+To apply new settings, stop the server (`pkill -f live-discussion-outline/server.js`) and start it again with `npm start` (or the next `/outline` starts it).
 
 ## Notes
 
 - Binds to localhost only. Raw HTML in the markdown is escaped. The server log is `live-discussion-outline.log` in your temp folder.
 - Headings and list items that own a sub-list become collapsible. The markdown stays readable in any viewer.
-- The 📋 button only copies to the clipboard. Cursor's Claude Code extension registers a `cursor://anthropic.claude-code/open?prompt=` link, but it did not inject text into an existing chat when tried.
+- The 📋 button only copies to the clipboard. Injecting text into an existing chat through an editor URI handler did not work when tried.
 
 ## License
 
