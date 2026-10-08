@@ -31,9 +31,22 @@ function extractResume(source) {
     return { resume: value.length <= 500 ? value : '', source: lines.join('\n') }
 }
 
+const MODEL_LINE = 'Model: '
+
+/** Pulls the `Model: <name>, <effort>` line (if any) out of the source; the page shows it as written. */
+function extractModel(source) {
+    const lines = source.split('\n')
+    const i = lines.slice(0, 8).findIndex(line => line.startsWith(MODEL_LINE))
+    if (i < 0) return { model: '', source }
+    const value = lines[i].slice(MODEL_LINE.length).trim().replace(/^`+|`+$/g, '')
+    lines.splice(i, 1)
+    return { model: value.length <= 100 ? value : '', source: lines.join('\n') }
+}
+
 /** Title from the first "# " line, plus counts of status emoji on headings and bullets. */
 function summarize(file, fallback) {
-    const { resume, source } = extractResume(fs.readFileSync(file, 'utf8'))
+    const { resume, source: afterResume } = extractResume(fs.readFileSync(file, 'utf8'))
+    const { source } = extractModel(afterResume)
     const lines = source.split('\n')
     const heading = lines.find(line => line.startsWith('# '))
     const counts = { done: 0, open: 0, now: 0 }
@@ -107,18 +120,20 @@ const server = http.createServer((req, res) => {
     if (parts.length === 2 && parts.every(p => !p.includes('..') && !p.includes('\\'))) {
         const file = path.join(ROOT, parts[0], `${parts[1]}.md`)
         if (path.resolve(file).startsWith(ROOT + path.sep) && fs.existsSync(file)) {
-            let bodyHtml, tableHtml, plainHtml, resume
+            let bodyHtml, tableHtml, plainHtml, resume, model
             try {
                 const extracted = extractResume(fs.readFileSync(file, 'utf8'))
-                const source = extracted.source
+                const withModel = extractModel(extracted.source)
+                const source = withModel.source
                 resume = extracted.resume
+                model = withModel.model
                 bodyHtml = renderMarkdown(source)
                 tableHtml = renderMarkdown(source, 'table')
                 plainHtml = renderPlain(source)
             } catch (e) {
                 return send(res, 500, 'text/plain', `render failed: ${e.message}`)
             }
-            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], bodyHtml, tableHtml, plainHtml, resume, storageKey: `map:${parts[0]}/${parts[1]}` }))
+            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], bodyHtml, tableHtml, plainHtml, resume, model, storageKey: `map:${parts[0]}/${parts[1]}` }))
         }
     }
     send(res, 404, 'text/plain', 'not found')

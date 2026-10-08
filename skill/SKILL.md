@@ -29,6 +29,7 @@ Run `node <repo>/bin/ensure.js`. It starts the server in the background if neede
 ```markdown
 # Topic
 Resume: <link or command that reopens this chat>
+Model: <your model name>, <effort>
 
 ## 🔥 1. Title of numbered point
 Condensed content of that point.
@@ -50,6 +51,7 @@ Condensed content of that point.
   - If the `resume=` template from the Start step is not empty, replace `{session}` in it with this conversation's session id (the id your tool uses for the chat, for example the session folder name in your scratch or transcript path) and write the result, exactly once, without code quotes.
   - If the template is empty and you know your own way to reopen a chat (a link or a command), write that.
   - Otherwise omit the line. Never invent an id or a command.
+- Line 3 is `Model: <model name>, <effort level>` (for example `Model: Claude Sonnet 5.5, medium`); the page shows it top-right beside the copy button. Write the model you are running as and the reasoning effort you know you are using. Omit the effort if you do not know it, and omit the line if you do not know the model. Never guess. Update it if the model or effort changes mid-discussion.
 - Each numbered or bulleted point from your answers is a `##` heading that keeps its number (`## ❓ 2. Title`). Deeper levels use `###`.
 - Body content under a heading is the substance of that point: claims, reasons, commands, code blocks. Trim filler; do not paste whole answers.
 - The user's follow-up questions and your answers nest as `-` bullets under the point they belong to; a bullet with sub-bullets becomes collapsible in the page.

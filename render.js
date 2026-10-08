@@ -270,7 +270,7 @@ export function renderPlain(source) {
     return mdPlain.render(source)
 }
 
-export function renderPage({ title, bodyHtml, tableHtml, plainHtml, resume, storageKey }) {
+export function renderPage({ title, bodyHtml, tableHtml, plainHtml, resume, model, storageKey }) {
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(title)}</title>
@@ -278,9 +278,20 @@ export function renderPage({ title, bodyHtml, tableHtml, plainHtml, resume, stor
 :root{--bg:#fff;--fg:#1f2328;--muted:#656d76;--line:#d0d7de;--fire:#fff1e5;--fireline:#f0883e;--done:#8c959f;--accent:#0969da}
 @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8d96a0;--line:#30363d;--fire:#2d1b0e;--fireline:#db6d28;--done:#6e7681;--accent:#58a6ff}}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{padding-left:76px}
+.rail{position:fixed;top:0;bottom:0;left:0;width:76px;border-right:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;align-items:center;padding-top:8px;z-index:4}
+.rail a{display:flex;flex-direction:column;align-items:center;gap:4px;width:64px;padding:8px 0;border-radius:8px;color:var(--accent);font-size:11px;text-decoration:none}
+.rail a:hover{background:color-mix(in srgb,var(--line) 40%,transparent)}
+.rail svg{width:28px;height:28px}
 main{max-width:860px;margin:0 auto;padding:16px 20px 80px}
 .bar{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 20px;display:flex;gap:8px;align-items:center;z-index:2}
-.bar a,.bar button{font:inherit;font-size:13px;color:var(--accent);background:none;border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;text-decoration:none}
+.bar a,.bar button{font:inherit;font-size:13px;color:#0d1117;background:#fff;border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;text-decoration:none}
+.bar .seg{display:inline-flex;padding:0;overflow:hidden}
+.bar .seg span{padding:3px 10px;color:#8c959f}
+.bar .seg span.on{background:#d0d7de;color:#0d1117;font-weight:600}
+.bar #copylink{margin-left:auto}
+.bar .model{font-size:13px;color:var(--muted);white-space:nowrap}
+.bar #copylink~.t{margin-left:0}
 .bar .t{margin-left:auto;color:var(--muted);font-size:12px}
 #outline>h1,#outline-table>h1{font-size:1.85em;font-weight:700;line-height:1.2;margin:0 0 .85em;letter-spacing:-.02em}
 details{margin:4px 0}
@@ -339,7 +350,7 @@ table.ol .rec-line .pill{margin:0 6px 0 0}
 table.ol .pill.opt{color:#d1242f;background:color-mix(in srgb,#d1242f 14%,transparent)}
 table.ol .pill.pick{color:var(--fg);background:color-mix(in srgb,var(--fg) 12%,transparent)}
 @media (prefers-color-scheme:dark){table.ol .pill.pick{color:#fff;background:color-mix(in srgb,#fff 16%,transparent)}}
-#status{position:fixed;left:0;right:0;bottom:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 20px;background:var(--bg);border-top:1px solid var(--line);z-index:3}
+#status{position:fixed;left:76px;right:0;bottom:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 20px;background:var(--bg);border-top:1px solid var(--line);z-index:3}
 .toast{position:fixed;transform:translate(-50%,-100%);background:var(--fg);color:var(--bg);font-size:12px;padding:3px 8px;border-radius:6px;pointer-events:none;z-index:5;white-space:nowrap}
 #status[hidden]{display:none}
 #status .tag{font-size:12px;border:1px solid #2da44e;background:#2da44e;color:#fff;border-radius:12px;padding:1px 4px 1px 9px;display:inline-flex;gap:4px;align-items:center}
@@ -374,7 +385,8 @@ body.view-table #outline,body:not(.view-table) #outline-table{display:none}
 .ask{color:var(--fg);margin-left:8px;opacity:.55;font-size:12px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:0 5px}
 summary:hover .ask,li:hover>.ask,.ask:focus{opacity:1}
 </style></head><body>
-<div class="bar"><a href="/">All outlines</a><button id="mdview" title="Switch between the collapsible outline and the plain rendered markdown">Markdown</button>${resume ? '<button id="copylink" title="Copy the link that reopens this chat">Copy chat link</button>' : ''}${tableHtml === undefined ? '' : '<button id="view" class="outline-only" title="Switch between nested bullets and number / title / content tables">Bullets</button>'}<button id="expand" class="outline-only">Expand all</button><button id="collapse" class="outline-only">Collapse all</button><button id="fire" class="outline-only">Jump to 🔥</button><button id="onlyopen" class="outline-only">Hide ✅</button><span class="t" id="live">live</span></div>
+<nav class="rail"><a href="/" title="All outlines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Discussions</a></nav>
+<div class="bar"><button id="mdview" class="seg" title="Switch between the collapsible outline and the plain rendered markdown"><span data-m="outline" class="on">Outline</span><span data-m="md">Markdown</span></button>${tableHtml === undefined ? '' : '<button id="view" class="outline-only" title="Switch between nested bullets and number / title / content tables">Bullets</button>'}<button id="expand" class="outline-only">Expand all</button><button id="collapse" class="outline-only">Collapse all</button><button id="fire" class="outline-only">Jump to 🔥</button><button id="onlyopen" class="outline-only">Hide ✅</button>${resume ? '<button id="copylink" title="Copy the link that reopens this chat">Copy chat link</button>' : ''}${model ? `<span class="model" title="Model and effort the agent wrote into the outline">${escapeHtml(model)}</span>` : ''}<span class="t" id="live">live</span></div>
 <main id="outline">${bodyHtml}</main>${tableHtml === undefined ? '' : `<main id="outline-table">${tableHtml}</main>`}${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}<div id="status" hidden></div>
 <script>
 const KEY=${JSON.stringify(storageKey)};
@@ -477,7 +489,7 @@ rows.forEach(r=>{
 renderStatus();
 const setView=t=>{document.body.classList.toggle('view-table',t);const v=document.getElementById('view');if(v)v.textContent=t?'Bullets':'Table';try{localStorage.setItem(KEY+':view',t?'table':'bullets')}catch(e){}};
 if(document.getElementById('view')){let t=true;try{t=localStorage.getItem(KEY+':view')!=='bullets'}catch(e){}setView(t);view.onclick=()=>setView(!document.body.classList.contains('view-table'))}
-const setMd=on=>{document.body.classList.toggle('show-md',on);mdview.textContent=on?'Outline':'Markdown';try{localStorage.setItem(KEY+':md',on?'1':'')}catch(e){}};
+const setMd=on=>{document.body.classList.toggle('show-md',on);mdview.querySelectorAll('span').forEach(x=>x.classList.toggle('on',(x.dataset.m==='md')===on));try{localStorage.setItem(KEY+':md',on?'1':'')}catch(e){}};
 if(document.getElementById('plain')){mdview.onclick=()=>setMd(!document.body.classList.contains('show-md'));try{if(localStorage.getItem(KEY+':md'))setMd(true)}catch(e){}}else mdview.remove();
 if(!document.querySelector('details,tr.r'))document.querySelectorAll('.outline-only').forEach(x=>x.style.display='none');
 const all=open=>{document.querySelectorAll('details').forEach(d=>d.open=open);document.querySelectorAll('tr.r').forEach(r=>{if(r.nextElementSibling&&r.nextElementSibling.classList.contains('kids'))r.classList.toggle('closed',!open)})};
