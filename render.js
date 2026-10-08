@@ -137,7 +137,7 @@ pre code{background:none;padding:0}
 details.s-fire>summary{background:var(--fire);border-left:3px solid var(--fireline)}
 details.s-done>summary{color:var(--done)}
 body.only-open details.s-done{display:none}
-.ask{margin-left:8px;opacity:0;font-size:12px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:0 5px}
+.ask{margin-left:8px;opacity:.55;font-size:12px;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer;padding:0 5px}
 summary:hover .ask,.ask:focus{opacity:1}
 </style></head><body>
 <div class="bar"><a href="/">All outlines</a><button id="expand">Expand all</button><button id="collapse">Collapse all</button><button id="fire">Jump to 🔥</button><button id="onlyopen">Hide ✅</button><span class="t" id="live">live</span></div>
@@ -150,10 +150,10 @@ const path=d=>{const k=[];for(let e=d;e;e=e.parentElement&&e.parentElement.close
 document.querySelectorAll('details').forEach(d=>{const s=state[path(d)];if(s!==undefined)d.open=s;
   d.addEventListener('toggle',()=>{state[path(d)]=d.open;try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}})});
 
-document.querySelectorAll('details>summary').forEach(sm=>{const b=document.createElement('button');b.className='ask';b.textContent='💬';b.title='Copy a reference to paste into the chat';
+document.querySelectorAll('details>summary').forEach(sm=>{const b=document.createElement('button');b.className='ask';b.textContent='📋';b.title='Copy a reference to paste into the chat';
   b.onclick=e=>{e.preventDefault();e.stopPropagation();const d=sm.parentElement;const ref='Re: outline "'+document.title+'" › '+path(d).split(' > ').join(' › ')+' — ';
     try{navigator.clipboard.writeText(ref)}catch(err){}
-    b.textContent='✓';setTimeout(()=>b.textContent='💬',1200)};
+    b.textContent='✓';setTimeout(()=>b.textContent='📋',1200)};
   sm.appendChild(b)});
 const all=open=>document.querySelectorAll('details').forEach(d=>d.open=open);
 expand.onclick=()=>all(true);collapse.onclick=()=>all(false);

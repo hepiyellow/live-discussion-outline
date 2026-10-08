@@ -5,7 +5,7 @@ When Claude answers with several numbered points and you drill into one, then go
 - Every point and sub-point is numbered with its full path (`1`, `1.1`, `2.3.1`), in the chat and in the page, so "2.1" means the same thing in both places.
 - Status emoji on each item: ❓ open, 🔥 being discussed now, ✅ resolved. Resolved items start collapsed; the 🔥 item is highlighted.
 - Page bar: expand all, collapse all, jump to 🔥, hide ✅. Which items you opened or closed, and your scroll position, survive reloads.
-- Hover a row and click 💬 to copy a reference (`Re: outline "…" › 2.1 …`) to paste into the chat and continue about that item.
+- Every row has a 📋 button; click it to copy a reference (`Re: outline "…" › 2.1 …`) to paste into the chat and continue about that item.
 - Claude only writes markdown (cheap to edit, easy to diff). The server renders it.
 
 ## Setup
@@ -47,7 +47,7 @@ To apply new settings, stop the server (`pkill -f live-discussion-outline/server
 
 - Binds to localhost only. Raw HTML in the markdown is escaped. The server log is `live-discussion-outline.log` in your temp folder.
 - Headings and list items that own a sub-list become collapsible. The markdown stays readable in any viewer.
-- The 💬 button only copies to the clipboard. Cursor's Claude extension registers a `cursor://anthropic.claude-code/open?prompt=` link, but it did not inject text into an existing chat when tried.
+- The 📋 button only copies to the clipboard. Cursor's Claude extension registers a `cursor://anthropic.claude-code/open?prompt=` link, but it did not inject text into an existing chat when tried.
 
 ## License
 
