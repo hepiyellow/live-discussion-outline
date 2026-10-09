@@ -12,7 +12,7 @@ const PROJECTS = path.join(os.homedir(), '.claude', 'projects')
 
 export const isSessionId = id => ID_RE.test(id)
 
-function findTranscript(id) {
+export function findTranscriptFile(id) {
     try {
         for (const dir of fs.readdirSync(PROJECTS)) {
             const file = path.join(PROJECTS, dir, `${id}.jsonl`)
@@ -84,11 +84,17 @@ function renderEntry(e) {
     return out
 }
 
-/** GET /transcript?id=<session id>: sends everything so far, then each new entry as the session appends it. */
-export function streamTranscript(req, res, id) {
+/**
+ * Follows a session's transcript over server-sent events: `onEntries(entries)` gets everything so far, then each batch
+ * the session appends; `onReset()` runs if the file shrinks (rewritten). Returns false when there is no transcript.
+ */
+function follow(req, res, id, onEntries, onReset) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
-    const file = findTranscript(id)
-    if (!file) return res.end('event: missing\ndata: \n\n')
+    const file = findTranscriptFile(id)
+    if (!file) {
+        res.end('event: missing\ndata: \n\n')
+        return false
+    }
     let offset = 0
     let rest = ''
     let decoder = new StringDecoder('utf8')
@@ -103,7 +109,7 @@ export function streamTranscript(req, res, id) {
             offset = 0
             rest = ''
             decoder = new StringDecoder('utf8')
-            res.write('event: reset\ndata: \n\n')
+            onReset()
         }
         if (size === offset) return
         const buf = Buffer.alloc(size - offset)
@@ -113,14 +119,14 @@ export function streamTranscript(req, res, id) {
         offset = size
         const lines = (rest + decoder.write(buf)).split('\n')
         rest = lines.pop()
-        const items = []
+        const entries = []
         for (const line of lines) {
             if (!line) continue
             try {
-                items.push(...renderEntry(JSON.parse(line)))
+                entries.push(JSON.parse(line))
             } catch {}
         }
-        if (items.length) res.write(`data: ${JSON.stringify(items)}\n\n`)
+        if (entries.length) onEntries(entries)
     }
     pump()
     let timer
@@ -132,4 +138,75 @@ export function streamTranscript(req, res, id) {
         watcher.close()
         clearTimeout(timer)
     })
+    return true
+}
+
+/** GET /transcript?id=<session id>: the rendered messages so far, then each new one as the session appends it. */
+export function streamTranscript(req, res, id) {
+    follow(
+        req,
+        res,
+        id,
+        entries => {
+            const items = entries.flatMap(renderEntry)
+            if (items.length) res.write(`data: ${JSON.stringify(items)}\n\n`)
+        },
+        () => res.write('event: reset\ndata: \n\n'),
+    )
+}
+
+/**
+ * Whether the agent is in a turn after this entry: true once a prompt, a tool result or the agent's own output arrives;
+ * false at the turn's end (Claude Code's turn_duration entry), after an interrupt, or after a local command's output.
+ * Undefined for entries that say nothing about it.
+ */
+function busyAfter(e) {
+    if (e.isSidechain) return undefined
+    if (e.type === 'system' && e.subtype === 'turn_duration') return false
+    if (e.type === 'assistant') return true
+    if (e.type === 'attachment' && e.attachment?.type === 'queued_command') return true
+    if (e.type !== 'user' || e.isMeta) return undefined
+    const content = e.message?.content
+    const text = typeof content === 'string' ? content : (content || []).find(b => b.type === 'text')?.text
+    if (text?.startsWith('<local-command-stdout>') || text?.startsWith('[Request interrupted')) return false
+    return true
+}
+
+/** GET /activity?id=<session id>: `busy` or `idle` now, then each change, for the message box's spinner. */
+export function streamActivity(req, res, id) {
+    let state
+    follow(req, res, id, entries => {
+        let busy = state
+        for (const e of entries) busy = busyAfter(e) ?? busy
+        const next = busy ? 'busy' : 'idle'
+        if (next !== state) res.write(`event: state\ndata: ${next}\n\n`)
+        state = next
+    }, () => {})
+}
+
+const MESSAGE_RE = /^@message\b\s*(?:(\d+(?:\.\d+)*)\.?(?=\s|$))?\s*([\s\S]*)$/i
+
+/** The agent's `@message` paragraphs in one log entry: `{ id, at, num, html }`, num being the bullet it names (or ''). */
+function messagesIn(e) {
+    if (e.type !== 'assistant' || e.isSidechain) return []
+    const out = []
+    ;(e.message?.content || []).forEach((block, b) => {
+        if (block.type !== 'text') return
+        block.text.split(/\n\s*\n/).forEach((para, p) => {
+            const m = para.trim().match(MESSAGE_RE)
+            if (m && m[2].trim()) out.push({ id: `${e.uuid}:${b}:${p}`, at: e.timestamp, num: m[1] || '', html: renderPlain(m[2].trim()) })
+        })
+    })
+    return out
+}
+
+/** GET /messages?id=<session id>: the session's messages so far (the last 100), then each new one. */
+export function streamMessages(req, res, id) {
+    let first = true
+    follow(req, res, id, entries => {
+        let found = entries.flatMap(messagesIn)
+        if (first) found = found.slice(-100)
+        first = false
+        if (found.length) res.write(`data: ${JSON.stringify(found)}\n\n`)
+    }, () => res.write('event: reset\ndata: \n\n'))
 }

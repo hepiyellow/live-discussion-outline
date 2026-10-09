@@ -34,6 +34,10 @@ function detailsOpen(summaryText, extraClass) {
 
 /** Chat bubble with an arrow: puts a reference to the item into the message box (pages linked to a session). */
 const INSERT_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 2.5h11a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H7.5L4.5 13.5V11h-2a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M5 6.75h5M8.25 5 10 6.75 8.25 8.5"/></svg>'
+/** Play: runs an @action bullet. */
+/** Envelope: the agent's messages (red). */
+const MAIL_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5"/><path d="m2 4.5 6 4.5 6-4.5"/></svg>'
+const PLAY_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>'
 const COPY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>'
 const NUM_RE = /^\s*(🔥|❓|✅)?\s*(\d+(?:\.\d+)*)?\s*([\s\S]*)$/
 
@@ -74,8 +78,22 @@ function listToHtml(tokens, i, j, radio = false) {
 }
 
 const CHECK_RE = /^\s*\[([ xXaA])\]\s*/
-const TAG_RE = /^@(recommendation|recommended|options|current)\b\s*/i
+const TAG_RE = /^@(recommendation|recommended|options|current|action|ran)\b\s*/i
 const REC_MARK = /@recommendation\.\s*/i
+/** Tags that open a bullet's closing lines, after its prose: `@Summary.`, `@Recommendation.`, `@Action.` (in any order). */
+const TRAIL_MARK = /@(summary|recommendation|action)\.\s*/gi
+
+/** A bullet's text split into its prose and its tagged closing lines. */
+function splitTrail(body) {
+    const parts = { prose: body, summary: '', recommendation: '', action: '' }
+    const marks = [...body.matchAll(TRAIL_MARK)]
+    if (!marks.length) return parts
+    parts.prose = body.slice(0, marks[0].index).trim()
+    marks.forEach((m, i) => {
+        parts[m[1].toLowerCase()] = body.slice(m.index + m[0].length, i + 1 < marks.length ? marks[i + 1].index : body.length).trim()
+    })
+    return parts
+}
 const CURRENT_RE = /\s*@current\b\s*/i
 const RESOLVED_RE = /\s*@resolved\b\s*/i
 const LEAD_EMOJI_RE = /^\s*(🔥|❓|✅)\s*/
@@ -138,14 +156,16 @@ function rowHtml(text, extra, kids, kidCount = 0, radio = false) {
     const fileCheck = mark === 'x' ? 'done' : mark === 'a' || recAt >= 0 || tags.has('recommended') ? 'agent' : 'open'
     const group = Boolean(kids) && tags.has('options')
     const checked = fileCheck === 'done'
-    const prose = recAt < 0 ? body : body.slice(0, recAt).trim()
-    const recommendation = recAt < 0 ? '' : body.slice(recAt).replace(REC_MARK, '').trim()
+    const { prose, summary, recommendation, action: actionLine } = splitTrail(body)
     const parts = num ? num.split('.') : []
     const chain = parts.map((_, n) => parts.slice(0, n + 1).join('.')).join(' › ')
     const label = `${num} ${title || rest.slice(0, 60)}`.trim()
-    const recLine = recAt < 0
-        ? ''
-        : `<span class="rec-line"><span class="pill rec" title="A recommendation for this bullet">💡 Recommendation</span> ${md.renderInline(recommendation)}</span>`
+    // Closing lines, each under its own tag: the bottom line, the agent's recommendation, and what running the action does.
+    const trailLine = (text, pill) => (text ? `<span class="rec-line">${pill} ${md.renderInline(text)}</span>` : '')
+    const recLine =
+        trailLine(summary, '<span class="pill sum" title="The bottom line of this bullet">Summary</span>') +
+        trailLine(recommendation, '<span class="pill rec" title="A recommendation for this bullet">💡 Recommendation</span>') +
+        trailLine(actionLine, `<span class="pill act" title="What running this action will do">${PLAY_ICON} Action</span>`)
     const content = md.renderInline(prose) + recLine + extra
     const count = kidCount
         ? `<span class="kc" role="button" tabindex="0" title="${kidCount} direct child${kidCount === 1 ? '' : 'ren'} — click the row to collapse or expand"><span>${kidCount}</span></span>`
@@ -158,9 +178,12 @@ function rowHtml(text, extra, kids, kidCount = 0, radio = false) {
     const recPill = radio && tags.has('recommended')
         ? '<span class="pill rec" title="The option the agent recommends">💡 Recommended</span>'
         : ''
-    const titleHtml = bold ? `${md.renderInline(title)}${pill ? ' ' + pill : ''}${recPill ? ' ' + recPill : ''}` : ''
+    // An action the agent carries out when the user runs it: a play button until the agent marks it @ran.
+    const action = tags.has('action') && !tags.has('ran')
+    const ranPill = tags.has('ran') ? '<span class="pill ran" title="The agent carried out this action">Ran</span>' : ''
+    const titleHtml = bold ? `${md.renderInline(title)}${pill ? ' ' + pill : ''}${recPill ? ' ' + recPill : ''}${ranPill ? ' ' + ranPill : ''}` : ''
     const cls = ['r', emoji === '🔥' && 's-fire', tags.has('current') && 'cur', checked && 's-done', kids && checked && 'closed'].filter(Boolean).join(' ')
-    const flags = (group ? ' data-group="options"' : '') + (radio ? ' data-opt="1"' : '') + (radio && tags.has('recommended') ? ' data-rec="1"' : '')
+    const flags = (action ? ' data-action="1"' : '') + (group ? ' data-group="options"' : '') + (radio ? ' data-opt="1"' : '') + (radio && tags.has('recommended') ? ' data-rec="1"' : '')
     const boxTitle = radio
         ? fileCheck === 'done' ? 'Chosen' : fileCheck === 'agent' ? 'Recommended — click to choose it' : 'Choose this option'
         : fileCheck === 'done' ? 'Approved' : fileCheck === 'agent' ? 'Agent-approved — click to queue a human approval' : 'Approve this bullet'
@@ -168,7 +191,7 @@ function rowHtml(text, extra, kids, kidCount = 0, radio = false) {
         `<tr class="${cls}" data-num="${escapeHtml(num)}" data-ref="${escapeHtml(label)}" data-check="${fileCheck}"${flags}>` +
         `<td class="n" title="${escapeHtml(chain)}"><div class="nh"><span class="tri" aria-hidden="true">${kids ? '▼' : ''}</span><span class="nm">${escapeHtml(parts.length ? parts[parts.length - 1] : '')}</span><span class="nf">${escapeHtml(num)}</span>` +
         `<button class="ask" title="Open a side discussion on this bullet: copies its path (and any queued approvals)">${COPY_ICON}</button>${count}</div>` +
-        `<div class="s"><input type="checkbox" class="ck${radio ? ' radio' : ''}"${fileCheck !== 'open' ? ' checked' : ''} title="${boxTitle}">` +
+        `<div class="s">${action ? `<button class="play" type="button" title="Run this action: ask the agent to do it now">${PLAY_ICON}</button>` : ''}<input type="checkbox" class="ck${radio ? ' radio' : ''}"${fileCheck !== 'open' ? ' checked' : ''} title="${boxTitle}">` +
         `</div></td>` +
         (kids
             ? `<td class="t">${titleHtml}</td></tr>\n` +
@@ -275,8 +298,15 @@ md.core.ruler.push('collapsible', collapsibleRule)
 const mdPlain = new MarkdownIt({ html: false, linkify: true })
 
 /** view: 'bullets' (collapsible nested lists) or 'table' (number | title | content). */
+// Closing-line tags left in a topic heading's own text (bullets handle theirs in rowHtml): each starts a new line with its pill.
+const TRAIL_PILLS = {
+    summary: '<span class="pill sum" title="The bottom line of this topic">Summary</span>',
+    recommendation: '<span class="pill rec" title="A recommendation for this topic">💡 Recommendation</span>',
+    action: `<span class="pill act" title="What running this action will do">${PLAY_ICON} Action</span>`,
+}
+
 export function renderMarkdown(source, view = 'bullets') {
-    return md.render(source, { view })
+    return md.render(source, { view }).replace(/(?<=>[^<]*)@(summary|recommendation|action)\.\s*/gi, (_, kind) => `<br>${TRAIL_PILLS[kind.toLowerCase()]} `)
 }
 
 export function renderPlain(source) {
@@ -284,7 +314,24 @@ export function renderPlain(source) {
 }
 
 /** `waitFor` (a tmux session name) makes the page for a session just started: only its terminal, until its outline exists. */
-export function renderPage({ title, bodyHtml, tableHtml, plainHtml, resume, model, terminal, terminalTab, session, project, folder, waitFor, storageKey }) {
+/** The queue's item kinds, each with a small icon for the left pane. */
+const QUEUE_KINDS = {
+    decide: { name: 'Decide', paths: '<circle cx="8" cy="8" r="6"/><path d="M6.3 6.2a1.8 1.8 0 1 1 2.5 1.7c-.5.2-.8.6-.8 1.1v.4M8 11.6v.1"/>' },
+    approve: { name: 'Approve', paths: '<circle cx="8" cy="8" r="6"/><path d="m5.4 8.2 1.8 1.8 3.4-3.6"/>' },
+    action: { name: 'Run', paths: '<path d="M5 3.2v9.6L12.6 8z" fill="currentColor" stroke="none"/>' },
+    read: { name: 'Read', paths: '<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.8"/>' },
+}
+
+export function renderPage({ title, bodyHtml, tableHtml, plainHtml, resume, model, terminal, terminalTab, session, queue, project, folder, waitFor, storageKey }) {
+    // The queue, in the left pane under the Discussions button: one small button per item, in the agent's order.
+    const QUEUE = queue?.length
+        ? `<hr class="rail-sep"><ol class="queue" aria-label="Your queue">${queue
+              .map(({ num, kind, label }) => {
+                  const k = QUEUE_KINDS[kind]
+                  return `<li><button type="button" class="q q-${kind}" data-num="${escapeHtml(num)}" title="${escapeHtml(`${k.name} ${num}: ${label}`)}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${k.paths}</svg><span>${escapeHtml(num)}</span></button></li>`
+              })
+              .join('')}</ol>`
+        : ''
     const icon = paths => `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`
     const tabButton = (m, label, tip, paths) => `<button role="tab" data-m="${m}" aria-selected="${m === 'outline'}"${m === 'outline' ? ' class="on"' : ''} title="${escapeHtml(tip)}">${icon(paths)}<span class="tl">${label}</span></button>`
     const termTab = tabButton('term', 'Terminal', terminalTab ? `The session's live terminal (tmux ${terminal})` : 'Not running in tmux', '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6.5 6.5 8l-2 1.5M8 10.5h3.5"/>')
@@ -325,7 +372,44 @@ body{padding-left:76px}
 .rail{position:fixed;top:0;bottom:0;left:0;width:76px;border-right:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;align-items:center;padding-top:8px;z-index:4}
 .rail a{display:flex;flex-direction:column;align-items:center;gap:4px;width:64px;padding:8px 0;border-radius:8px;color:var(--fg);background:none;border:1px solid var(--line);font-size:11px;text-decoration:none}
 .rail a:hover{background:color-mix(in srgb,var(--line) 40%,transparent)}
-.rail svg{width:28px;height:28px}
+.rail>a svg{width:28px;height:28px}
+.rail{overflow-y:auto}
+.rail-sep{width:40px;border:0;border-top:1px solid var(--line);margin:10px 0 8px;flex:none}
+.queue{list-style:none;margin:0;padding:0 0 12px;display:flex;flex-direction:column;gap:4px;width:64px}
+.queue li[hidden]{display:none}
+.queue .q{box-sizing:border-box;width:64px;display:flex;align-items:center;gap:4px;padding:3px 5px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--fg);font:11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;cursor:pointer}
+.queue .q:hover{background:color-mix(in srgb,var(--line) 40%,transparent)}
+.queue .q svg{width:12px;height:12px;flex:none}
+.queue .q span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.queue .q-decide svg{color:#d1242f}
+.queue .q-approve svg{color:var(--accent)}
+.queue .q-read svg{color:var(--muted)}
+.queue .q-action svg{color:#d1242f}
+.queue .q-unread svg{color:var(--accent)}
+.queue .q.missing{opacity:.5}
+.rail .inbox-btn{flex:none;margin:auto 0 12px;width:64px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0 5px;border:1px solid var(--line);border-radius:8px;background:none;color:#d1242f;font:11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer}
+.rail .inbox-btn[hidden]{display:none}
+.rail .inbox-btn:hover{background:color-mix(in srgb,var(--line) 40%,transparent)}
+.inbox-btn .n,.msgs .n{min-width:14px;padding:0 4px;border-radius:8px;background:#d1242f;color:#fff;font-size:10px;line-height:14px;text-align:center}
+.inbox-btn .n:empty,.msgs .n:empty{display:none}
+.msgs{position:absolute;right:40px;top:8px;display:inline-flex;align-items:center;gap:3px;padding:2px 4px;border:0;border-radius:6px;background:none;color:#d1242f;cursor:pointer;z-index:2}
+.msgs.seen{color:var(--muted)}
+.msgs:hover{background:color-mix(in srgb,#d1242f 16%,transparent)}
+tr.r.parent .msgs,details.h>summary .msgs{top:50%;transform:translateY(-50%);right:64px}
+.inbox{position:fixed;z-index:60;width:min(440px,calc(100vw - 100px));max-height:60vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:14px}
+.inbox[hidden]{display:none}
+.inbox h4{margin:0;padding:10px 14px 6px;font-size:13px;color:var(--muted);font-weight:600}
+.inbox .msg{padding:8px 14px 10px;border-top:1px solid var(--line)}
+.inbox .msg.unseen{box-shadow:inset 3px 0 0 #d1242f}
+.inbox .msg .meta{display:flex;gap:8px;font-size:12px;color:var(--muted)}
+.inbox .msg .meta a{color:var(--accent);cursor:pointer}
+.inbox .msg p{margin:.3em 0}
+.inbox .empty{padding:10px 14px;color:var(--muted)}
+/* The item just opened from the queue: a left line in its kind's color, drawn like the current-item line, fading out. */
+@keyframes qline{from{box-shadow:inset 3px 0 0 var(--qline)}to{box-shadow:inset 3px 0 0 transparent}}
+@keyframes qline-row{from{box-shadow:inset 3px 0 0 var(--qline),0 1px 0 var(--line)}to{box-shadow:inset 3px 0 0 transparent,0 1px 0 var(--line)}}
+body.bubbles table.ol tr.r:not(.parent).qmark::before,details.h>summary.qmark{animation:qline 1.6s ease-in forwards}
+body.bubbles table.ol tr.r.parent.qmark{animation:qline-row 1.6s ease-in forwards}
 main{max-width:860px;margin:0 auto;padding:16px 20px 80px}
 .bar{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 20px;display:flex;gap:8px;align-items:center;z-index:20}
 .bar a,.bar button{font:inherit;font-size:13px;color:var(--fg);background:none;border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;text-decoration:none}
@@ -466,10 +550,40 @@ table.ol tr.s-done .ask{color:var(--done)}
 :is(table.ol,details.h>summary) .ck.echo{cursor:pointer}
 :is(table.ol,details.h>summary) .ck.rolled{position:absolute;width:1px;height:1px;opacity:0;margin:0;pointer-events:none}
 table.ol .pill{display:inline-block;margin-left:6px;font-size:11px;font-weight:500;border-radius:10px;padding:0 7px;white-space:nowrap;vertical-align:1px;cursor:default;user-select:none}
+.pill.sum,.pill.act,.pill.rec{display:inline-block;font-size:11px;font-weight:500;border-radius:10px;padding:0 7px;white-space:nowrap;vertical-align:1px}
+.pill.sum{color:var(--fg);background:color-mix(in srgb,var(--fg) 12%,transparent)}
+.pill.act{color:#d1242f;background:color-mix(in srgb,#d1242f 14%,transparent)}
+.pill.act svg{width:9px;height:9px;vertical-align:-1px}
+.pill.rec{color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
+table.ol .pill.sum{color:var(--fg);background:color-mix(in srgb,var(--fg) 12%,transparent)}
+table.ol .pill.act{color:#d1242f;background:color-mix(in srgb,#d1242f 14%,transparent)}
+table.ol .pill.act svg{width:9px;height:9px;vertical-align:-1px}
 table.ol .pill.rec{color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
 table.ol .rec-line{display:block;margin-top:6px}
 table.ol .rec-line .pill{margin:0 6px 0 0}
 table.ol .pill.opt{color:#d1242f;background:color-mix(in srgb,#d1242f 14%,transparent)}
+table.ol tr.r .play{position:absolute;left:-16px;top:10px;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:none;color:#d1242f;cursor:pointer}
+table.ol tr.r.parent .play{top:50%;transform:translateY(-50%)}
+table.ol tr.r .play:hover{background:color-mix(in srgb,#d1242f 18%,transparent)}
+table.ol tr.r .play.sent{color:var(--muted);cursor:default;animation:playwait 1.4s ease-in-out infinite}
+@keyframes playwait{50%{opacity:.35}}
+table.ol tr.r[data-action]{position:relative}
+table.ol tr.r.parent[data-action]{position:sticky}
+table.ol tr.r .env{position:absolute;left:-22px;top:8px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--accent);cursor:pointer}
+table.ol tr.r .env svg{width:15px;height:15px}
+table.ol tr.r.parent .env{top:50%;transform:translateY(-50%)}
+table.ol tr.r[data-action] .env{left:-42px}
+table.ol tr.r .env.pulse{animation:envpulse .5s ease-in-out 3}
+@keyframes envpulse{50%{transform:scale(1.5);background:color-mix(in srgb,var(--accent) 25%,transparent)}}
+table.ol tr.r.parent .env.pulse{animation:envpulse-p .5s ease-in-out 3}
+@keyframes envpulse-p{50%{transform:translateY(-50%) scale(1.5);background:color-mix(in srgb,var(--accent) 25%,transparent)}}
+table.ol tr.r .env:hover{background:color-mix(in srgb,var(--accent) 38%,transparent)}
+.tx-del{color:#d1242f;background:color-mix(in srgb,#d1242f 18%,transparent)}
+.tx-add{animation:txadd 1s ease-out forwards}
+.tx-chg{animation:txchg 1s ease-out forwards}
+@keyframes txadd{from{background:color-mix(in srgb,#2da44e 50%,transparent)}to{background:transparent}}
+@keyframes txchg{from{background:color-mix(in srgb,var(--fg) 35%,transparent)}to{background:transparent}}
+table.ol .pill.ran{color:var(--muted);background:color-mix(in srgb,var(--fg) 10%,transparent)}
 table.ol .pill.pick{color:var(--fg);background:color-mix(in srgb,var(--fg) 12%,transparent)}
 @media (prefers-color-scheme:dark){table.ol .pill.pick{color:#fff;background:color-mix(in srgb,#fff 16%,transparent)}}
 /* Above the sticky headers (z-index up to 10, set by the script) that scroll under it; below the top bar (20). */
@@ -522,9 +636,23 @@ body.show-term #term,body.show-transcript #transcript{display:block}
 #transcript .note{color:var(--muted)}
 #composer{position:fixed;left:76px;right:0;bottom:0;display:flex;gap:8px;align-items:flex-end;padding:10px 20px;background:var(--bg);border-top:1px solid var(--line);z-index:15}
 body.show-term #composer{display:none}
+/* The send notice: over the message box (above everything else), sliding in from the send button's side. */
+#notice{position:fixed;right:64px;bottom:12px;max-width:min(520px,calc(100vw - 180px));z-index:100;padding:8px 14px;border-radius:10px;background:var(--fg);color:var(--bg);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 6px 20px rgba(0,0,0,.3);transform:translateX(calc(100% + 84px));opacity:0;transition:transform .3s ease,opacity .3s ease;pointer-events:none}
+#notice.show{transform:none;opacity:1}
+#notice.error{background:#d1242f;color:#fff}
 #composer .box{flex:1;min-width:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:18px;padding:4px 6px}
 #composer .box:focus-within{border-color:var(--muted)}
 #composer textarea{font:inherit;color:var(--fg);background:none;border:0;outline:none;padding:3px 8px;resize:none;max-height:40vh;line-height:1.45}
+#composer .spin{flex:none;align-self:center;box-sizing:border-box;width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;visibility:hidden}
+#composer .spin.on{visibility:visible;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#composer .cmds{position:absolute;left:20px;right:64px;bottom:calc(100% + 6px);max-height:min(320px,50vh);overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.3);padding:4px}
+#composer .cmds[hidden]{display:none}
+#composer .cmd{padding:5px 10px;border-radius:6px;cursor:pointer}
+#composer .cmd.on{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+#composer .cmd b{font-weight:600}
+#composer .cmd .hint{color:var(--muted);font-size:12px}
+#composer .cmd .desc{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #composer .chips{display:flex;flex-wrap:wrap;gap:4px;padding:2px 2px 0}
 #composer .chips:empty{display:none}
 #composer .chip{display:inline-flex;align-items:center;gap:2px;max-width:100%;font-size:12px;color:var(--fg);background:color-mix(in srgb,var(--line) 55%,transparent);border-radius:10px;padding:1px 2px 1px 9px}
@@ -543,10 +671,10 @@ body:has(#composer):not(.show-term) #status{bottom:var(--composer-h,60px)}
 .ask{color:var(--muted);margin-left:8px;opacity:.7;border:0;border-radius:6px;background:none;cursor:pointer;padding:2px 4px;display:inline-flex;align-items:center;vertical-align:middle;line-height:1}
 .ask:hover{color:var(--fg);background:color-mix(in srgb,var(--line) 40%,transparent)}
 summary:hover .ask,li:hover>.ask,.ask:focus{opacity:1}
-</style></head><body${tableHtml === undefined ? '' : ' class="has-table"'}>
-<nav class="rail"><a href="/" title="All outlines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Discussions</a></nav>
-<div class="bar">${plainHtml === undefined ? '' : TABS}<button id="bview" class="seg outline-only" title="Show leaves as table rows or as chat bubbles"><span data-b="table" class="on" title="Table"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6.5h12M6 6.5V13"/></svg></span><span data-b="bubbles" title="Bubbles"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h6.5a1 1 0 0 1 1 1V7a1 1 0 0 1-1 1H6L3.5 10V8H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M12.5 6h.5a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1h-.5v2l-2.5-2H7.5a1 1 0 0 1-1-1V10"/></svg></span></button><button id="expand" class="outline-only icon" title="Expand all" aria-label="Expand all"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-1"/><rect x="2" y="5" width="9" height="9" rx="1"/><path d="M4.5 9.5h4M6.5 7.5v4"/></svg></button><button id="collapse" class="outline-only icon" title="Collapse all" aria-label="Collapse all"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-1"/><rect x="2" y="5" width="9" height="9" rx="1"/><path d="M4.5 9.5h4"/></svg></button><button id="fire" class="outline-only icon" title="Jump to the current bullet" aria-label="Jump to the current bullet"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg></button>${PROJECT}${plainHtml === undefined ? '' : MODEL_PICKER}</div>
-${bodyHtml === undefined ? '' : `<main id="outline">${bodyHtml}</main>`}${tableHtml === undefined ? '' : `<main id="outline-table">${tableHtml}</main>`}${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}${plainHtml === undefined ? '' : terminalTab ? '<div id="term"></div>' : `<main id="term" class="off"><p class="note">${TERMINAL_OFF}</p></main>`}${plainHtml === undefined || waitFor ? '' : session ? `<main id="transcript"><div class="ttitle" id="ttitle">Untitled</div><div id="tlog"><p class="note">Loading the transcript…</p></div></main>` : `<main id="transcript"><p class="note">${TRANSCRIPT_OFF}</p></main>`}${plainHtml === undefined || waitFor || !terminal ? '' : `<form id="composer"><div class="box"><div class="chips" id="chips"></div><textarea id="msg" rows="1" placeholder="Message the session · Enter sends, Shift+Enter adds a line" title="Typed into tmux ${escapeHtml(terminal)}"></textarea></div><button class="send" title="Send" aria-label="Send"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button></form>`}<div id="status" hidden></div>
+</style></head><body${tableHtml === undefined ? '' : ' class="has-table bubbles"'}>
+<nav class="rail"><a href="/" title="All outlines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Discussions</a>${QUEUE}${session && !waitFor ? `<button id="inbox-open" class="inbox-btn" type="button" title="Messages from the agent" hidden>${MAIL_ICON}<span class="n"></span></button>` : ''}</nav>${session && !waitFor ? '<div id="inbox" class="inbox" role="dialog" aria-label="Messages" hidden></div>' : ''}
+<div class="bar">${plainHtml === undefined ? '' : TABS}<button id="expand" class="outline-only icon" title="Expand all" aria-label="Expand all"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-1"/><rect x="2" y="5" width="9" height="9" rx="1"/><path d="M4.5 9.5h4M6.5 7.5v4"/></svg></button><button id="collapse" class="outline-only icon" title="Collapse all" aria-label="Collapse all"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-1"/><rect x="2" y="5" width="9" height="9" rx="1"/><path d="M4.5 9.5h4"/></svg></button><button id="fire" class="outline-only icon" title="Jump to the current bullet" aria-label="Jump to the current bullet"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg></button>${PROJECT}${plainHtml === undefined ? '' : MODEL_PICKER}</div>
+${bodyHtml === undefined ? '' : `<main id="outline">${bodyHtml}</main>`}${tableHtml === undefined ? '' : `<main id="outline-table">${tableHtml}</main>`}${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}${plainHtml === undefined ? '' : terminalTab ? '<div id="term"></div>' : `<main id="term" class="off"><p class="note">${TERMINAL_OFF}</p></main>`}${plainHtml === undefined || waitFor ? '' : session ? `<main id="transcript"><div class="ttitle" id="ttitle">Untitled</div><div id="tlog"><p class="note">Loading the transcript…</p></div></main>` : `<main id="transcript"><p class="note">${TRANSCRIPT_OFF}</p></main>`}${plainHtml === undefined || waitFor || !terminal ? '' : `<form id="composer"><div id="cmds" class="cmds" role="listbox" aria-label="Slash commands" hidden></div><span class="spin" id="spin" role="status" title="The agent is working"></span><div class="box"><div class="chips" id="chips"></div><textarea id="msg" rows="1" placeholder="Message the session · Enter sends, Shift+Enter adds a line" title="Typed into tmux ${escapeHtml(terminal)}"></textarea></div><button class="send" title="Send" aria-label="Send"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button></form>`}<div id="status" hidden></div>
 <script>
 const KEY=${JSON.stringify(storageKey)};
 const COPY_ICON=${JSON.stringify(COPY_ICON)};
@@ -584,6 +712,19 @@ const lsGet=k=>{try{return JSON.parse(localStorage.getItem(KEY+k)||'{}')}catch(e
 const lsSet=(k,v)=>{try{localStorage.setItem(KEY+k,JSON.stringify(v))}catch(e){}};
 const chk=lsGet(':chk'),sent=lsGet(':sent');   // chk: viewer overrides of the file's checkbox; sent: overrides already copied
 const rows=[...document.querySelectorAll('tr.r')];
+// Unread: a bullet the agent rewrote since you last saw it keeps showing what you saw, with an envelope left of its
+// checkbox, so new answers don't push the page around. Opening it (the envelope, or its item in the left pane) animates
+// the bubble to the new text. What you have seen is kept per outline; the first visit counts everything as seen.
+const SEEN=KEY+':seen',SEP='\\u0001';
+let seen=null;try{seen=JSON.parse(localStorage.getItem(SEEN)||'null')}catch(e){}
+const saveSeen=()=>{try{localStorage.setItem(SEEN,JSON.stringify(seen))}catch(e){}};
+const cellsOf=r=>{const k=r.nextElementSibling;return [r.querySelector('td.t'),r.querySelector('td.c')||(k&&k.classList.contains('kids')?k.querySelector(':scope>td>.pc'):null)].filter(Boolean)};
+const contentOf=r=>cellsOf(r).map(c=>c.innerHTML).join(SEP);
+const setContent=(r,text)=>{const parts=text.split(SEP),cells=cellsOf(r);if(parts.length===cells.length)cells.forEach((c,i)=>{c.innerHTML=parts[i]})};
+const unread=new Map();   // row → its new content, shown once opened
+{const now={};rows.forEach(r=>{const k=rowKey(r),html=contentOf(r);now[k]=html;
+    if(seen&&k in seen&&seen[k]!==html&&seen[k].split(SEP).length===cellsOf(r).length){unread.set(r,html);setContent(r,seen[k]);now[k]=seen[k]}});
+  seen=now;saveSeen()}
 // The bullet tagged @current and every ancestor on its path get the orange current-path line.
 document.querySelectorAll('.cur').forEach(c=>{for(let e=c;e;e=e.parentElement){if(e.matches('details.h'))e.classList.add('s-fire');if(e.matches('tr.kids'))e.previousElementSibling.classList.add('s-fire')}if(c.matches('tr.r'))c.classList.add('s-fire')});
 const fileCheck=r=>r.dataset.check||(r.dataset.checked==='1'?'done':'open');
@@ -656,15 +797,14 @@ const approvalText=(p=approvalRows())=>{const f=(v,opt)=>p.filter(r=>effective(r
   const line=(lead,refs)=>refs&&lead+refs.replace(/\\.$/,'')+'.';
   return [line('Approved in the outline: ',a),line('Chosen in the outline: ',c),line('Reopened in the outline: ',o)].filter(Boolean).join('\\n')};
 const sbar=document.getElementById('status');
-const renderStatus=()=>{const p=pending();sbar.hidden=!p.length;sbar.innerHTML='';if(!p.length)return;
+const renderStatus=()=>{paintQueue();const p=LINKED?[]:pending();sbar.hidden=!p.length;sbar.innerHTML='';if(!p.length)return;
   p.forEach(r=>{const t=document.createElement('span');const on=effective(r);t.className='tag'+(on?'':' reopen');t.textContent=(on?(r.dataset.opt?'◉ ':'✓ '):'↺ ')+r.dataset.ref;
     const x=document.createElement('button');x.textContent='×';x.title='Drop this change';x.onclick=()=>{delete chk[rowKey(r)];lsSet(':chk',chk);paintTree();renderStatus()};t.appendChild(x);sbar.appendChild(t)});
   const g=document.createElement('span');g.className='grow';sbar.appendChild(g);
   const x=document.createElement('button');x.className='clearall';x.textContent='Clear all';x.title='Drop every queued change';
   x.onclick=()=>{p.forEach(r=>{delete chk[rowKey(r)]});lsSet(':chk',chk);paintTree();renderStatus()};sbar.appendChild(x);
   const c=document.createElement('button');c.className='copyall';c.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg> Copy to clipboard';
-  if(LINKED){c.textContent='Send now';c.onclick=()=>{clearTimeout(sendTimer);sendApprovals(c)}}
-  else c.onclick=()=>{copyApprovals(approvalText());c.textContent='✓ Copied'};
+  c.onclick=()=>{copyApprovals(approvalText());c.textContent='✓ Copied'};
   sbar.appendChild(c)};
 // Linked: each change is sent to the session about a second after the last click, so a burst of ticks goes as one message.
 let sendTimer;
@@ -674,9 +814,16 @@ const approvalsChanged=(el,want)=>{
 const sendApprovals=async el=>{const batch=approvalRows(),text=approvalText(batch);if(!text)return;
   try{const r=await fetch('/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({terminal:TERMINAL,text})});
     if(!r.ok)throw new Error(await r.text());
-    batch.forEach(x=>{sent[rowKey(x)]=effective(x);retracted.delete(x)});lsSet(':sent',sent);renderStatus();
-    if(document.contains(el))toast(el,'Sent to the session')}
-  catch(err){if(document.contains(el))toast(el,'Not sent: '+(err.message||err))}};
+    batch.forEach(x=>{sent[rowKey(x)]=effective(x);retracted.delete(x)});lsSet(':sent',sent);renderStatus();working();
+    notify('Sent: '+text.split('\\n').join(' · '))}
+  catch(err){notify('Not sent: '+(err.message||err),true)}};
+// A notice that slides in from the right over the message box, stays two seconds, and slides out.
+let noticeTimer;
+const notify=(text,error)=>{let n=document.getElementById('notice');
+  if(!n){n=document.createElement('div');n.id='notice';n.setAttribute('role','status');document.body.appendChild(n)}
+  n.textContent=text;n.title=text;n.classList.toggle('error',!!error);
+  n.classList.remove('show');void n.offsetWidth;n.classList.add('show');
+  clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>n.classList.remove('show'),2000)};
 const copyApprovals=text=>{try{navigator.clipboard.writeText(text)}catch(e){};pending().forEach(r=>{sent[rowKey(r)]=effective(r)});lsSet(':sent',sent);setTimeout(renderStatus,600)};
 rows.forEach(r=>{
   const k=r.nextElementSibling&&r.nextElementSibling.classList.contains('kids');
@@ -701,10 +848,139 @@ rows.forEach(r=>{
     try{navigator.clipboard.writeText((ap?ap+'\\n':'')+'Re: outline "'+DOC_TITLE+'" › '+headPath(r)+r.dataset.ref+' — ')}catch(err){}
     pending().forEach(x=>{sent[rowKey(x)]=effective(x)});lsSet(':sent',sent);renderStatus();
     toast(b);}});
+// Queue: an item leaves the left pane as soon as its bullet is approved or chosen here (the agent drops it from the
+// file later); clicking one shows its node in the Outline tab.
+// Scrolls el to the top, just below the top bar and the sticky headers of its ancestors (topic headings, parent rows),
+// animated over 200 ms (ease-out) rather than jumping; then calls done.
+function stackAbove(el){let h=document.querySelector('.bar').offsetHeight;
+  for(let e=el.tagName==='SUMMARY'?el.parentElement.parentElement:el.parentElement;e;e=e.parentElement){
+    if(e.tagName==='DETAILS'&&e.classList.contains('h'))h+=e.querySelector(':scope>summary').offsetHeight;
+    else if(e.matches&&e.matches('tr.kids'))h+=e.previousElementSibling.offsetHeight}
+  return h}
+function scrollToNode(el,done){const from=scrollY,r=el.getBoundingClientRect(),want=Math.max(0,from+r.top-stackAbove(el)-4);
+  // An item near the end can't reach the top on its own, so a spacer under the outline grows to make room.
+  const room=want-(document.documentElement.scrollHeight-innerHeight);
+  if(room>0){let sp=document.getElementById('scroll-room');if(!sp){sp=document.createElement('div');sp.id='scroll-room';document.body.appendChild(sp)}
+    sp.style.height=(sp.offsetHeight+room)+'px'}
+  const to=Math.min(want,document.documentElement.scrollHeight-innerHeight),start=performance.now();
+  const step=now=>{const t=Math.min(1,(now-start)/200);scrollTo(0,from+(to-from)*(1-Math.pow(1-t,3)));if(t<1)requestAnimationFrame(step);else if(done)done()};
+  requestAnimationFrame(step)}
+function queueNode(num){return document.querySelector('#outline-table tr.r[data-num="'+num+'"]')
+  ||[...document.querySelectorAll('#outline-table details.h')].find(d=>(d.dataset.key||'').startsWith(num+'. '))}
+function paintQueue(){document.querySelectorAll('.queue .q:not(.q-unread)').forEach(q=>{const node=queueNode(q.dataset.num);q.classList.toggle('missing',!node);
+  if(q.classList.contains('q-action')&&node&&node.matches('tr.r')){q.parentElement.hidden=!node.dataset.action||!!runs[rowKey(node)];return}
+  const kinds=!node?[]:node.matches('tr.r')?kindsOf(node):[...node.querySelectorAll('tr.r')].filter(r=>!parentRow(r)).flatMap(kindsOf);
+  q.parentElement.hidden=kinds.length>0&&kinds.every(k=>k==='pending'||k==='done')})}
+document.querySelectorAll('.queue .q').forEach(q=>q.onclick=()=>{const node=queueNode(q.dataset.num);if(!node)return toast(q,'Not in the outline');
+  if(tab!=='outline')setTab('outline');
+  for(let e=node.parentElement;e;e=e.parentElement){if(e.tagName==='DETAILS')e.open=true;if(e.matches&&e.matches('tr.kids'))e.previousElementSibling.classList.remove('closed')}
+  if(node.tagName==='DETAILS')node.open=true;
+  const target=node.tagName==='DETAILS'?node.querySelector(':scope>summary'):node;
+  document.querySelectorAll('.qmark').forEach(m=>m.classList.remove('qmark'));
+  target.style.setProperty('--qline',{decide:'#d1242f',action:'#d1242f',approve:'var(--accent)',read:'var(--fg)'}[q.className.match(/q-(\\w+)/)[1]]);
+  setTimeout(()=>scrollToNode(target,()=>{void target.offsetWidth;target.classList.add('qmark');
+    clearTimeout(target._qmark);target._qmark=setTimeout(()=>target.classList.remove('qmark'),1700)}),0)});
+// Actions: play sends "Run in the outline: …" (copied when no session is linked). The button waits, dimmed, until the
+// agent marks the bullet @ran, which removes it; a run already sent survives a reload.
+const runs=lsGet(':runs');
+Object.keys(runs).forEach(k=>{if(!rows.some(r=>rowKey(r)===k&&r.dataset.action))delete runs[k]});lsSet(':runs',runs);
+document.querySelectorAll('tr.r[data-action] .play').forEach(b=>{const r=b.closest('tr.r');
+  const mark=()=>{b.classList.add('sent');b.title='Sent: waiting for the agent to run it'};
+  if(runs[rowKey(r)])mark();
+  b.onclick=async e=>{e.preventDefault();e.stopPropagation();if(b.classList.contains('sent'))return;
+    const text='Run in the outline: '+r.dataset.ref.replace(/\\.$/,'')+'.';
+    if(!LINKED){try{navigator.clipboard.writeText(text)}catch(err){}toast(b);return}
+    try{const res=await fetch('/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({terminal:TERMINAL,text})});
+      if(!res.ok)throw new Error(await res.text());
+      runs[rowKey(r)]=1;lsSet(':runs',runs);mark();paintQueue();working();notify('Sent: '+text)}
+    catch(err){notify('Not sent: '+(err.message||err),true)}}});
+// Changed text is marked with a diff icon (plus over minus), in the agent's blue.
+const DIFF_ICON='<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 2.5v6M5 5.5h6M5 12.5h6"/></svg>';
+// Opening shows what changed: removed words turn red and erase themselves character by character (200 ms), then the
+// new text comes in with added words in green and rewritten words in white, both fading out over a second.
+const words=t=>t.split(/(\\s+)/).filter(Boolean);
+function diffWords(a,b){const n=a.length,m=b.length;if(n*m>250000)return null;
+  const L=Array.from({length:n+1},()=>new Uint16Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i][j]=a[i]===b[j]?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
+  const ops=[];for(let i=0,j=0;i<n||j<m;){if(i<n&&j<m&&a[i]===b[j])ops.push(['=',a[i++].length,b[j++].length]);
+    else if(j<m&&(i>=n||L[i][j+1]>=L[i+1][j]))ops.push(['+',0,b[j++].length]);else ops.push(['-',a[i++].length,0])}
+  // Character ranges: removed in the old text; added (pure insertions) or rewritten (insertions that replace something) in the new.
+  const del=[],add=[],chg=[];let ao=0,bo=0;
+  for(let k=0;k<ops.length;){if(ops[k][0]==='='){ao+=ops[k][1];bo+=ops[k][2];k++;continue}
+    const as=ao,bs=bo;while(k<ops.length&&ops[k][0]!=='='){ao+=ops[k][1];bo+=ops[k][2];k++}
+    if(ao>as)del.push([as,ao]);if(bo>bs)(ao>as?chg:add).push([bs,bo])}
+  return {del,add,chg}}
+// Wraps character ranges of root's text in spans of class cls (pieces per text node, last first so offsets hold).
+function wrapRanges(root,ranges,cls){if(!ranges.length)return [];const pieces=[],walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  for(let off=0,node;(node=walk.nextNode());){const s0=off,e0=off+node.data.length;off=e0;
+    for(const [s,e] of ranges){const ls=Math.max(s,s0),le=Math.min(e,e0);if(le>ls)pieces.push([node,ls-s0,le-s0])}}
+  return pieces.reverse().map(([node,ls,le])=>{const range=document.createRange(),sp=document.createElement('span');
+    range.setStart(node,ls);range.setEnd(node,le);sp.className=cls;range.surroundContents(sp);return sp})}
+function openUnread(r){const next=unread.get(r);if(next===undefined)return;unread.delete(r);
+  r.querySelector('.env')?.remove();document.querySelector('.queue .q-unread[data-key="'+CSS.escape(rowKey(r))+'"]')?.parentElement.remove();
+  const parts=next.split(SEP),diffs=cellsOf(r).map((c,i)=>{const t=document.createElement('div');t.innerHTML=parts[i]??'';return diffWords(words(c.textContent),words(t.textContent))});
+  const dels=cellsOf(r).flatMap((c,i)=>diffs[i]?wrapRanges(c,diffs[i].del,'tx-del').map(sp=>[sp,sp.textContent]):[]);
+  const swap=()=>{const box=r.querySelector('td.c')?r:r.nextElementSibling,h0=box.offsetHeight;
+    setContent(r,next);seen[rowKey(r)]=next;saveSeen();
+    const marks=cellsOf(r).flatMap((c,i)=>diffs[i]?[...wrapRanges(c,diffs[i].add,'tx-add'),...wrapRanges(c,diffs[i].chg,'tx-chg')]:[]);
+    const h1=box.offsetHeight;box.style.overflow='hidden';box.style.height=h0+'px';void box.offsetHeight;
+    box.style.transition='height .3s ease';box.style.height=h1+'px';
+    setTimeout(()=>{box.style.height='';box.style.overflow='';box.style.transition='';queueStuck()},320);
+    setTimeout(()=>marks.forEach(sp=>{if(sp.isConnected)sp.replaceWith(...sp.childNodes)}),1050)};
+  if(!dels.length)return swap();
+  const t0=performance.now(),tick=setInterval(()=>{const f=Math.min(1,(performance.now()-t0)/200);
+    dels.forEach(([sp,text])=>{sp.textContent=text.slice(0,Math.round(text.length*(1-f)))});
+    if(f>=1){clearInterval(tick);swap()}},16)}
+if(unread.size){let list=document.querySelector('.rail .queue');
+  if(!list){document.querySelector('.rail').insertAdjacentHTML('beforeend','<hr class="rail-sep"><ol class="queue" aria-label="Your queue"></ol>');list=document.querySelector('.rail .queue')}
+  // Unread items come first in the left pane, in outline order.
+  [...unread.keys()].reverse().forEach(r=>{const li=document.createElement('li'),q=document.createElement('button');
+    q.type='button';q.className='q q-unread';q.dataset.key=rowKey(r);q.title='Changed since you read it: '+r.dataset.ref+' (shows the bullet; click its diff button to see the change)';q.innerHTML=DIFF_ICON+'<span></span>';q.lastChild.textContent=r.dataset.num;
+    q.onclick=()=>{if(tab!=='outline')setTab('outline');
+      for(let e=r.parentElement;e;e=e.parentElement){if(e.tagName==='DETAILS')e.open=true;if(e.matches&&e.matches('tr.kids'))e.previousElementSibling.classList.remove('closed')}
+      // Only shows the bullet: the change opens when you click its diff button, which pulses to point it out.
+      setTimeout(()=>scrollToNode(r,()=>{r.style.setProperty('--qline','var(--accent)');r.classList.remove('qmark');void r.offsetWidth;r.classList.add('qmark');
+        clearTimeout(r._qmark);r._qmark=setTimeout(()=>r.classList.remove('qmark'),1700);
+        const env=r.querySelector('.env');if(env){env.classList.remove('pulse');void env.offsetWidth;env.classList.add('pulse')}}),0)};
+    li.appendChild(q);list.prepend(li)});
+  unread.forEach((_,r)=>{const b=document.createElement('button');b.type='button';b.className='env';b.title='Changed since you read it: click to see what changed';b.innerHTML=DIFF_ICON;
+    b.onclick=e=>{e.preventDefault();e.stopPropagation();openUnread(r)};r.querySelector('.s').prepend(b)})}
+// Inbox: the agent's @message notes, from /messages. The left pane's red envelope lists the last ten; a bullet's own
+// envelope lists those naming it or any bullet under it. Opening a list marks its messages seen.
+const MAIL_ICON=${JSON.stringify(MAIL_ICON)},MSEEN=KEY+':msgseen',inboxBtn=document.getElementById('inbox-open'),inboxBox=document.getElementById('inbox');
+let msgs=[],mseen=new Set();try{mseen=new Set(JSON.parse(localStorage.getItem(MSEEN)||'[]'))}catch(e){}
+const under=(num,m)=>m.num===num||m.num.startsWith(num+'.');
+function revealNum(num){const node=queueNode(num);if(!node)return;if(tab!=='outline')setTab('outline');
+  for(let e=node.parentElement;e;e=e.parentElement){if(e.tagName==='DETAILS')e.open=true;if(e.matches&&e.matches('tr.kids'))e.previousElementSibling.classList.remove('closed')}
+  if(node.tagName==='DETAILS')node.open=true;setTimeout(()=>scrollToNode(node.tagName==='DETAILS'?node.querySelector(':scope>summary'):node),0)}
+function showInbox(list,anchor,heading){inboxBox.replaceChildren();const h=document.createElement('h4');h.textContent=heading;inboxBox.append(h);
+  if(!list.length){const p=document.createElement('div');p.className='empty';p.textContent='No messages yet.';inboxBox.append(p)}
+  [...list].reverse().forEach(m=>{const el=document.createElement('div');el.className='msg'+(mseen.has(m.id)?'':' unseen');
+    const meta=document.createElement('div');meta.className='meta';
+    if(m.num){const a=document.createElement('a');a.textContent=m.num;a.title='Show this bullet';a.onclick=()=>{inboxBox.hidden=true;revealNum(m.num)};meta.append(a)}
+    const t=document.createElement('span');t.textContent=new Date(m.at).toLocaleString([], {hour:'2-digit',minute:'2-digit',month:'short',day:'numeric'});meta.append(t);
+    const body=document.createElement('div');body.innerHTML=m.html;el.append(meta,body);inboxBox.append(el)});
+  inboxBox.hidden=false;const r=anchor.getBoundingClientRect(),w=inboxBox.offsetWidth,hh=inboxBox.offsetHeight;
+  if(anchor===inboxBtn){inboxBox.style.left=(r.right+8)+'px';inboxBox.style.top=Math.max(8,r.bottom-hh)+'px'}
+  else{inboxBox.style.left=Math.max(84,Math.min(r.right-w,innerWidth-w-12))+'px';inboxBox.style.top=(r.bottom+6+hh>innerHeight?Math.max(8,r.top-6-hh):r.bottom+6)+'px'}
+  list.forEach(m=>mseen.add(m.id));try{localStorage.setItem(MSEEN,JSON.stringify([...mseen].slice(-500)))}catch(e){}
+  paintInbox()}
+function paintInbox(){if(!inboxBtn)return;
+  const unseen=msgs.filter(m=>!mseen.has(m.id)).length;inboxBtn.hidden=!msgs.length;inboxBtn.querySelector('.n').textContent=unseen||'';
+  inboxBtn.title=msgs.length+' message'+(msgs.length===1?'':'s')+' from the agent'+(unseen?', '+unseen+' unseen':'');
+  document.querySelectorAll('.msgs').forEach(b=>b.remove());
+  const nodes=[...rows.map(r=>[r,r.dataset.num,r.querySelector('.nh')]),...[...document.querySelectorAll('#outline-table details.h')].map(d=>[d,(d.dataset.key||'').split(/[.\\s]/)[0],d.querySelector(':scope>summary')])];
+  nodes.forEach(([node,num,host])=>{if(!num||!host)return;const mine=msgs.filter(m=>m.num&&under(num,m));if(!mine.length)return;
+    const fresh=mine.filter(m=>!mseen.has(m.id)).length,b=document.createElement('button');b.type='button';b.className='msgs'+(fresh?'':' seen');
+    b.title=mine.length+' message'+(mine.length===1?'':'s')+' about '+num+(fresh?', '+fresh+' unseen':'');b.innerHTML=MAIL_ICON+'<span class="n"></span>';b.lastChild.textContent=fresh||'';
+    b.onclick=e=>{e.preventDefault();e.stopPropagation();showInbox(mine,b,'Messages about '+num)};host.append(b)})}
+if(inboxBtn){inboxBtn.onclick=e=>{e.stopPropagation();if(!inboxBox.hidden)return inboxBox.hidden=true;showInbox(msgs.slice(-10),inboxBtn,'Messages from the agent')};
+  addEventListener('click',e=>{if(!inboxBox.hidden&&!inboxBox.contains(e.target))inboxBox.hidden=true});
+  addEventListener('keydown',e=>{if(e.key==='Escape')inboxBox.hidden=true});
+  const mes=new EventSource('/messages?id='+encodeURIComponent(SESSION));
+  mes.onmessage=e=>{msgs.push(...JSON.parse(e.data));paintInbox()};mes.addEventListener('reset',()=>{msgs=[];paintInbox()})}
 paintHeads();renderStatus();
 if(LINKED)document.querySelectorAll('.ask').forEach(b=>{b.innerHTML=INSERT_ICON;b.title='Add a reference to this item to the message box'});
-const setBub=on=>{document.body.classList.toggle('bubbles',on);bview.querySelectorAll('span').forEach(x=>x.classList.toggle('on',(x.dataset.b==='bubbles')===on));try{localStorage.setItem(KEY+':bub',on?'1':'')}catch(e){};setTimeout(()=>dispatchEvent(new Event('resize')),0)};
-if(document.getElementById('outline-table')){bview.onclick=()=>setBub(!document.body.classList.contains('bubbles'));try{if(localStorage.getItem(KEY+':bub'))setBub(true)}catch(e){}}else bview.remove();
 // The bar stays one row: whatever doesn't fit moves, rightmost first, into the ⋯ menu.
 const bar=document.querySelector('.bar');
 const more=Object.assign(document.createElement('button'),{type:'button',className:'more icon',title:'More',textContent:'⋯'});more.setAttribute('aria-haspopup','menu');
@@ -773,6 +1049,11 @@ const openTranscript=()=>{const msg=document.getElementById('msg');if(msg)msg.fo
 // It types into the session's tmux pane. Its height is kept in --composer-h so content and the status bar clear it.
 const msg=document.getElementById('msg');
 let addChip=()=>{};
+// The spinner left of the message box: on while the agent is in a turn (from /activity, which follows the transcript),
+// and on at once when the page sends something. Without a linked session id there is no way to see the turn end, so no spinner.
+const working=()=>{if(SESSION)document.getElementById('spin')?.classList.add('on')};
+if(SESSION&&document.getElementById('spin')){const spin=document.getElementById('spin');
+  new EventSource('/activity?id='+encodeURIComponent(SESSION)).addEventListener('state',e=>spin.classList.toggle('on',e.data==='busy'))}
 if(msg){const DRAFT=KEY+':draft',CHIPS=KEY+':chips',send=composer.querySelector('.send'),chipBox=document.getElementById('chips');
   let chips=[];try{chips=JSON.parse(sessionStorage.getItem(CHIPS)||'[]')}catch(e){}
   const saveChips=()=>{try{sessionStorage.setItem(CHIPS,JSON.stringify(chips))}catch(e){}};
@@ -781,16 +1062,41 @@ if(msg){const DRAFT=KEY+':draft',CHIPS=KEY+':chips',send=composer.querySelector(
       x.onclick=()=>{chips.splice(i,1);saveChips();drawChips();msg.oninput();msg.focus()};el.append(t,x);return el}))};
   addChip=(label,ref)=>{if(!chips.some(c=>c.ref===ref))chips.push({label:label||ref,ref});saveChips();drawChips();msg.oninput();msg.focus()};
   drawChips();
+  // Slash commands: "/" at the start of the box lists the session's skills and commands (from /api/commands, once per
+  // page), filtered as you type. Arrows move, Tab or Enter completes, Esc closes.
+  const cmdBox=document.getElementById('cmds');let cmds=null,cmdShown=[],cmdSel=0;
+  async function updateCmds(){const m=msg.value.slice(0,msg.selectionStart).match(/^\\/(\\S*)$/);
+    if(!m||document.activeElement!==msg){cmdBox.hidden=true;return}
+    if(!cmds){cmds=[];try{cmds=await (await fetch('/api/commands?session='+encodeURIComponent(SESSION))).json()}catch(e){}}
+    const q=m[1].toLowerCase(),name=c=>c.name.toLowerCase();
+    cmdShown=[...cmds.filter(c=>name(c).startsWith(q)),...cmds.filter(c=>!name(c).startsWith(q)&&name(c).includes(q))];
+    cmdSel=0;drawCmds()}
+  function drawCmds(){cmdBox.hidden=!cmdShown.length;
+    cmdBox.replaceChildren(...cmdShown.map((c,i)=>{const el=document.createElement('div');el.className='cmd'+(i===cmdSel?' on':'');el.setAttribute('role','option');
+      el.innerHTML='<b></b> <span class="hint"></span><div class="desc"></div>';el.querySelector('b').textContent='/'+c.name;
+      el.querySelector('.hint').textContent=c.hint||'';el.querySelector('.desc').textContent=c.description||'';el.title=c.source;
+      el.onmousedown=e=>{e.preventDefault();cmdSel=i;pickCmd()};return el}));
+    const on=cmdBox.querySelector('.on');if(on)on.scrollIntoView({block:'nearest'})}
+  function pickCmd(){const c=cmdShown[cmdSel];if(!c)return;const rest=msg.value.slice(msg.selectionStart).replace(/^\\S*\\s*/,'');
+    msg.value='/'+c.name+' '+rest;const at=c.name.length+2;msg.setSelectionRange(at,at);cmdBox.hidden=true;msg.oninput()}
+  function cmdKey(e){if(cmdBox.hidden)return false;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){cmdSel=(cmdSel+(e.key==='ArrowDown'?1:cmdShown.length-1))%cmdShown.length;drawCmds()}
+    else if(e.key==='Tab'||(e.key==='Enter'&&!e.shiftKey&&!e.isComposing))pickCmd();
+    else if(e.key==='Escape')cmdBox.hidden=true;
+    else return false;
+    e.preventDefault();return true}
+  msg.addEventListener('blur',()=>{cmdBox.hidden=true});
+  msg.addEventListener('click',()=>updateCmds());
   new ResizeObserver(()=>document.documentElement.style.setProperty('--composer-h',composer.offsetHeight+'px')).observe(composer);
   try{msg.value=sessionStorage.getItem(DRAFT)||''}catch(e){}
-  msg.oninput=()=>{msg.style.height='auto';msg.style.height=msg.scrollHeight+2+'px';send.disabled=!msg.value.trim()&&!chips.length;try{sessionStorage.setItem(DRAFT,msg.value)}catch(e){}};
+  msg.oninput=()=>{msg.style.height='auto';msg.style.height=msg.scrollHeight+2+'px';send.disabled=!msg.value.trim()&&!chips.length;try{sessionStorage.setItem(DRAFT,msg.value)}catch(e){}updateCmds()};
   msg.oninput();
-  msg.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();composer.requestSubmit()}
+  msg.onkeydown=e=>{if(cmdKey(e))return;if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();composer.requestSubmit()}
     else if(e.key==='Backspace'&&!msg.selectionStart&&!msg.selectionEnd&&chips.length){chips.pop();saveChips();drawChips();msg.oninput()}};
   composer.onsubmit=async e=>{e.preventDefault();const text=[...chips.map(c=>c.ref),msg.value.trim()].filter(Boolean).join('\\n');if(!text)return;send.disabled=true;
     try{const r=await fetch('/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({terminal:TERMINAL,text})});
       if(!r.ok)throw new Error(await r.text());
-      msg.value='';chips=[];saveChips();drawChips();if(tab==='transcript')scrollTo(0,document.documentElement.scrollHeight)}
+      msg.value='';chips=[];saveChips();drawChips();working();if(tab==='transcript')scrollTo(0,document.documentElement.scrollHeight)}
     catch(err){toast(send,'Not sent: '+(err.message||err))}
     msg.oninput();msg.focus()}}
 // Terminal tab: xterm.js attached over a WebSocket to a tmux client the server runs for this outline's session.
@@ -815,7 +1121,7 @@ const all=open=>{document.querySelectorAll('details').forEach(d=>d.open=open);do
 expand.onclick=()=>all(true);collapse.onclick=()=>all(false);
 fire.onclick=()=>{const all=document.querySelectorAll((document.getElementById('outline-table')?'#outline-table ':'#outline ')+'.cur,details.s-fire,tr.s-fire');const d=document.querySelector('.cur')||all[all.length-1];if(!d)return;
   for(let e=d.parentElement;e;e=e.parentElement){if(e.tagName==='DETAILS')e.open=true;if(e.tagName==='TR'&&e.classList.contains('kids'))e.previousElementSibling.classList.remove('closed')}
-  if(d.tagName==='DETAILS')d.open=true;d.scrollIntoView({block:'center'})};
+  if(d.tagName==='DETAILS')d.open=true;setTimeout(()=>scrollToNode(d),0)};
 // Sticky, stackable headers: each topic / parent row sticks below its ancestors' headers until its own block ends.
 const stickies=[...document.querySelectorAll('details.h>summary,tr.r.parent')];
 const stackTop=()=>document.querySelector('.bar').offsetHeight;

@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url'
 import { renderMarkdown, renderPlain, renderPage, escapeHtml, countCheckboxProgress } from './render.js'
 import { loadConfig } from './config.js'
 import { attachTerminals, fromLocalPage, hasSession, isSessionName, sendToTerminal } from './terminal.js'
-import { isSessionId, streamTranscript } from './transcript.js'
+import { isSessionId, streamActivity, streamMessages, streamTranscript } from './transcript.js'
 import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolder, startSession } from './start.js'
 import { startDialogHtml } from './start-dialog.js'
+import { slashCommands } from './commands.js'
 
 const config = loadConfig()
 const { dir: ROOT, port: PORT, host: HOST } = config
@@ -53,13 +54,37 @@ function extractHeaders(text) {
     const model = extractHeader(resume.source, 'Model', 100)
     const terminal = extractHeader(model.source, 'Terminal', 64)
     const session = extractHeader(terminal.source, 'Session', 36)
+    const queue = extractQueue(session.source)
     return {
         resume: resume.value,
         model: model.value,
         terminal: isSessionName(terminal.value) ? terminal.value : '',
         session: isSessionId(session.value) ? session.value : '',
-        source: session.source,
+        queue: queue.items,
+        source: queue.source,
     }
+}
+
+const QUEUE_HEADING = '## @queue'
+const QUEUE_ITEM = /^[-*]\s+(\d+(?:\.\d+)*)\.?\s+@(decide|action|approve|read)\b\s*(.*)$/
+
+/**
+ * The queue: a `## @queue` section (no number, so a discussion heading never matches) listing, in priority order,
+ * `- <number> @decide|@action|@approve|@read <label>`. It runs to the next `## ` heading or the end, and is not part of the outline.
+ */
+function extractQueue(source) {
+    const lines = source.split('\n')
+    const start = lines.findIndex(line => line.trim() === QUEUE_HEADING)
+    if (start < 0) return { items: [], source }
+    let end = lines.findIndex((line, i) => i > start && line.startsWith('## '))
+    if (end < 0) end = lines.length
+    const items = lines
+        .slice(start + 1, end)
+        .map(line => line.trim().match(QUEUE_ITEM))
+        .filter(Boolean)
+        .map(([, num, kind, label]) => ({ num, kind, label: label.replace(/\*\*/g, '').trim() }))
+    lines.splice(start, end - start)
+    return { items, source: lines.join('\n') }
 }
 
 /** Title from the first "# " line, plus counts of status emoji on headings and bullets. */
@@ -104,6 +129,11 @@ async function startApi(req, res, pathname, url) {
         if (pathname === '/api/start-options') {
             const running = runningInApp()
             return json(res, 200, { workspaces: findWorkspaces(config.workspaceDirs), sessions: recentSessions().map(s => ({ ...s, openIn: running.get(s.id) })) })
+        }
+        if (pathname === '/api/commands') {
+            const session = url.searchParams.get('session') || ''
+            const id = isSessionId(session) ? session : ''
+            return json(res, 200, slashCommands(id, id ? sessionFolder(id) : undefined))
         }
         if (pathname === '/api/dirs') return json(res, 200, listDirs(url.searchParams.get('path')))
         if (pathname === '/api/start' && write) {
@@ -207,6 +237,20 @@ const server = http.createServer((req, res) => {
         return streamTranscript(req, res, id)
     }
 
+    // The message box's spinner: whether the session's agent is in a turn.
+    // The inbox: the agent's @message notes from the transcript.
+    if (pathname === '/messages') {
+        const id = url.searchParams.get('id') || ''
+        if (!fromLocalPage(req, PORT, { write: false }) || !isSessionId(id)) return send(res, 403, 'text/plain', 'forbidden')
+        return streamMessages(req, res, id)
+    }
+
+    if (pathname === '/activity') {
+        const id = url.searchParams.get('id') || ''
+        if (!fromLocalPage(req, PORT, { write: false }) || !isSessionId(id)) return send(res, 403, 'text/plain', 'forbidden')
+        return streamActivity(req, res, id)
+    }
+
     // The Transcript tab's input box: types the message into the outline's tmux session.
     if (pathname === '/send' && req.method === 'POST') {
         if (!fromLocalPage(req, PORT, { write: true }) || !/^application\/json\b/.test(req.headers['content-type'] || '')) return send(res, 403, 'text/plain', 'forbidden')
@@ -272,8 +316,8 @@ const server = http.createServer((req, res) => {
             } catch (e) {
                 return send(res, 500, 'text/plain', `render failed: ${e.message}`)
             }
-            const { resume, model, terminal, session } = headers
-            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], tableHtml, plainHtml, resume, model, terminal, terminalTab: terminalEnabled && !!terminal, session, project: parts[0], folder: session ? sessionFolder(session) : undefined, storageKey: `map:${parts[0]}/${parts[1]}` }))
+            const { resume, model, terminal, session, queue } = headers
+            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], tableHtml, plainHtml, resume, model, terminal, terminalTab: terminalEnabled && !!terminal, session, queue, project: parts[0], folder: session ? sessionFolder(session) : undefined, storageKey: `map:${parts[0]}/${parts[1]}` }))
         }
     }
     send(res, 404, 'text/plain', 'not found')

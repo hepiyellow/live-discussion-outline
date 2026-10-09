@@ -39,6 +39,22 @@ _Avoid_: Console, shell
 The agent's stored log of a session's messages and tool calls.
 _Avoid_: History, log
 
+**Queue**:
+The agent's ordered list of outline items it asks the user to handle next: decisions first, then actions to run, then items to approve, then items to read. Each item is a **decide**, **action**, **approve** or **read** item.
+_Avoid_: Tasks, to-do, cue
+
+**Action**:
+An outline item proposing something to do in the session itself (run tests, change code), which the agent carries out only when the user runs it; once done it is a **ran** action.
+_Avoid_: Play task, step, job
+
+**Message**:
+A note the agent writes in its chat reply, tagged `@message`, about something the outline does not hold (the outcome of a request made in chat, a status, a warning); it may name the bullet it relates to.
+_Avoid_: Notification, reply, response
+
+**Inbox**:
+Where the page lists messages: the last ten for the whole discussion, or those of one bullet and its descendants.
+_Avoid_: Mailbox, input box
+
 **Tab**:
 One of the page's top-level views of a discussion: Outline, Markdown, Terminal, or Transcript.
 _Avoid_: View (that word already means table or bubbles inside the Outline tab), mode
