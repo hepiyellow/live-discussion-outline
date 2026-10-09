@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { currentPath, startsOpen } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
-import type { Outline, OutlineNode } from '@/types'
+import type { Outline, OutlineNode, ViewerState } from '@/types'
 import { OutlineCtx, Topic, type OutlineContext } from './NodeView'
 
 /** Which topics and parents the viewer opened or closed; the rest follow `startsOpen`. */
@@ -11,12 +11,29 @@ export type OpenNodes = Record<string, boolean>
 export const isOpenIn = (open: OpenNodes) => (node: OutlineNode) => (node.num in open ? open[node.num] : startsOpen(node))
 
 /** The Outline tab: the title, any text before the first topic, then the topics with their nodes. */
-export function OutlineTab({ outline, open, onToggle }: { outline: Outline; open: OpenNodes; onToggle: (node: OutlineNode, open: boolean) => void }) {
+/** The user's actions on nodes, from useApprovals. */
+export type NodeActions = Pick<OutlineContext, 'linked' | 'onCheck' | 'onTopicCheck' | 'onRun' | 'onReference'>
+
+interface Props {
+    outline: Outline
+    viewer: ViewerState
+    actions: NodeActions
+    onToggle: (node: OutlineNode, open: boolean) => void
+}
+
+export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     const root = useRef<HTMLDivElement>(null)
     const ctx = useMemo<OutlineContext>(() => {
-        const isOpen = isOpenIn(open)
-        return { statuses: new Statuses(outline.nodes), isOpen, toggle: node => onToggle(node, !isOpen(node)), current: currentPath(outline.nodes) }
-    }, [outline, open, onToggle])
+        const isOpen = isOpenIn(viewer.open)
+        return {
+            ...actions,
+            statuses: new Statuses(outline.nodes, viewer.overrides),
+            isOpen,
+            toggle: node => onToggle(node, !isOpen(node)),
+            current: currentPath(outline.nodes),
+            runs: viewer.runs,
+        }
+    }, [outline, viewer.open, viewer.overrides, viewer.runs, actions, onToggle])
 
     // The header stack follows scrolling, resizing, and every change of the content.
     useLayoutEffect(() => {

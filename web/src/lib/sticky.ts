@@ -69,3 +69,41 @@ export function scrollToNode(el: Element, done?: () => void) {
     }
     requestAnimationFrame(step)
 }
+
+/**
+ * Collapses a completed node over half a second while the page scrolls it to the top, just below the headers above
+ * it; `done` then closes it for real. Nothing animates on a hidden page or when the system asks for reduced motion.
+ */
+export function collapseAnimated(num: string, done: () => void) {
+    const head = document.querySelector<HTMLElement>(`.outline-tab [data-num="${CSS.escape(num)}"]`)
+    const block = head?.parentElement
+    const body = block?.children[1]
+    if (!head || !block || !(body instanceof HTMLElement) || document.visibilityState !== 'visible' || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        done()
+        return
+    }
+    // A header that is stuck reports where it sticks, so measure its block.
+    const from = scrollY
+    const h0 = body.offsetHeight
+    const want = Math.max(0, block.getBoundingClientRect().top + from - stackAbove(head) - 4)
+    // Once its children are gone the page is h0 shorter, and a node near the end must still reach the top.
+    makeRoom(want + h0)
+    body.style.overflow = 'hidden'
+    body.style.height = `${h0}px`
+    const start = performance.now()
+    const step = (now: number) => {
+        const t = Math.min(1, (now - start) / 500)
+        const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+        body.style.height = `${h0 * (1 - e)}px`
+        scrollTo(0, from + (want - from) * e)
+        if (t < 1) return requestAnimationFrame(step)
+        done()
+        // The node is closed by the next render; until then it stays at no height.
+        setTimeout(() => {
+            body.style.height = ''
+            body.style.overflow = ''
+            scrollTo(0, want)
+        }, 50)
+    }
+    requestAnimationFrame(step)
+}

@@ -242,3 +242,53 @@
 .ck.small { width: 12px; height: 12px; margin-left: 3px; }
 .ck.small svg { width: 9px; height: 9px; }
 .extras { display: inline-flex; align-items: center; }
+
+/* The play button of an action, in the indent left of its checkbox (a leaf is relative, a parent row sticky). */
+.row .play {
+    position: absolute;
+    left: -8px;
+    top: 10px;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--danger);
+    cursor: pointer;
+}
+.row.parent .play { top: 50%; transform: translateY(-50%); }
+.row .play svg { width: 12px; height: 12px; }
+.row .play:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.row .play.sent { color: var(--muted-foreground); cursor: default; animation: playwait 1.4s ease-in-out infinite; }
+@keyframes playwait { 50% { opacity: 0.35; } }
+
+/* The reference button, shown on hover. */
+.ask {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--muted-foreground);
+    opacity: 0;
+    cursor: pointer;
+}
+.ask:hover { color: var(--foreground); background: color-mix(in srgb, var(--border) 40%, transparent); }
+.ask:focus-visible, :is(.row, .topic-head):hover .ask { opacity: 1; }
+.row.parent > .ask { grid-area: ask; margin-left: 6px; }
+.row.leaf > .ask { grid-area: ask; align-self: start; position: relative; margin: 8px 10px 0 0; }
+.topic-head > .ask { margin-left: 4px; }
+
+/* Checkboxes that can be clicked. */
+button.ck { cursor: pointer; transition: box-shadow 0.04s linear, border-color 0.04s linear; }
+button.ck:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--foreground) 16%, transparent); }
+button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; }
+
+/* The item just opened from the queue: a line in its kind's color on its left, fading out. */
+@keyframes qline { from { box-shadow: inset 3px 0 0 var(--qline); } to { box-shadow: inset 3px 0 0 transparent; } }
+.row.leaf[data-qmark]::before, .row.parent[data-qmark], .topic-head[data-qmark] { animation: qline 1.6s ease-in forwards; }
