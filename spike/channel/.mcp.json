@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "outline": { "command": "node", "args": ["./channel.js"] }
+  }
+}

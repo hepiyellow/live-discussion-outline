@@ -19,5 +19,9 @@ export function loadConfig() {
     const port = Number(process.env.OUTLINE_PORT || file.port || 4577)
     const host = process.env.OUTLINE_HOST || file.host || '127.0.0.1'
     const resumeTemplate = process.env.OUTLINE_RESUME_TEMPLATE || file.resumeTemplate || ''
-    return { dir, port, host, resumeTemplate, configFile }
+    // Folders searched (with their direct subfolders) for editor workspace files, for "New discussion". Empty: look
+    // beside the folders recent Claude Code sessions ran in.
+    const workspaceDirs = process.env.OUTLINE_WORKSPACE_DIRS ? process.env.OUTLINE_WORKSPACE_DIRS.split(path.delimiter) : file.workspaceDirs || []
+    const claudeCommand = process.env.OUTLINE_CLAUDE || file.claudeCommand || ''
+    return { dir, port, host, resumeTemplate, workspaceDirs, claudeCommand, configFile }
 }

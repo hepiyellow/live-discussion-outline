@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Start the server in the background if it is not already answering, then print where things are.
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -32,3 +32,18 @@ if (!(await alive())) {
 console.log(`dir=${dir}`)
 console.log(`url=${url}`)
 console.log(`resume=${resumeTemplate}`)
+console.log(`terminal=${tmuxSession()}`)
+// Claude Code passes its session id to the commands its agent runs; other agents leave this empty.
+console.log(`session=${process.env.CLAUDE_CODE_SESSION_ID || ''}`)
+// Set when the page started this session from a workspace: the outline files under the workspace's name.
+console.log(`project=${process.env.OUTLINE_PROJECT || ''}`)
+
+/** The tmux session this agent runs in (it runs us from its shell, which inherits TMUX), or empty outside tmux. */
+function tmuxSession() {
+    if (!process.env.TMUX) return ''
+    try {
+        return execFileSync('tmux', ['display-message', '-p', '#S'], { encoding: 'utf8' }).trim()
+    } catch {
+        return ''
+    }
+}

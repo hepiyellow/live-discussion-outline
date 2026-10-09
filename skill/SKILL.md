@@ -13,16 +13,16 @@ Mirror this conversation into a markdown file. The local server in this checkout
 
 This file is `skill/SKILL.md` in the live-discussion-outline checkout. If you reached it through a symlink, resolve the symlink. The checkout is the parent of that `skill` directory; call it `<repo>`.
 
-Run `node <repo>/bin/ensure.js`. It starts the server in the background if needed and prints three lines: `dir=<outlines folder>`, `url=<base url>` and `resume=<template>` (the template may be empty). Use those values below.
+Run `node <repo>/bin/ensure.js`. It starts the server in the background if needed and prints five lines: `dir=<outlines folder>`, `url=<base url>`, `resume=<template>` (may be empty), `terminal=<tmux session>` (empty unless you run inside tmux), `session=<session id>` (empty unless your tool provides one) and `project=<name>` (usually empty). Use those values below.
 
 ## Where the file lives
 
 `<dir>/<project-slug>/<YYYY-MM-DD>-<topic-slug>.md`
 
-- `<project-slug>`: basename of the current working directory.
+- `<project-slug>`: the `project=` value from the Start step when it is not empty, otherwise the basename of the current working directory.
 - `<topic-slug>`: kebab-case from the argument, or from the conversation's subject if none was given.
 - Create the directory if missing. Never write the file inside a repo or beside plan/PRD files.
-- If a file for this conversation already exists (you created it earlier in this session), keep using that path. Do not start a second one unless the user asks.
+- If a file for this conversation already exists (you created it earlier in this session), keep using that path. Do not start a second one unless the user asks. If it lacks any of the header lines below (`Resume:`, `Model:`, `Terminal:`, `Session:`) that you now have a value for, add them under the title.
 
 ## Format (plain markdown, no HTML tags)
 
@@ -30,6 +30,8 @@ Run `node <repo>/bin/ensure.js`. It starts the server in the background if neede
 # Topic
 Resume: <link or command that reopens this chat>
 Model: <your model name>, <effort>
+Terminal: <tmux session>
+Session: <session id>
 
 ## 1. Title of numbered point
 Condensed content of that point.
@@ -48,10 +50,12 @@ Condensed content of that point.
 ```
 
 - Line 1 is `# <topic>`. Line 2 is `Resume: <link or command>` that reopens this chat later; the page turns it into a copy button.
-  - If the `resume=` template from the Start step is not empty, replace `{session}` in it with this conversation's session id (the id your tool uses for the chat, for example the session folder name in your scratch or transcript path) and write the result, exactly once, without code quotes.
+  - If the `resume=` template from the Start step is not empty, replace `{session}` in it with this conversation's session id (the `session=` value from the Start step; if that is empty, the id your tool uses for the chat, for example the session folder name in your scratch or transcript path) and write the result, exactly once, without code quotes.
   - If the template is empty and you know your own way to reopen a chat (a link or a command), write that.
   - Otherwise omit the line. Never invent an id or a command.
 - Line 3 is `Model: <model name>, <effort level>` (for example `Model: Claude Sonnet 5.5, medium`); the page shows it top-right beside the copy button. Write the model you are running as and the reasoning effort you know you are using. Omit the effort if you do not know it, and omit the line if you do not know the model. Never guess. Update it if the model or effort changes mid-discussion.
+- Line 4 is `Terminal: <tmux session>` with the `terminal=` value from the Start step, written exactly as printed. The page's Terminal tab shows that session's terminal, and the Transcript tab's input box types into it. Omit the line when the value is empty.
+- Line 5 is `Session: <session id>` with the `session=` value from the Start step, written exactly as printed. The page's Transcript tab shows that session's messages. Omit the line when the value is empty.
 - Each numbered or bulleted point from your answers is a `##` heading that keeps its number (`## 2. Title`). Deeper levels use `###`.
 - Body content under a heading is the substance of that point: claims, reasons, commands, code blocks. Trim filler; do not paste whole answers.
 - The user's follow-up questions and your answers nest as `-` bullets under the point they belong to; a bullet with sub-bullets becomes collapsible in the page.
