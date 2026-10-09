@@ -53,7 +53,7 @@ function summarize(file, fallback) {
     for (const line of lines) {
         const text = line.trimStart().replace(/^(#+|[-*])\s+/, '')
         if (text === line.trimStart()) continue
-        if (text.startsWith(STATUS_KEYS[0])) counts.done++
+        if (text.startsWith(STATUS_KEYS[0]) || /^(\d+(\.\d+)*\.?\s+)?@resolved\b/i.test(text)) counts.done++
         else if (text.startsWith(STATUS_KEYS[1])) counts.open++
         else if (text.startsWith(STATUS_KEYS[2])) counts.now++
     }
