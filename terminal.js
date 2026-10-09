@@ -103,7 +103,9 @@ export async function attachTerminals(server, port) {
     server.on('upgrade', (req, socket, head) => {
         const url = new URL(req.url, 'http://localhost')
         const name = url.searchParams.get('s') || ''
-        if (url.pathname !== '/term' || !fromLocalPage(req, port, { write: true }) || !isSessionName(name) || !hasSession(name)) return socket.destroy()
+        // Other upgrades (Vite's hot reload with --dev) are left to their own listeners; server.js closes the rest.
+        if (url.pathname !== '/term') return
+        if (!fromLocalPage(req, port, { write: true }) || !isSessionName(name) || !hasSession(name)) return socket.destroy()
         wss.handleUpgrade(req, socket, head, ws => bridge(pty, ws, name, url))
     })
     return true
