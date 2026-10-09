@@ -32,6 +32,18 @@ _Avoid_: Checkbox, resolved, agent-approved, done
 One sentence closing a long node that sums up that node's own text. It never answers a question; an answer changes the node's text or adds child nodes.
 _Avoid_: Answer, conclusion, bottom line
 
+**Outlines folder**:
+The one folder outlines are written to and read from, with one subfolder per project. The agent finds it on its own, so it can write outlines while nothing is serving them.
+_Avoid_: Dir, output folder
+
+**Outline app**:
+The Mac application that runs the server while it is open and shows the Discussions page and outlines in its own windows.
+_Avoid_: Electron app, desktop app (that is Claude's own app)
+
+**Settings file**:
+The one file that says where the outlines folder is and how to reach the page; the app writes it, and the agent and the server read it. Without it the agent writes to a default outlines folder.
+_Avoid_: Config, preferences
+
 **Project**:
 The group an outline is filed under: the workspace's name when the discussion started from a workspace, else the working folder's name.
 _Avoid_: Repo, folder
