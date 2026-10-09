@@ -1,21 +1,10 @@
 import { execFileSync } from 'node:child_process'
-import http from 'node:http'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { after, before, describe, test } from 'node:test'
 import WebSocket from 'ws'
-import { ROOT, startServer } from './helpers.js'
-
-/** A GET sent as written: fetch() would resolve `..` segments before sending them. */
-const rawGet = (url, path) =>
-    new Promise((resolve, reject) => {
-        http.get(url + path, res => {
-            let body = ''
-            res.on('data', d => (body += d))
-            res.on('end', () => resolve({ status: res.statusCode, body }))
-        }).on('error', reject)
-    })
+import { ROOT, rawGet, startServer } from './helpers.js'
 
 /** Whether a WebSocket upgrade on `path` with `protocol` is accepted. */
 const upgrades = (url, path, protocol) =>

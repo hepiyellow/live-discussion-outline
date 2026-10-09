@@ -2,7 +2,8 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { renderMarkdown, renderPlain, renderPage, escapeHtml, countCheckboxProgress } from './render.js'
+import { renderMarkdown, renderPage, escapeHtml } from './render.js'
+import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload, renderPlain } from './outline.js'
 import { loadConfig } from './config.js'
 import { attachTerminals, fromLocalPage, hasSession, isSessionName, sendToTerminal } from './terminal.js'
 import { isSessionId, streamActivity, streamMessages, streamTranscript } from './transcript.js'
@@ -30,69 +31,69 @@ fs.watch(ROOT, { recursive: true }, () => {
     clearTimeout(debounce)
     debounce = setTimeout(() => {
         for (const res of clients) res.write('data: change\n\n')
+        pushOutlines()
     }, 120)
 })
 
-/** Longest `Title:` value the page reads; a longer one is dropped. */
-const TITLE_MAX = 300
+/** Open outline streams, by outline: each stream with the payload it last sent. */
+const outlineStreams = new Map()
 
-const STATUS_KEYS = ['✅', '❓', '🔥']
-
-/** Pulls a `<Label>: <value>` line (if any) out of the first lines of the source; the value is used as written. */
-function extractHeader(source, label, maxLength) {
-    const lines = source.split('\n')
-    const i = lines.slice(0, 8).findIndex(line => line.startsWith(`${label}: `))
-    if (i < 0) return { value: '', source }
-    const value = lines[i].slice(label.length + 2).trim().replace(/^`+|`+$/g, '')
-    lines.splice(i, 1)
-    return { value: value.length <= maxLength ? value : '', source: lines.join('\n') }
+/** The file of outline <project>/<file>, or null when there is no such outline. */
+function outlineFile(project, file) {
+    if (!safeName(project) || !safeName(file)) return null
+    const full = path.join(ROOT, project, `${file}.md`)
+    return fs.existsSync(full) ? full : null
 }
 
-/**
- * The outline's header lines, and the source without them: `Title:` (the discussion's name), `Resume:` (link or command the page copies), `Model:` (shown
- * as written), `Terminal:` (the tmux session the Terminal tab attaches to) and `Session:` (the agent's session id, whose
- * transcript the Transcript tab shows).
- */
-function extractHeaders(text) {
-    const title = extractHeader(text, 'Title', TITLE_MAX)
-    const resume = extractHeader(title.source, 'Resume', 500)
-    const model = extractHeader(resume.source, 'Model', 100)
-    const terminal = extractHeader(model.source, 'Terminal', 64)
-    const session = extractHeader(terminal.source, 'Session', 36)
-    const queue = extractQueue(session.source)
-    return {
-        title: title.value,
-        resume: resume.value,
-        model: model.value,
-        terminal: isSessionName(terminal.value) ? terminal.value : '',
-        session: isSessionId(session.value) ? session.value : '',
-        queue: queue.items,
-        source: queue.source,
+/** The outline's JSON (web/src/types.ts), or null when there is no such outline. */
+function readOutline(project, file) {
+    const full = outlineFile(project, file)
+    if (!full) return null
+    const outline = outlinePayload(fs.readFileSync(full, 'utf8'))
+    return { project, file, ...outline, folder: (outline.session && sessionFolder(outline.session)) || '', terminalTab: terminalEnabled && !!outline.terminal }
+}
+
+/** Sends each outline stream its outline again if it changed, or `gone` once the file is no longer there. */
+function pushOutlines() {
+    for (const [key, streams] of outlineStreams) {
+        const [project, file] = JSON.parse(key)
+        let outline
+        try {
+            outline = readOutline(project, file)
+        } catch (e) {
+            console.error(`outline ${project}/${file}: ${e.message}`)
+            continue
+        }
+        const data = outline ? JSON.stringify(outline) : null
+        for (const [res, last] of streams) {
+            if (data === last) continue
+            res.write(data ? `data: ${data}\n\n` : 'event: gone\ndata: \n\n')
+            streams.set(res, data)
+        }
     }
 }
 
-const QUEUE_HEADING = /^#{1,2} @queue$/
-const QUEUE_ITEM = /^[-*]\s+(\d+(?:\.\d+)*)\.?\s+@(decide|action|approve|read)\b\s*(.*)$/
-
-/**
- * The queue: a `# @queue` section (no number, so a topic never matches) listing, in priority order,
- * `- <number> @decide|@action|@approve|@read <label>`. It runs to the next heading or the end, and is not part of the outline.
- * Older outlines head it `## @queue`.
- */
-function extractQueue(source) {
-    const lines = source.split('\n')
-    const start = lines.findIndex(line => QUEUE_HEADING.test(line.trim()))
-    if (start < 0) return { items: [], source }
-    let end = lines.findIndex((line, i) => i > start && /^#{1,6} /.test(line))
-    if (end < 0) end = lines.length
-    const items = lines
-        .slice(start + 1, end)
-        .map(line => line.trim().match(QUEUE_ITEM))
-        .filter(Boolean)
-        .map(([, num, kind, label]) => ({ num, kind, label: label.replace(/\*\*/g, '').trim() }))
-    lines.splice(start, end - start)
-    return { items, source: lines.join('\n') }
+/** GET /api/outline/<project>/<file>[/events]: the outline's JSON, or a stream of it, sent again on each change of that file. */
+function outlineApi(req, res, parts) {
+    const [project, file, events] = parts
+    if (parts.length > 3 || (events !== undefined && events !== 'events')) return send(res, 404, 'text/plain', 'not found')
+    const outline = readOutline(project, file)
+    if (!outline) return send(res, 404, 'text/plain', 'no such outline')
+    const data = JSON.stringify(outline)
+    if (!events) return send(res, 200, 'application/json', data)
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
+    res.write(`retry: 1000\n\ndata: ${data}\n\n`)
+    const key = JSON.stringify([project, file])
+    if (!outlineStreams.has(key)) outlineStreams.set(key, new Map())
+    outlineStreams.get(key).set(res, data)
+    req.on('close', () => {
+        const streams = outlineStreams.get(key)
+        streams?.delete(res)
+        if (!streams?.size) outlineStreams.delete(key)
+    })
 }
+
+const STATUS_KEYS = ['✅', '❓', '🔥']
 
 /** Title from the `Title:` line, plus counts of approved and open topics. */
 function summarize(file, fallback) {
@@ -326,6 +327,15 @@ const server = http.createServer((req, res) => {
             })
             .catch(e => send(res, 409, 'text/plain', e.message))
         return
+    }
+
+    if (pathname.startsWith('/api/outline/')) {
+        if (!fromLocalPage(req, PORT, { write: false })) return send(res, 403, 'text/plain', 'forbidden')
+        try {
+            return outlineApi(req, res, pathname.slice('/api/outline/'.length).split('/'))
+        } catch (e) {
+            return send(res, 500, 'text/plain', `render failed: ${e.message}`)
+        }
     }
 
     if (pathname.startsWith('/api/')) return startApi(req, res, pathname, url)
