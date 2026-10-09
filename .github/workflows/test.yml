@@ -16,4 +16,6 @@ jobs:
                   cache: npm
             # `npm ci` runs the prepare script, which builds web/dist.
             - run: npm ci
+            # Browser tests run Playwright's headless Chromium.
+            - run: npx playwright install --with-deps chromium
             - run: npm test

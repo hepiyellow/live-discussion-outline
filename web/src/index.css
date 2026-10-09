@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./outline.css";
 
 /* shadcn/ui's neutral theme. Dark mode follows the system, as the old page does, instead of shadcn's `.dark` class. */
 @custom-variant dark (@media (prefers-color-scheme: dark));
@@ -40,6 +41,11 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+    --color-claim: var(--claim);
+    --color-approved: var(--approved);
+    --color-danger: var(--danger);
+    --color-current: var(--current);
+    --color-settled: var(--settled);
 }
 
 :root {
@@ -75,6 +81,12 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    /* The outline's own colors: the agent's claims in blue, the user's approvals in green, the current path in orange. */
+    --claim: #0969da;
+    --approved: #2da44e;
+    --danger: #d1242f;
+    --current: #f0883e;
+    --settled: #8c959f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -110,6 +122,8 @@
         --sidebar-accent-foreground: oklch(0.985 0 0);
         --sidebar-border: oklch(1 0 0 / 10%);
         --sidebar-ring: oklch(0.556 0 0);
+        --claim: #58a6ff;
+        --settled: #6e7681;
     }
 }
 

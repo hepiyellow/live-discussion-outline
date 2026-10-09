@@ -90,6 +90,8 @@ npm run dev      # or `npm start -- --dev`: serves web/src through Vite instead,
 npm test         # type-checks web/ and runs the tests in test/
 ```
 
+The browser tests run headless Chromium through Playwright: install it once with `npx playwright install chromium`, or point `PLAYWRIGHT_CHROMIUM` at a Chromium binary you already have.
+
 ## Configuration
 
 Settings come from environment variables, then the config file, then defaults.

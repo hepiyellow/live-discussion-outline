@@ -115,3 +115,27 @@ export const rawGet = (url, path, headers = {}) =>
             res.on('end', () => resolve({ status: res.statusCode, body }))
         }).on('error', reject)
     })
+
+/**
+ * Headless Chromium for browser tests (the Outline app runs Chromium too). It is Playwright's own build
+ * (`npx playwright install chromium`), or the one PLAYWRIGHT_CHROMIUM names.
+ */
+export async function launchBrowser() {
+    const { chromium } = await import('playwright')
+    const executablePath = process.env.PLAYWRIGHT_CHROMIUM || undefined
+    if (!executablePath && !fs.existsSync(chromium.executablePath()))
+        throw new Error('No Chromium for the browser tests: run `npx playwright install chromium`, or set PLAYWRIGHT_CHROMIUM to a Chromium binary.')
+    return chromium.launch({ executablePath })
+}
+
+/** Opens a page that fails the test on any script error. */
+export async function openPage(browser, url, options = {}) {
+    const page = await browser.newPage(options)
+    const errors = []
+    page.on('pageerror', e => errors.push(e))
+    page.checkErrors = () => {
+        if (errors.length) throw errors[0]
+    }
+    await page.goto(url)
+    return page
+}
