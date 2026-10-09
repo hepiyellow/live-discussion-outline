@@ -1,0 +1,244 @@
+/* The outline tab. Layout that Tailwind classes would make hard to read lives here: the sticky header stack, the
+   bubbles' grid, and the server-rendered HTML inside nodes. */
+
+:root {
+    /* The height of a stuck header row; --barh is the top bar's real height, set by the page. */
+    --rh: 32px;
+    --barh: 44px;
+}
+
+/* Headers stick below the top bar and their ancestors' headers (--top, set by the page), until their block ends. */
+.sticky-head {
+    position: sticky;
+    top: var(--top, var(--barh));
+    background: var(--background);
+    z-index: 1;
+}
+.sticky-head[data-stuck] {
+    box-sizing: border-box;
+    height: var(--rh);
+    overflow: hidden;
+    box-shadow: 0 1px 0 var(--border);
+}
+.sticky-head[data-stuck] .node-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.topic-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: var(--rh);
+    padding: 3px 6px 3px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 1.1em;
+    font-weight: 600;
+    cursor: pointer;
+}
+.topic-head:hover {
+    background: color-mix(in srgb, var(--border) 40%, var(--background));
+}
+.topic-head .node-title {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+.topic-head .extras {
+    margin-left: auto;
+}
+.topic.done > .topic-head,
+.row.done {
+    color: var(--settled);
+}
+.topic-head.current {
+    border-left: 3px solid var(--current);
+    background: color-mix(in srgb, var(--current) 10%, var(--background));
+}
+
+.tri {
+    flex: none;
+    display: inline-flex;
+    width: 16px;
+    justify-content: center;
+    color: var(--muted-foreground);
+    transition: transform 0.12s;
+}
+.closed > .sticky-head > .tri {
+    transform: rotate(-90deg);
+}
+
+/* Nodes right under a topic are indented like nested ones (by their parent's .kids), leaving room on their left. */
+.topic-body > .nodes {
+    padding-left: 20px;
+}
+.topic-text {
+    padding: 4px 8px 0 12px;
+}
+.group-text {
+    margin-left: 56px;
+    padding: 4px 14px 4px 0;
+}
+
+/* A node with children: a header row that sticks and collapses its children. */
+.row.parent {
+    display: grid;
+    grid-template-columns: 28px 22px auto minmax(0, max-content) auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas: 'ck tri num title ask . msg kc tags';
+    align-items: center;
+    padding: 6px 0 6px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+}
+.row.parent > .ck { grid-area: ck; }
+.row.parent > .tri { grid-area: tri; }
+.row.parent > .num {
+    grid-area: num;
+    padding-left: 6px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.row.parent > .node-title { grid-area: title; padding-left: 8px; font-weight: 600; }
+.row.parent > .kc { grid-area: kc; margin-right: 8px; }
+.row.parent > .extras { grid-area: tags; margin-right: 10px; }
+.row.parent.current {
+    box-shadow: inset 3px 0 0 var(--current), 0 1px 0 var(--border);
+}
+.group > .kids {
+    padding: 0 0 4px 20px;
+}
+
+/* A node without children: a bubble. */
+.row.leaf {
+    position: relative;
+    display: grid;
+    grid-template-columns: 28px auto minmax(0, 1fr) auto;
+    grid-template-areas: 'ck num title ask' 'ck body body body';
+    align-items: baseline;
+    margin: 6px 0;
+    padding-left: 12px;
+}
+.row.leaf::before {
+    content: '';
+    grid-area: 1 / 2 / 3 / 5;
+    align-self: stretch;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--border) 35%, transparent);
+}
+.row.leaf.current::before {
+    box-shadow: inset 3px 0 0 var(--current);
+}
+.row.leaf > .ck { grid-area: ck; align-self: start; margin-top: 12px; }
+.row.leaf > .num {
+    grid-area: num;
+    position: relative;
+    padding: 10px 0 0 14px;
+    font-size: 13px;
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+}
+.row.leaf > .node-title { grid-area: title; position: relative; padding: 10px 8px 0; font-weight: 600; }
+.row.leaf > .node-html { grid-area: body; position: relative; padding: 2px 14px 10px; color: var(--muted-foreground); }
+.row.leaf.done > .node-html { color: var(--settled); }
+
+/* The circled count of a parent's direct children, filled while it is collapsed. */
+.kc {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.1em;
+    height: 1.1em;
+    border: 1.5px solid var(--muted-foreground);
+    border-radius: 50%;
+    color: var(--muted-foreground);
+    font-size: 0.85em;
+    user-select: none;
+}
+.kc > span {
+    font-size: 0.75em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+.closed > .row > .kc {
+    background: var(--muted-foreground);
+    color: var(--background);
+}
+
+/* Tags on a node's title, and the tags that open its closing lines. */
+.pill {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    vertical-align: 1px;
+    user-select: none;
+}
+.pill svg { display: inline; width: 9px; height: 9px; vertical-align: -1px; }
+.pill-pick, .pill-summary { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 12%, transparent); }
+.pill-options, .pill-action { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.pill-recommended, .pill-recommendation { color: var(--claim); background: color-mix(in srgb, var(--claim) 16%, transparent); }
+.pill-ran { color: var(--muted-foreground); background: color-mix(in srgb, var(--foreground) 10%, transparent); }
+.closing { display: block; margin-top: 6px; }
+.closing .pill { margin: 0 6px 0 0; }
+
+/* Server-rendered markdown inside a node: no outer margins in its cell. */
+.node-html > :first-child { margin-top: 0; }
+.node-html > :last-child { margin-bottom: 0; }
+.node-html :is(p, ul, ol, pre) { margin: 0.4em 0; }
+.node-html :is(ul, ol) { padding-left: 1.4em; }
+.node-html ul { list-style: disc; }
+.node-html ol { list-style: decimal; }
+:is(.node-html, .markdown, .outline-intro) code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.92em;
+    background: color-mix(in srgb, var(--border) 50%, transparent);
+}
+:is(.node-html, .markdown, .outline-intro) pre {
+    padding: 10px 12px;
+    border-radius: 8px;
+    overflow: auto;
+    background: color-mix(in srgb, var(--border) 35%, transparent);
+}
+:is(.node-html, .markdown, .outline-intro) pre code { padding: 0; background: none; }
+:is(.node-html, .markdown, .outline-intro) a { color: var(--claim); text-decoration: underline; text-underline-offset: 2px; }
+
+/* The Markdown tab: a plain preview. */
+.markdown :is(h1, h2, h3, h4, h5, h6) { margin: 1.2em 0 0.5em; line-height: 1.25; font-weight: 600; }
+.markdown h1 { font-size: 1.6em; }
+.markdown h2 { font-size: 1.3em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+.markdown h3 { font-size: 1.1em; }
+.markdown p { margin: 0.6em 0; }
+.markdown :is(ul, ol) { margin: 0.4em 0; padding-left: 1.5em; }
+.markdown ul { list-style: disc; }
+.markdown ol { list-style: decimal; }
+.outline-intro p { margin: 0.4em 0; }
+
+/* The checkbox: a box or (for an option) a radio, drawn by state. */
+.ck {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1.5px solid var(--muted-foreground);
+    border-radius: 3px;
+    background: transparent;
+    color: transparent;
+}
+.ck.radio { border-radius: 50%; }
+.ck svg { width: 11px; height: 11px; }
+.ck[data-state='approved'] { border-color: var(--approved); background: var(--approved); color: #fff; }
+.ck[data-state='claim'] { border-color: var(--claim); color: var(--claim); }
+.ck[data-state='pending'] { border-color: var(--approved); color: var(--approved); }
+.ck[data-state='mixed'] { color: var(--muted-foreground); }
+.ck.small { width: 12px; height: 12px; margin-left: 3px; }
+.ck.small svg { width: 9px; height: 9px; }
+.extras { display: inline-flex; align-items: center; }
