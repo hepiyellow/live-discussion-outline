@@ -84,6 +84,8 @@ The page is being rebuilt as a React single-page app fed by JSON over SSE ([ADR 
 
 It reads `/api/outline/<project>/<file>`: the outline as JSON (header lines, nodes, queue and the Markdown tab; `web/src/types.ts` describes it). `/api/outline/<project>/<file>/events` streams it, sent again whenever that file changes. Both pages read outlines with the one parser in `outline.js`.
 
+What the new page remembers for you (open and closed nodes, and as it grows, unsent approvals, what you have read, undo steps and the input box's draft) is kept by the server, one file per outline in `.state/` of the outlines folder (`/api/state/<project>/<file>`), so the Outline app and a browser show the same thing.
+
 ```bash
 npm run build    # rebuilds web/dist after a change to web/ (npm install does this too)
 npm run dev      # or `npm start -- --dev`: serves web/src through Vite instead, reloading edits in place

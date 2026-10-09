@@ -11,25 +11,25 @@ import { TopBar, type TabName } from './TopBar'
 
 /** One outline: its tabs, kept up to date as the agent edits the file, without reloading. */
 export function OutlinePage({ project, file }: { project: string; file: string }) {
-    const state = useOutline(project, file)
+    const { state, viewer, patch } = useOutline(project, file)
     const [tab, setTab] = useState<TabName>('outline')
-    const [open, setOpen] = useState<OpenNodes>({})
+    const open: OpenNodes = viewer.open
     const outline = state.status === 'ready' || state.status === 'gone' ? state.outline : null
 
     useEffect(() => {
         document.title = outline?.title || file
     }, [outline?.title, file])
 
-    const onToggle = useCallback((node: OutlineNode, value: boolean) => setOpen(o => ({ ...o, [node.num]: value })), [])
+    const onToggle = useCallback((node: OutlineNode, value: boolean) => patch({ open: { [node.num]: value } }), [patch])
     const setAll = (value: boolean) => {
         if (!outline) return
-        setOpen(Object.fromEntries(allNodes(outline.nodes).filter(n => isParent(n) || n.level === 1).map(n => [n.num, value])))
+        patch({ open: Object.fromEntries(allNodes(outline.nodes).filter(n => isParent(n) || n.level === 1).map(n => [n.num, value])) })
     }
     /** Opens the way to a node (and a topic itself), then scrolls it to the top, below the headers above it. */
     const reveal = (num: string) => {
         flushSync(() => {
             setTab('outline')
-            setOpen(o => ({ ...o, ...Object.fromEntries(pathNums(num).slice(0, num.includes('.') ? -1 : undefined).map(n => [n, true])) }))
+            patch({ open: Object.fromEntries(pathNums(num).slice(0, num.includes('.') ? -1 : undefined).map(n => [n, true])) })
         })
         const el = document.querySelector(`.outline-tab [data-num="${CSS.escape(num)}"]`)
         if (el) setTimeout(() => scrollToNode(el), 0)

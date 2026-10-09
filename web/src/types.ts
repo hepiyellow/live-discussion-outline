@@ -67,3 +67,36 @@ export interface Outline {
     /** The Markdown tab: the whole outline rendered as plain markdown. */
     markdown: string
 }
+
+/** One undo step: every node a click changed, as it was before (its override, and its status in the file). */
+export interface UndoStep {
+    nodes: { num: string; had: boolean; was: boolean; file: Status }[]
+    /** Nodes the click collapsed by completing them, opened again on undo. */
+    collapsed: string[]
+}
+
+/** The viewer's state of one outline, kept by the server (state.js) and shared by every window on it. */
+export interface ViewerState {
+    /** Node number → whether the viewer opened (true) or closed (false) it. */
+    open: Record<string, boolean>
+    /** Node number → the approval the viewer wants and the file does not show yet. */
+    overrides: Record<string, boolean>
+    /** Node number → the override already sent to the session. */
+    sent: Record<string, boolean>
+    /** Node number → 1 when an undo reopens a former claim, sent as "Back to claim". */
+    backTo: Record<string, number>
+    /** Node number → the version of the node the viewer last read. */
+    read: Record<string, string>
+    /** Node number → 1 once the viewer asked the agent to run that action. */
+    runs: Record<string, number>
+    /** Message id → 1 once seen in an inbox. */
+    seen: Record<string, number>
+    undo: UndoStep[]
+    /** The input box's text. */
+    draft: string
+}
+
+/** A change to the viewer state: map sections change single entries (null deletes one), the others are replaced. */
+export type StatePatch = {
+    [K in keyof ViewerState]?: ViewerState[K] extends Record<string, infer V> ? Record<string, V | null> : ViewerState[K]
+}

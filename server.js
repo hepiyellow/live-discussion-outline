@@ -10,6 +10,7 @@ import { isSessionId, streamActivity, streamMessages, streamTranscript } from '.
 import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolder, startSession } from './start.js'
 import { startDialogHtml } from './start-dialog.js'
 import { slashCommands } from './commands.js'
+import { STATE_DIR, createStateStore } from './state.js'
 
 const config = loadConfig()
 const { dir: ROOT, port: PORT, host: HOST } = config
@@ -25,9 +26,15 @@ const VENDOR = {
 
 fs.mkdirSync(ROOT, { recursive: true })
 
+const TRASH = '.trash'
+
 const clients = new Set()
 let debounce
-fs.watch(ROOT, { recursive: true }, () => {
+const viewerState = createStateStore(ROOT)
+// Writes to the viewer state and the trash are not outline changes.
+const IGNORED = new Set([STATE_DIR, TRASH])
+fs.watch(ROOT, { recursive: true }, (_, name) => {
+    if (name && IGNORED.has(name.split(/[/\\]/)[0])) return
     clearTimeout(debounce)
     debounce = setTimeout(() => {
         for (const res of clients) res.write('data: change\n\n')
@@ -73,6 +80,27 @@ function pushOutlines() {
     }
 }
 
+/**
+ * GET /api/state/<project>/<file>: the viewer's state of that outline (state.js). PATCH changes single entries, and
+ * every open stream of the outline gets the new state, so two windows agree.
+ */
+async function stateApi(req, res, parts) {
+    const [project, file] = parts
+    if (parts.length !== 2 || !outlineFile(project, file)) return send(res, 404, 'text/plain', 'no such outline')
+    if (req.method === 'GET') return json(res, 200, viewerState.read(project, file))
+    if (req.method !== 'PATCH') return send(res, 405, 'text/plain', 'method not allowed')
+    if (!fromLocalPage(req, PORT, { write: true }) || !/^application\/json\b/.test(req.headers['content-type'] || '')) return send(res, 403, 'text/plain', 'forbidden')
+    let state
+    try {
+        state = viewerState.patch(project, file, await readJson(req))
+    } catch (e) {
+        return json(res, 400, { error: e.message })
+    }
+    const event = `event: state\ndata: ${JSON.stringify(state)}\n\n`
+    for (const stream of outlineStreams.get(JSON.stringify([project, file]))?.keys() ?? []) stream.write(event)
+    json(res, 200, state)
+}
+
 /** GET /api/outline/<project>/<file>[/events]: the outline's JSON, or a stream of it, sent again on each change of that file. */
 function outlineApi(req, res, parts) {
     const [project, file, events] = parts
@@ -82,7 +110,7 @@ function outlineApi(req, res, parts) {
     const data = JSON.stringify(outline)
     if (!events) return send(res, 200, 'application/json', data)
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
-    res.write(`retry: 1000\n\ndata: ${data}\n\n`)
+    res.write(`retry: 1000\n\ndata: ${data}\n\nevent: state\ndata: ${JSON.stringify(viewerState.read(project, file))}\n\n`)
     const key = JSON.stringify([project, file])
     if (!outlineStreams.has(key)) outlineStreams.set(key, new Map())
     outlineStreams.get(key).set(res, data)
@@ -168,8 +196,6 @@ function runningInApp() {
         if (session && terminal && !running.get(session)?.tmux && hasSession(terminal)) running.set(session, { app: `tmux session ${terminal}`, tmux: terminal })
     return running
 }
-
-const TRASH = '.trash'
 
 const TRASH_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5"/></svg>'
 
@@ -336,6 +362,11 @@ const server = http.createServer((req, res) => {
         } catch (e) {
             return send(res, 500, 'text/plain', `render failed: ${e.message}`)
         }
+    }
+
+    if (pathname.startsWith('/api/state/')) {
+        if (!fromLocalPage(req, PORT, { write: false })) return send(res, 403, 'text/plain', 'forbidden')
+        return stateApi(req, res, pathname.slice('/api/state/'.length).split('/'))
     }
 
     if (pathname.startsWith('/api/')) return startApi(req, res, pathname, url)
