@@ -1,16 +1,20 @@
 # Live Discussion Outline
 
-A local web app that mirrors an agent conversation into a numbered, collapsible outline the user can read, approve, and reply to.
+A local web app that mirrors work done with an agent (deciding, planning, coding, acting) into a numbered, collapsible outline the user can read, approve, and reply to.
 
 ## Language
 
-**Discussion**:
-One agent conversation that is being mirrored into an outline.
-_Avoid_: Chat, conversation, thread
+**Outline session**:
+One piece of work done with an agent (deciding, planning, coding or acting), mirrored into an outline. A term for code and docs only: the page shows outline sessions by their titles and never names the thing itself.
+_Avoid_: Discussion, chat, conversation, thread, and a bare "session" (that is the agent's own)
 
 **Outline**:
-The markdown file the agent keeps for a discussion, rendered by the server as the page.
+The markdown file the agent keeps for an outline session, rendered by the server as the page.
 _Avoid_: Map, mirror, notes
+
+**Title**:
+The name of an outline session, kept on the `Title:` line at the top of its outline; the agent writes it, and the user can rename it from the page.
+_Avoid_: Name, heading (a heading is a node)
 
 **Node**:
 A numbered heading in an outline, together with its text (everything under it up to the next heading); nodes nest at most six levels deep.
@@ -37,7 +41,7 @@ The one folder outlines are written to and read from, with one subfolder per pro
 _Avoid_: Dir, output folder
 
 **Outline app**:
-The Mac application that runs the server while it is open and shows the Discussions page and outlines in its own windows.
+The Mac application that runs the server while it is open and shows outline sessions in its own windows.
 _Avoid_: Electron app, desktop app (that is Claude's own app)
 
 **Settings file**:
@@ -45,11 +49,11 @@ The one file that says where the outlines folder is and how to reach the page; t
 _Avoid_: Config, preferences
 
 **Project**:
-The group an outline is filed under: the workspace's name when the discussion started from a workspace, else the working folder's name.
+The group an outline is filed under: the workspace's name when the outline session started from a workspace, else the working folder's name.
 _Avoid_: Repo, folder
 
 **Workspace**:
-A named group of related folders a discussion covers, read from an editor's workspace file (Cursor's `.code-workspace`).
+A named group of related folders an outline session covers, read from an editor's workspace file (Cursor's `.code-workspace`).
 _Avoid_: Project, repo group
 
 **Working folder**:
@@ -57,11 +61,11 @@ The one folder an agent session runs in; for a workspace, the folder that holds 
 _Avoid_: Main repo, cwd
 
 **Session**:
-The agent's own record of a discussion, identified by a session id; it may be running or stopped.
+The agent's own record of its conversation, identified by a session id; it may be running or stopped.
 _Avoid_: Chat, terminal
 
 **Linked session**:
-The session an outline records (its id, and its session terminal if it has one), so the page can show and reach that discussion.
+The session an outline records (its id, and its session terminal if it has one), so the page can show and reach the agent's conversation.
 
 **Session terminal**:
 The terminal the agent's session runs in, shared so that the user's own terminal and the page show the same screen.
@@ -84,11 +88,11 @@ A note the agent writes in its chat reply, tagged `@message`, about something th
 _Avoid_: Notification, reply, response
 
 **Inbox**:
-Where the page lists messages: the last ten for the whole discussion, or those of one node and its descendants.
+Where the page lists messages: the last ten for the whole outline session, or those of one node and its descendants.
 _Avoid_: Mailbox, input box
 
 **Tab**:
-One of the page's top-level views of a discussion: Outline, Markdown, Terminal, or Transcript.
+One of the page's top-level views of an outline session: Outline, Markdown, Terminal, or Transcript.
 _Avoid_: View (that word already means table or bubbles inside the Outline tab), mode
 
 **Terminal tab**:
@@ -96,5 +100,9 @@ The tab that shows the linked session's session terminal live and takes keyboard
 _Avoid_: Chat tab, console
 
 **Transcript tab**:
-The tab that shows the linked session's transcript as rendered messages, with an input box that types a message into the session terminal.
+The tab that shows the linked session's transcript as rendered messages.
 _Avoid_: Chat tab, chat view
+
+**Input box**:
+The box fixed at the bottom of the window that types a message into the linked session's session terminal, whichever tab is shown; it is disabled while the Terminal tab is shown, since that tab takes typing itself.
+_Avoid_: Message box, chat box, composer
