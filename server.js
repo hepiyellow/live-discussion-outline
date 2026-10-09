@@ -400,8 +400,9 @@ const vite = process.argv.includes('--dev')
 
 // A WebSocket that neither the Terminal tab nor Vite's hot reload takes is closed.
 server.on('upgrade', (req, socket) => {
-    const terminal = terminalEnabled && new URL(req.url, 'http://localhost').pathname === '/term'
-    const hotReload = vite && /^vite-/.test(req.headers['sec-websocket-protocol'] || '')
+    const { pathname } = new URL(req.url, 'http://localhost')
+    const terminal = terminalEnabled && pathname === '/term'
+    const hotReload = vite && pathname === '/app/' && /^vite-/.test(req.headers['sec-websocket-protocol'] || '')
     if (!terminal && !hotReload) socket.destroy()
 })
 

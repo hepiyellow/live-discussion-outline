@@ -105,6 +105,7 @@ describe('the app with --dev', () => {
         assert.ok(token)
         assert.equal(await upgrades(server.url, `/app/?token=${token}`, 'vite-hmr'), true)
         assert.equal(await upgrades(server.url, '/elsewhere', 'other'), false)
+        assert.equal(await upgrades(server.url, `/elsewhere?token=${token}`, 'vite-hmr'), false)
     })
 
     test('the app’s modules are compiled on request', async () => {
