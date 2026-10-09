@@ -2,312 +2,185 @@ import MarkdownIt from 'markdown-it'
 
 const md = new MarkdownIt({ html: false, linkify: true })
 
-const STATUS = [
-    ['🔥', 'fire'],
-    ['❓', 'open'],
-    ['✅', 'done'],
-]
-
 const escapeHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-
-function statusOf(text) {
-    if (/(^|\s)@resolved\b/i.test(text)) return 'done'
-    for (const [emoji, name] of STATUS) if (text.trimStart().startsWith(emoji)) return name
-    return ''
-}
-
-let Token
-function html(content) {
-    const t = new Token('html_block', '', 0)
-    t.content = content
-    return t
-}
-
-function detailsOpen(summaryText, extraClass) {
-    const status = statusOf(summaryText)
-    const cls = [extraClass, status && `s-${status}`].filter(Boolean).join(' ')
-    // Done topics start collapsed; the page script restores the reader's own choices.
-    const open = status === 'done' ? '' : ' open'
-    return `<details class="${cls}" data-key="${escapeHtml(summaryText.trim())}"${open}>`
-}
-
 
 /** Chat bubble with an arrow: puts a reference to the item into the message box (pages linked to a session). */
 const INSERT_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 2.5h11a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H7.5L4.5 13.5V11h-2a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/><path d="M5 6.75h5M8.25 5 10 6.75 8.25 8.5"/></svg>'
-/** Play: runs an @action bullet. */
-/** Envelope: the agent's messages (red). */
+/** Envelope: the agent's messages. */
 const MAIL_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5"/><path d="m2 4.5 6 4.5 6-4.5"/></svg>'
+/** Play: runs an @action node. */
 const PLAY_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>'
 const COPY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>'
-const NUM_RE = /^\s*(🔥|❓|✅)?\s*(\d+(?:\.\d+)*)?\s*([\s\S]*)$/
 
-function closeOf(tokens, i) {
-    for (let j = i + 1; j < tokens.length; j++) if (tokens[j].nesting === -1 && tokens[j].level === tokens[i].level) return j
-    return tokens.length - 1
-}
-
-/** A bullet list becomes a table: number | title (bold) | content. Items with a sub-list get a nested table in a child row. */
-function listToHtml(tokens, i, j, radio = false) {
-    const rows = []
-    for (let k = i + 1; k < j; k = closeOf(tokens, k) + 1) {
-        const itemEnd = closeOf(tokens, k)
-        let text = null
-        let extra = ''
-        let kids = ''
-        let kidCount = 0
-        for (let m = k + 1; m < itemEnd; m++) {
-            const t = tokens[m]
-            if (t.type === 'paragraph_open' && text === null) {
-                text = tokens[m + 1].content
-                m += 2
-            } else if (t.type === 'bullet_list_open') {
-                const end = closeOf(tokens, m)
-                kids += listToHtml(tokens, m, end, text !== null && leadTags(text).has('options'))
-                for (let x = m + 1; x < end; x = closeOf(tokens, x) + 1) kidCount++
-                m = end
-            } else {
-                const end = t.nesting === 1 ? closeOf(tokens, m) : m
-                extra += md.renderer.render(tokens.slice(m, end + 1), md.options, {})
-                m = end
-            }
-        }
-        rows.push(rowHtml(text || '', extra, kids, kidCount, radio))
-    }
-    // One <tbody> per row: it is the box a sticky parent row stays inside, until its last child has scrolled past.
-    return `<table class="ol">\n${rows.map(row => `<tbody>${row}</tbody>\n`).join('')}</table>\n`
-}
-
-const CHECK_RE = /^\s*\[([ xXaA])\]\s*/
-const TAG_RE = /^@(recommendation|recommended|options|current|action|ran)\b\s*/i
-const REC_MARK = /@recommendation\.\s*/i
-/** Tags that open a bullet's closing lines, after its prose: `@Summary.`, `@Recommendation.`, `@Action.` (in any order). */
+/**
+ * The outline's nodes are its headings: `# 2. @approved Title` is a topic, `## 2.1 @claim @options Title` a node under
+ * it, down to `######`. A node's text is everything up to the next heading, rendered as ordinary markdown (bullets
+ * included). Status and the other tags sit on the heading line, right after the number.
+ */
+const HEAD_RE = /^(\d+(?:\.\d+)*)\.?(?:\s+|$)([\s\S]*)$/
+const TAG_RE = /^@(approved|claim|options|recommended|current|action|ran)\b\s*/i
+const REC_MARK = /@recommendation\./i
+/** Tags that open a node's closing lines, after its prose: `@Summary.`, `@Recommendation.`, `@Action.` (in any order). */
 const TRAIL_MARK = /@(summary|recommendation|action)\.\s*/gi
+const HAS_TRAIL = /@(summary|recommendation|action)\./i
 
-/** A bullet's text split into its prose and its tagged closing lines. */
-function splitTrail(body) {
-    const parts = { prose: body, summary: '', recommendation: '', action: '' }
-    const marks = [...body.matchAll(TRAIL_MARK)]
+function headNode(text, level) {
+    const m = text.trim().match(HEAD_RE)
+    let rest = m ? m[2] : text.trim()
+    const tags = new Set()
+    for (let t; (t = rest.match(TAG_RE)); rest = rest.slice(t[0].length)) tags.add(t[1].toLowerCase())
+    return { level, num: m ? m[1] : '', title: rest.trim(), tags, body: [], children: [] }
+}
+
+/** The outline as a tree: the root holds any text before the first topic, and the topics. */
+export function parseOutline(source) {
+    const tokens = md.parse(source, {})
+    const root = { level: 0, num: '', title: '', tags: new Set(), body: [], children: [] }
+    const stack = [root]
+    for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i]
+        if (t.type !== 'heading_open') {
+            stack[stack.length - 1].body.push(t)
+            continue
+        }
+        const node = headNode(tokens[i + 1].content, Number(t.tag.slice(1)))
+        while (stack[stack.length - 1].level >= node.level) stack.pop()
+        stack[stack.length - 1].children.push(node)
+        stack.push(node)
+        i += 2
+    }
+    return root
+}
+
+/** open, agent (a claim, or a node carrying a recommendation) or done (the user approved it). */
+function statusOf(node) {
+    if (node.tags.has('approved')) return 'done'
+    if (node.tags.has('claim') || node.tags.has('recommended')) return 'agent'
+    return node.body.some(t => t.type === 'inline' && REC_MARK.test(t.content)) ? 'agent' : 'open'
+}
+
+/** A paragraph's prose and its tagged closing lines. */
+function splitTrail(text) {
+    const parts = { prose: text, summary: '', recommendation: '', action: '' }
+    const marks = [...text.matchAll(TRAIL_MARK)]
     if (!marks.length) return parts
-    parts.prose = body.slice(0, marks[0].index).trim()
+    parts.prose = text.slice(0, marks[0].index).trim()
     marks.forEach((m, i) => {
-        parts[m[1].toLowerCase()] = body.slice(m.index + m[0].length, i + 1 < marks.length ? marks[i + 1].index : body.length).trim()
+        parts[m[1].toLowerCase()] = text.slice(m.index + m[0].length, i + 1 < marks.length ? marks[i + 1].index : text.length).trim()
     })
     return parts
 }
-const CURRENT_RE = /\s*@current\b\s*/i
-const RESOLVED_RE = /\s*@resolved\b\s*/i
-const LEAD_EMOJI_RE = /^\s*(🔥|❓|✅)\s*/
 
-/** Same agent / human / open classification as the table view (for index progress). */
-function fileCheckFromBulletText(text) {
-    const check = text.match(CHECK_RE)
-    if (!check) return null
-    text = text.slice(check[0].length)
-    const [, , , afterNum] = text.match(NUM_RE)
-    const mark = check[1].toLowerCase()
-    let rest = afterNum
-    const tags = new Set()
-    for (let t; (t = rest.match(TAG_RE)); rest = rest.slice(t[0].length)) tags.add(t[1].toLowerCase())
-    const bold = rest.match(/^\*\*([\s\S]+?)\*\*\s*([\s\S]*)$/)
-    const body = bold ? bold[2] : rest
-    const recAt = body.search(REC_MARK)
-    if (mark === 'x') return 'done'
-    if (mark === 'a' || recAt >= 0 || tags.has('recommended')) return 'agent'
-    return 'open'
+const TRAIL_PILLS = {
+    summary: '<span class="pill sum" title="A summary of this node\'s text">Summary</span>',
+    recommendation: '<span class="pill rec" title="A recommendation for this node">💡 Recommendation</span>',
+    action: `<span class="pill act" title="What running this action will do">${PLAY_ICON} Action</span>`,
 }
 
-function countCheckboxProgress(source) {
-    const counts = { total: 0, done: 0, agent: 0, open: 0 }
-    for (const line of source.split('\n')) {
-        const m = line.match(/^\s*[-*]\s+(.*)$/)
-        if (!m) continue
-        const kind = fileCheckFromBulletText(m[1])
-        if (!kind) continue
-        counts.total++
-        counts[kind]++
+/** A node's text as HTML; a paragraph holding closing lines shows each on its own line under its tag. */
+function renderBody(tokens) {
+    let html = ''
+    let run = []
+    const flush = () => {
+        if (run.length) html += md.renderer.render(run, md.options, {})
+        run = []
     }
-    return counts
+    for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i]
+        if (t.type === 'paragraph_open' && t.level === 0 && HAS_TRAIL.test(tokens[i + 1].content)) {
+            flush()
+            const parts = splitTrail(tokens[i + 1].content)
+            if (parts.prose) html += `<p>${md.renderInline(parts.prose)}</p>`
+            for (const kind of ['summary', 'recommendation', 'action'])
+                if (parts[kind]) html += `<div class="rec-line">${TRAIL_PILLS[kind]} ${md.renderInline(parts[kind])}</div>`
+            i += 2
+        } else run.push(t)
+    }
+    flush()
+    return html
 }
 
-/** The `@…` tags right after a bullet's checkbox and number. */
-function leadTags(text) {
-    const check = text.match(CHECK_RE)
-    let rest = text.slice(check ? check[0].length : 0).match(NUM_RE)[3]
-    const tags = new Set()
-    for (let t; (t = rest.match(TAG_RE)); rest = rest.slice(t[0].length)) tags.add(t[1].toLowerCase())
-    return tags
+const plainTitle = title => title.replace(/[*_`]/g, '')
+
+/** Nodes below a topic become a table: number | title | text. Nodes with children get a nested table in a child row. */
+function rowsHtml(nodes, radio = false) {
+    // One <tbody> per row: it is the box a sticky parent row stays inside, until its last child has scrolled past.
+    return `<table class="ol">\n${nodes.map(n => `<tbody>${rowHtml(n, radio)}</tbody>\n`).join('')}</table>\n`
 }
 
-/** radio: this bullet is one option of an `@options` question, so the viewer draws a radio button. */
-function rowHtml(text, extra, kids, kidCount = 0, radio = false) {
-    // `- [ ] 2.1 @options **Title.** content`; legacy `- ✅ 2.1 …` / `- ❓ 2.1 …` still reads as checked / open.
-    const check = text.match(CHECK_RE)
-    if (check) text = text.slice(check[0].length)
-    const [, emoji = '', num = '', afterNum] = text.match(NUM_RE)
-    const mark = check ? check[1].toLowerCase() : emoji === '✅' ? 'x' : ' '
-    let rest = afterNum
-    const tags = new Set()
-    for (let t; (t = rest.match(TAG_RE)); rest = rest.slice(t[0].length)) tags.add(t[1].toLowerCase())
-    const bold = rest.match(/^\*\*([\s\S]+?)\*\*\s*([\s\S]*)$/)
-    const title = bold ? bold[1] : ''
-    const body = bold ? bold[2] : rest
-    const recAt = body.search(REC_MARK)
-    // A recommendation is the agent's own claim, so an open box that carries one shows as agent-approved.
-    const fileCheck = mark === 'x' ? 'done' : mark === 'a' || recAt >= 0 || tags.has('recommended') ? 'agent' : 'open'
+/** radio: this node is one option of an `@options` question, so the viewer draws a radio button. */
+function rowHtml(node, radio) {
+    const { num, title, tags, children } = node
+    const fileCheck = statusOf(node)
+    const kids = children.length ? rowsHtml(children, tags.has('options')) : ''
     const group = Boolean(kids) && tags.has('options')
     const checked = fileCheck === 'done'
-    const { prose, summary, recommendation, action: actionLine } = splitTrail(body)
     const parts = num ? num.split('.') : []
     const chain = parts.map((_, n) => parts.slice(0, n + 1).join('.')).join(' › ')
-    const label = `${num} ${title || rest.slice(0, 60)}`.trim()
-    // Closing lines, each under its own tag: the bottom line, the agent's recommendation, and what running the action does.
-    const trailLine = (text, pill) => (text ? `<span class="rec-line">${pill} ${md.renderInline(text)}</span>` : '')
-    const recLine =
-        trailLine(summary, '<span class="pill sum" title="The bottom line of this bullet">Summary</span>') +
-        trailLine(recommendation, '<span class="pill rec" title="A recommendation for this bullet">💡 Recommendation</span>') +
-        trailLine(actionLine, `<span class="pill act" title="What running this action will do">${PLAY_ICON} Action</span>`)
-    const content = md.renderInline(prose) + recLine + extra
-    const count = kidCount
-        ? `<span class="kc" role="button" tabindex="0" title="${kidCount} direct child${kidCount === 1 ? '' : 'ren'} — click the row to collapse or expand"><span>${kidCount}</span></span>`
+    const label = `${num} ${plainTitle(title)}`.trim()
+    const content = renderBody(node.body)
+    const count = children.length
+        ? `<span class="kc" role="button" tabindex="0" title="${children.length} direct child${children.length === 1 ? '' : 'ren'} — click the row to collapse or expand"><span>${children.length}</span></span>`
         : ''
     const pill = group
         ? '<span class="pill pick" title="Choose exactly one of the options below">◉ Pick one</span>'
         : !kids && tags.has('options')
           ? '<span class="pill opt" title="Options proposed, no recommendation yet">❓ Options</span>'
           : ''
-    const recPill = radio && tags.has('recommended')
-        ? '<span class="pill rec" title="The option the agent recommends">💡 Recommended</span>'
-        : ''
+    const recPill = radio && tags.has('recommended') ? '<span class="pill rec" title="The option the agent recommends">💡 Recommended</span>' : ''
     // An action the agent carries out when the user runs it: a play button until the agent marks it @ran.
     const action = tags.has('action') && !tags.has('ran')
     const ranPill = tags.has('ran') ? '<span class="pill ran" title="The agent carried out this action">Ran</span>' : ''
-    const titleHtml = bold ? `${md.renderInline(title)}${pill ? ' ' + pill : ''}${recPill ? ' ' + recPill : ''}${ranPill ? ' ' + ranPill : ''}` : ''
-    const cls = ['r', emoji === '🔥' && 's-fire', tags.has('current') && 'cur', checked && 's-done', kids && checked && 'closed'].filter(Boolean).join(' ')
+    const titleHtml = [md.renderInline(title), pill, recPill, ranPill].filter(Boolean).join(' ')
+    const cls = ['r', tags.has('current') && 'cur', checked && 's-done', kids && checked && 'closed'].filter(Boolean).join(' ')
     const flags = (action ? ' data-action="1"' : '') + (group ? ' data-group="options"' : '') + (radio ? ' data-opt="1"' : '') + (radio && tags.has('recommended') ? ' data-rec="1"' : '')
     const boxTitle = radio
         ? fileCheck === 'done' ? 'Chosen' : fileCheck === 'agent' ? 'Recommended — click to choose it' : 'Choose this option'
-        : fileCheck === 'done' ? 'Approved' : fileCheck === 'agent' ? 'Agent-approved — click to queue a human approval' : 'Approve this bullet'
+        : fileCheck === 'done' ? 'Approved' : fileCheck === 'agent' ? 'Claim — click to queue your approval' : 'Approve this node'
     return (
         `<tr class="${cls}" data-num="${escapeHtml(num)}" data-ref="${escapeHtml(label)}" data-check="${fileCheck}"${flags}>` +
         `<td class="n" title="${escapeHtml(chain)}"><div class="nh"><span class="tri" aria-hidden="true">${kids ? '▼' : ''}</span><span class="nm">${escapeHtml(parts.length ? parts[parts.length - 1] : '')}</span><span class="nf">${escapeHtml(num)}</span>` +
-        `<button class="ask" title="Open a side discussion on this bullet: copies its path (and any queued approvals)">${COPY_ICON}</button>${count}</div>` +
+        `<button class="ask" title="Open a side discussion on this node: copies its path (and any queued approvals)">${COPY_ICON}</button>${count}</div>` +
         `<div class="s">${action ? `<button class="play" type="button" title="Run this action: ask the agent to do it now">${PLAY_ICON}</button>` : ''}<input type="checkbox" class="ck${radio ? ' radio' : ''}"${fileCheck !== 'open' ? ' checked' : ''} title="${boxTitle}">` +
         `</div></td>` +
         (kids
-            ? `<td class="t">${titleHtml}</td></tr>\n` +
-              `<tr class="kids"><td colspan="3">${content ? `<div class="pc">${content}</div>` : ''}${kids}</td></tr>\n`
+            ? `<td class="t">${titleHtml}</td></tr>\n` + `<tr class="kids"><td colspan="3">${content ? `<div class="pc">${content}</div>` : ''}${kids}</td></tr>\n`
             : `<td class="t">${titleHtml}</td><td class="c">${content}</td></tr>\n`)
     )
 }
 
-/** Headings become nested <details>. Bullets view: list items that own a sub-list become <details>. Table view: bullet lists become number | title | content tables. */
-function collapsibleRule(state) {
-    Token = state.Token
-    const src = state.tokens
-    const out = []
-    const headingStack = []
-    const closeHeadings = level => {
-        while (headingStack.length && headingStack[headingStack.length - 1] >= level) {
-            headingStack.pop()
-            out.push(html('</div></details>\n'))
-        }
-    }
-
-    for (let i = 0; i < src.length; i++) {
-        const tok = src[i]
-
-        if (tok.type === 'heading_open') {
-            const level = Number(tok.tag.slice(1))
-            closeHeadings(level)
-            if (level === 1) {
-                out.push(tok)
-                continue
-            }
-            headingStack.push(level)
-            const inline = src[i + 1]
-            // `@current` marks the bullet under discussion; the page highlights it and its ancestors. A legacy leading 🔥 does the same.
-            const current = CURRENT_RE.test(inline.content)
-            // Tags and legacy status emoji never show in the heading; the page draws their meaning.
-            for (const c of inline.children || []) if (c.type === 'text') c.content = c.content.replace(CURRENT_RE, ' ').replace(RESOLVED_RE, ' ').replace(LEAD_EMOJI_RE, '')
-            const text = inline.content.replace(CURRENT_RE, ' ').replace(/\s+/g, ' ')
-            out.push(html(detailsOpen(text, `h h${level}${current ? ' cur' : ''}`) + '\n'))
-            tok.tag = 'summary'
-            out.push(tok)
-            continue
-        }
-        if (tok.type === 'heading_close') {
-            const level = Number(tok.tag.slice(1))
-            if (level === 1) {
-                out.push(tok)
-                continue
-            }
-            tok.tag = 'summary'
-            out.push(tok)
-            out.push(html('<div class="body">\n'))
-            continue
-        }
-
-        if (state.env.view !== 'table' && tok.type === 'list_item_open') {
-            let depth = 0
-            let hasSubList = false
-            let paraIdx = -1
-            let closeIdx = -1
-            for (let j = i + 1; j < src.length; j++) {
-                const t = src[j]
-                if (t.nesting === 1) depth++
-                if (t.nesting === -1) depth--
-                if (depth < 0) {
-                    closeIdx = j
-                    break
-                }
-                if (depth === 1 && t.type === 'paragraph_open' && paraIdx < 0) paraIdx = j
-                if (t.nesting === 1 && depth === 1 && (t.type === 'bullet_list_open' || t.type === 'ordered_list_open')) hasSubList = true
-            }
-            if (hasSubList && paraIdx >= 0) {
-                const para = src[paraIdx]
-                para.tag = 'summary'
-                para.hidden = false
-                src[paraIdx + 2].tag = 'summary'
-                src[paraIdx + 2].hidden = false
-                para.meta = { wrapDetails: detailsOpen(src[paraIdx + 1].content, 'li') }
-                src[closeIdx].meta = { closeDetails: true }
-            }
-        }
-
-        if (tok.type === 'paragraph_open' && tok.meta && tok.meta.wrapDetails) {
-            out.push(html(tok.meta.wrapDetails + '\n'))
-        }
-        if (tok.type === 'list_item_close' && tok.meta && tok.meta.closeDetails) {
-            out.push(html('</details>\n'))
-        }
-
-        if (state.env.view === 'table' && tok.type === 'bullet_list_open') {
-            const end = closeOf(src, i)
-            out.push(html(listToHtml(src, i, end)))
-            i = end
-            continue
-        }
-        out.push(tok)
-    }
-    closeHeadings(0)
-    state.tokens = out
+/** A topic is a collapsible section; an approved one starts collapsed (the page restores the reader's own choices). */
+function topicHtml(node) {
+    const status = statusOf(node)
+    const head = `${node.num ? `${node.num}. ` : ''}${node.title}`
+    const cls = ['h h2', status === 'done' && 's-done', node.tags.has('current') && 'cur'].filter(Boolean).join(' ')
+    return (
+        `<details class="${cls}" data-key="${escapeHtml(plainTitle(head))}" data-check="${status}"${status === 'done' ? '' : ' open'}>\n` +
+        `<summary>${md.renderInline(head)}</summary>\n<div class="body">\n${renderBody(node.body)}${node.children.length ? rowsHtml(node.children) : ''}</div></details>\n`
+    )
 }
 
-md.core.ruler.push('collapsible', collapsibleRule)
+/** The page's outline: the title, any text before the first topic, then the topics. */
+export function renderMarkdown(source, title = '') {
+    const root = parseOutline(source)
+    return (title ? `<h1>${md.renderInline(title)}</h1>\n` : '') + renderBody(root.body) + root.children.map(topicHtml).join('')
+}
+
+/** Status counts over the nodes below the topics, for the index page's progress bar. */
+function countCheckboxProgress(source) {
+    const counts = { total: 0, done: 0, agent: 0, open: 0 }
+    const walk = node => node.children.forEach(n => {
+        if (n.level > 1) {
+            counts.total++
+            counts[statusOf(n)]++
+        }
+        walk(n)
+    })
+    walk(parseOutline(source))
+    return counts
+}
 
 const mdPlain = new MarkdownIt({ html: false, linkify: true })
-
-/** view: 'bullets' (collapsible nested lists) or 'table' (number | title | content). */
-// Closing-line tags left in a topic heading's own text (bullets handle theirs in rowHtml): each starts a new line with its pill.
-const TRAIL_PILLS = {
-    summary: '<span class="pill sum" title="The bottom line of this topic">Summary</span>',
-    recommendation: '<span class="pill rec" title="A recommendation for this topic">💡 Recommendation</span>',
-    action: `<span class="pill act" title="What running this action will do">${PLAY_ICON} Action</span>`,
-}
-
-export function renderMarkdown(source, view = 'bullets') {
-    return md.render(source, { view }).replace(/(?<=>[^<]*)@(summary|recommendation|action)\.\s*/gi, (_, kind) => `<br>${TRAIL_PILLS[kind.toLowerCase()]} `)
-}
 
 export function renderPlain(source) {
     return mdPlain.render(source)
@@ -392,10 +265,15 @@ body{padding-left:76px}
 .rail .inbox-btn:hover{background:color-mix(in srgb,var(--line) 40%,transparent)}
 .inbox-btn .n,.msgs .n{min-width:14px;padding:0 4px;border-radius:8px;background:#d1242f;color:#fff;font-size:10px;line-height:14px;text-align:center}
 .inbox-btn .n:empty,.msgs .n:empty{display:none}
-.msgs{position:absolute;right:40px;top:8px;display:inline-flex;align-items:center;gap:3px;padding:2px 4px;border:0;border-radius:6px;background:none;color:#d1242f;cursor:pointer;z-index:2}
-.msgs.seen{color:var(--muted)}
-.msgs:hover{background:color-mix(in srgb,#d1242f 16%,transparent)}
-tr.r.parent .msgs,details.h>summary .msgs{top:50%;transform:translateY(-50%);right:64px}
+/* A bullet's own envelope is muted (the left pane's stays red); on parent rows and topic headings it sits in the row's
+   flow just before the roll-up icons, so it never covers them. */
+.msgs{position:absolute;right:40px;top:8px;display:inline-flex;align-items:center;gap:3px;padding:2px 4px;border:0;border-radius:6px;background:none;color:var(--muted);cursor:pointer;z-index:2}
+.msgs .n{background:var(--muted);color:var(--bg)}
+.msgs:hover{background:color-mix(in srgb,var(--fg) 12%,transparent)}
+tr.r.parent .msgs,details.h>summary .msgs{position:static;flex:none}
+body.bubbles table.ol tr.r.parent .msgs{grid-area:msg;margin:0 8px 0 0}
+details.h>summary .msgs{margin:0 8px 0 auto}
+details.h>summary .msgs+.cks-extra{margin-left:0}
 .inbox{position:fixed;z-index:60;width:min(440px,calc(100vw - 100px));max-height:60vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:14px}
 .inbox[hidden]{display:none}
 .inbox h4{margin:0;padding:10px 14px 6px;font-size:13px;color:var(--muted);font-weight:600}
@@ -416,6 +294,7 @@ main{max-width:860px;margin:0 auto;padding:16px 20px 80px}
 .bar .seg{display:inline-flex;padding:0;overflow:hidden}
 .bar .seg span{padding:4px 10px;color:var(--muted);display:inline-flex;align-items:center}
 .bar button.icon{display:inline-flex;align-items:center;padding:3px 6px}
+.bar button.icon:disabled{opacity:.35;cursor:default}
 .bar .seg span+span{border-left:1px solid var(--line)}
 .bar .seg span.on{color:var(--fg);font-weight:700;box-shadow:inset 0 -2px 0 var(--fg)}
 /* Browser-style tabs: they sit on the bar's bottom border, and the selected one opens into the page below. */
@@ -483,7 +362,9 @@ table.ol td.n{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular
 table.ol .nh{display:flex;align-items:center;gap:2px}
 table.ol .s{display:flex;align-items:center;margin-top:3px;min-height:14px}
 table.ol td.t{font-weight:600;padding-left:4px}
-table.ol tr.kids>td{border-bottom:0;padding:0 0 4px 10px}
+table.ol tr.kids>td{border-bottom:0;padding:0 0 4px 20px}
+/* Nodes right under a topic get the same indent as nested ones, so a diff button has room left of them. */
+body.bubbles .body>table.ol{padding-left:20px}
 table.ol table.ol{border-left:2px solid var(--line)}
 table.ol tr.parent{cursor:pointer}
 table.ol .kc{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;margin-left:2px;border:1.5px solid var(--muted);border-radius:50%;color:var(--muted);vertical-align:middle;user-select:none}
@@ -510,7 +391,7 @@ body.bubbles table.ol tr.r:not(.parent).s-done>td.c{color:var(--done)}
 table.ol .nf{display:none}
 body.bubbles table.ol table.ol{border-left:0}
 body.bubbles .body{border-left:0}
-body.bubbles table.ol tr.r.parent{grid-template-columns:28px 22px auto minmax(0,max-content) auto minmax(0,1fr) auto auto;grid-template-areas:"ck tri num title ask . kc tags";align-items:center;border-bottom:1px solid var(--line);margin:0}
+body.bubbles table.ol tr.r.parent{grid-template-columns:28px 22px auto minmax(0,max-content) auto minmax(0,1fr) auto auto auto;grid-template-areas:"ck tri num title ask . msg kc tags";align-items:center;border-bottom:1px solid var(--line);margin:0}
 body.bubbles table.ol tr.r.parent>td.n,body.bubbles table.ol tr.r.parent .nh,body.bubbles table.ol tr.r.parent .s{display:contents}
 body.bubbles table.ol tr.r.parent>td{background:none;padding-top:6px;padding-bottom:6px}
 body.bubbles table.ol tr.r.parent .ck:not(.tagico){grid-area:ck;justify-self:start;margin:0;width:16px;height:16px}
@@ -559,20 +440,27 @@ table.ol .pill.sum{color:var(--fg);background:color-mix(in srgb,var(--fg) 12%,tr
 table.ol .pill.act{color:#d1242f;background:color-mix(in srgb,#d1242f 14%,transparent)}
 table.ol .pill.act svg{width:9px;height:9px;vertical-align:-1px}
 table.ol .pill.rec{color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
-table.ol .rec-line{display:block;margin-top:6px}
-table.ol .rec-line .pill{margin:0 6px 0 0}
+.rec-line{display:block;margin-top:6px}
+.rec-line .pill{margin:0 6px 0 0}
+/* A node's text is block markdown (paragraphs, bullets, code): no outer margins inside its cell. */
+table.ol :is(td.c,.pc)>:first-child{margin-top:0}
+table.ol :is(td.c,.pc)>:last-child{margin-bottom:0}
+table.ol :is(td.c,.pc) :is(p,ul,ol,pre){margin:.4em 0}
+table.ol :is(td.c,.pc) :is(ul,ol){padding-left:1.4em}
 table.ol .pill.opt{color:#d1242f;background:color-mix(in srgb,#d1242f 14%,transparent)}
-table.ol tr.r .play{position:absolute;left:-16px;top:10px;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:none;color:#d1242f;cursor:pointer}
+table.ol tr.r .play{position:absolute;left:-20px;top:10px;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:none;color:#d1242f;cursor:pointer}
 table.ol tr.r.parent .play{top:50%;transform:translateY(-50%)}
 table.ol tr.r .play:hover{background:color-mix(in srgb,#d1242f 18%,transparent)}
 table.ol tr.r .play.sent{color:var(--muted);cursor:default;animation:playwait 1.4s ease-in-out infinite}
 @keyframes playwait{50%{opacity:.35}}
 table.ol tr.r[data-action]{position:relative}
 table.ol tr.r.parent[data-action]{position:sticky}
-table.ol tr.r .env{position:absolute;left:-22px;top:8px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--accent);cursor:pointer}
-table.ol tr.r .env svg{width:15px;height:15px}
+/* The diff button is the checkbox's height and sits in the 20px indent of nested rows: from the parent's left edge to
+   4px before the row's own edge, so a sticky header above covers it whole or not at all. */
+table.ol tr.r .env{position:absolute;left:-20px;top:12px;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;border-radius:50%;background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--accent);cursor:pointer}
+table.ol tr.r .env svg{width:11px;height:11px}
 table.ol tr.r.parent .env{top:50%;transform:translateY(-50%)}
-table.ol tr.r[data-action] .env{left:-42px}
+table.ol tr.r[data-action] .env{left:-40px}
 table.ol tr.r .env.pulse{animation:envpulse .5s ease-in-out 3}
 @keyframes envpulse{50%{transform:scale(1.5);background:color-mix(in srgb,var(--accent) 25%,transparent)}}
 table.ol tr.r.parent .env.pulse{animation:envpulse-p .5s ease-in-out 3}
@@ -673,7 +561,7 @@ body:has(#composer):not(.show-term) #status{bottom:var(--composer-h,60px)}
 summary:hover .ask,li:hover>.ask,.ask:focus{opacity:1}
 </style></head><body${tableHtml === undefined ? '' : ' class="has-table bubbles"'}>
 <nav class="rail"><a href="/" title="All outlines"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Discussions</a>${QUEUE}${session && !waitFor ? `<button id="inbox-open" class="inbox-btn" type="button" title="Messages from the agent" hidden>${MAIL_ICON}<span class="n"></span></button>` : ''}</nav>${session && !waitFor ? '<div id="inbox" class="inbox" role="dialog" aria-label="Messages" hidden></div>' : ''}
-<div class="bar">${plainHtml === undefined ? '' : TABS}<button id="expand" class="outline-only icon" title="Expand all" aria-label="Expand all"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-1"/><rect x="2" y="5" width="9" height="9" rx="1"/><path d="M4.5 9.5h4M6.5 7.5v4"/></svg></button><button id="collapse" class="outline-only icon" title="Collapse all" aria-label="Collapse all"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-1"/><rect x="2" y="5" width="9" height="9" rx="1"/><path d="M4.5 9.5h4"/></svg></button><button id="fire" class="outline-only icon" title="Jump to the current bullet" aria-label="Jump to the current bullet"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg></button>${PROJECT}${plainHtml === undefined ? '' : MODEL_PICKER}</div>
+<div class="bar">${plainHtml === undefined ? '' : TABS}<button id="expand" class="outline-only icon" title="Expand all" aria-label="Expand all"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-1"/><rect x="2" y="5" width="9" height="9" rx="1"/><path d="M4.5 9.5h4M6.5 7.5v4"/></svg></button><button id="collapse" class="outline-only icon" title="Collapse all" aria-label="Collapse all"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4V3a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-1"/><rect x="2" y="5" width="9" height="9" rx="1"/><path d="M4.5 9.5h4"/></svg></button><button id="fire" class="outline-only icon" title="Jump to the current node" aria-label="Jump to the current node"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg></button>${tableHtml === undefined ? '' : '<button id="undo" class="outline-only icon" type="button" disabled aria-label="Undo your last approval"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3 2.5 6l3 3"/><path d="M2.5 6h7a4 4 0 0 1 0 8H7"/></svg></button>'}${PROJECT}${plainHtml === undefined ? '' : MODEL_PICKER}</div>
 ${bodyHtml === undefined ? '' : `<main id="outline">${bodyHtml}</main>`}${tableHtml === undefined ? '' : `<main id="outline-table">${tableHtml}</main>`}${plainHtml === undefined ? '' : `<main id="plain">${plainHtml}</main>`}${plainHtml === undefined ? '' : terminalTab ? '<div id="term"></div>' : `<main id="term" class="off"><p class="note">${TERMINAL_OFF}</p></main>`}${plainHtml === undefined || waitFor ? '' : session ? `<main id="transcript"><div class="ttitle" id="ttitle">Untitled</div><div id="tlog"><p class="note">Loading the transcript…</p></div></main>` : `<main id="transcript"><p class="note">${TRANSCRIPT_OFF}</p></main>`}${plainHtml === undefined || waitFor || !terminal ? '' : `<form id="composer"><div id="cmds" class="cmds" role="listbox" aria-label="Slash commands" hidden></div><span class="spin" id="spin" role="status" title="The agent is working"></span><div class="box"><div class="chips" id="chips"></div><textarea id="msg" rows="1" placeholder="Message the session · Enter sends, Shift+Enter adds a line" title="Typed into tmux ${escapeHtml(terminal)}"></textarea></div><button class="send" title="Send" aria-label="Send"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button></form>`}<div id="status" hidden></div>
 <script>
 const KEY=${JSON.stringify(storageKey)};
@@ -711,11 +599,13 @@ const rowKey=r=>'row:'+(r.dataset.num||r.dataset.ref);
 const lsGet=k=>{try{return JSON.parse(localStorage.getItem(KEY+k)||'{}')}catch(e){return {}}};
 const lsSet=(k,v)=>{try{localStorage.setItem(KEY+k,JSON.stringify(v))}catch(e){}};
 const chk=lsGet(':chk'),sent=lsGet(':sent');   // chk: viewer overrides of the file's checkbox; sent: overrides already copied
+const backTo=lsGet(':backto');   // nodes an undo reopens that were claims: sent as "Back to claim" instead of "Reopened"
 const rows=[...document.querySelectorAll('tr.r')];
 // Unread: a bullet the agent rewrote since you last saw it keeps showing what you saw, with an envelope left of its
 // checkbox, so new answers don't push the page around. Opening it (the envelope, or its item in the left pane) animates
 // the bubble to the new text. What you have seen is kept per outline; the first visit counts everything as seen.
-const SEEN=KEY+':seen',SEP='\\u0001';
+// ':seen2': the nodes-as-headings format renders differently, so what was seen in the old format is dropped.
+const SEEN=KEY+':seen2',SEP='\\u0001';try{localStorage.removeItem(KEY+':seen')}catch(e){}
 let seen=null;try{seen=JSON.parse(localStorage.getItem(SEEN)||'null')}catch(e){}
 const saveSeen=()=>{try{localStorage.setItem(SEEN,JSON.stringify(seen))}catch(e){}};
 const cellsOf=r=>{const k=r.nextElementSibling;return [r.querySelector('td.t'),r.querySelector('td.c')||(k&&k.classList.contains('kids')?k.querySelector(':scope>td>.pc'):null)].filter(Boolean)};
@@ -733,7 +623,7 @@ const effective=r=>{const k=rowKey(r);return k in chk?chk[k]:fileDone(r)};
 const childRows=r=>{const n=r.nextElementSibling;return n&&n.classList.contains('kids')?[...n.querySelectorAll(':scope > td > table.ol > tbody > tr.r')]:[]};
 const descendants=r=>childRows(r).flatMap(k=>[k,...descendants(k)]);
 const KIND_ORDER=['open','agent','pending','done'];
-const KIND_TITLE={open:'Open',agent:'Agent-approved',pending:'Pending human approval',done:'Approved'};
+const KIND_TITLE={open:'Open',agent:'Claim',pending:'Pending human approval',done:'Approved'};
 const ownKind=r=>{const file=fileCheck(r),on=effective(r);
   if(on&&file!=='done')return 'pending';if(file==='done'&&on)return 'done';if(file==='agent')return 'agent';return 'open'};
 const isGroup=r=>r.dataset.group==='options';
@@ -744,7 +634,7 @@ const kindsOf=r=>{const kids=childRows(r);if(!kids.length)return [ownKind(r)];
   return KIND_ORDER.filter(k=>seen[k])};
 // An approval or choice already sent but not yet recorded in the file, then undone, must be sent as undone too.
 const retracted=new Set();
-const setWant=(r,want)=>{const key=rowKey(r);
+const setWant=(r,want)=>{const key=rowKey(r);delete backTo[key];
   if(key in sent&&sent[key]!==want&&want===fileDone(r))retracted.add(r);else retracted.delete(r);
   if(want===fileDone(r))delete chk[key];else chk[key]=want;delete sent[key]};
 const choose=r=>{setWant(r,true);childRows(parentRow(r)).forEach(s=>{if(s!==r)setWant(s,false)})};
@@ -757,7 +647,7 @@ const paint=r=>{const box=r.querySelector('input.ck');const on=effective(r),file
   box.classList.toggle('pending',pendingOn);box.classList.toggle('agent',file==='agent'&&!outvoted&&!pendingOn&&!pendingOff);
   box.title=opt
     ?(pendingOn?'Pending choice — filled once the agent records it':pendingOff?'Pending un-choose — cleared once the agent records it':file==='agent'?'Recommended — click to choose it':on?'Chosen':'Choose this option')
-    :(pendingOn?'Pending approval — filled once the agent records it':pendingOff?'Pending reopen — cleared once the agent records it':file==='agent'?'Agent-approved — click to queue a human approval':on?'Approved':'Approve this bullet');
+    :(pendingOn?'Pending approval — filled once the agent records it':pendingOff?'Pending reopen — cleared once the agent records it':file==='agent'?'Claim — click to queue your approval':on?'Approved':'Approve this node');
   const kids=childRows(r),kinds=kindsOf(r);
   let extra=r.querySelector('.cks-extra');
   if(!extra){extra=document.createElement('span');extra.className='cks-extra';box.after(extra);    }
@@ -776,14 +666,15 @@ const heads=[...document.querySelectorAll('#outline-table details.h')].map(d=>{
   const extra=document.createElement('span');extra.className='cks-extra';
   sm.prepend(box);sm.querySelector('.ask')?sm.querySelector('.ask').before(extra):sm.append(extra);
   const top=()=>[...d.querySelectorAll('tr.r')].filter(r=>!parentRow(r));
-  box.onclick=e=>{e.preventDefault();e.stopPropagation();const want=!(box.dataset.agg==='done'||box.dataset.agg==='pending');
+  box.onclick=e=>{e.preventDefault();e.stopPropagation();const before=snapAll(),was=[isComplete(d)],want=!(box.dataset.agg==='done'||box.dataset.agg==='pending');
     rows.filter(r=>d.contains(r)&&!r.dataset.opt&&!isGroup(r)).forEach(r=>setWant(r,want));
-    lsSet(':chk',chk);lsSet(':sent',sent);paintTree();setTimeout(paintTree,0);renderStatus();
+    lsSet(':chk',chk);lsSet(':sent',sent);paintTree();setTimeout(paintTree,0);renderStatus();collapseCompleted(record(before),[d],was);
     approvalsChanged(box,want)};
   return {d,box,extra,top}});
 const paintHeads=()=>heads.forEach(({d,box,extra,top})=>{
   const seen={};top().forEach(r=>kindsOf(r).forEach(k=>{seen[k]=1}));
-  const kinds=KIND_ORDER.filter(k=>seen[k]),agg=kinds.length?aggOf(kinds):'open',mixed=agg==='mixed';
+  // A topic with no nodes under it shows its own status from the file.
+  const kinds=KIND_ORDER.filter(k=>seen[k]),agg=kinds.length?aggOf(kinds):d.dataset.check||'open',mixed=agg==='mixed';
   box.dataset.agg=agg;box.checked=agg==='agent'||agg==='pending'||agg==='done';
   box.classList.toggle('agent',agg==='agent');box.classList.toggle('pending',agg==='pending');box.classList.toggle('mixed',mixed);
   box.title=mixed?'Mixed: '+kinds.map(k=>KIND_TITLE[k].toLowerCase()).join(', ')+' — click to approve all':KIND_TITLE[agg];
@@ -793,9 +684,10 @@ const paintTree=()=>{rows.forEach(paint);paintHeads()};
 const pending=()=>rows.filter(r=>{const k=rowKey(r);return k in chk&&chk[k]!==fileDone(r)&&sent[k]!==chk[k]});
 const approvalRows=()=>[...new Set([...pending(),...retracted])];
 const approvalText=(p=approvalRows())=>{const f=(v,opt)=>p.filter(r=>effective(r)===v&&(opt===undefined||!!r.dataset.opt===opt)).map(r=>r.dataset.ref).join('; ');
-  const a=f(true,false),c=f(true,true),o=f(false);
+  const a=f(true,false),c=f(true,true),off=p.filter(r=>!effective(r)),refs=l=>l.map(r=>r.dataset.ref).join('; ');
+  const o=refs(off.filter(r=>!backTo[rowKey(r)])),b=refs(off.filter(r=>backTo[rowKey(r)]));
   const line=(lead,refs)=>refs&&lead+refs.replace(/\\.$/,'')+'.';
-  return [line('Approved in the outline: ',a),line('Chosen in the outline: ',c),line('Reopened in the outline: ',o)].filter(Boolean).join('\\n')};
+  return [line('Approved in the outline: ',a),line('Chosen in the outline: ',c),line('Reopened in the outline: ',o),line('Back to claim in the outline: ',b)].filter(Boolean).join('\\n')};
 const sbar=document.getElementById('status');
 const renderStatus=()=>{paintQueue();const p=LINKED?[]:pending();sbar.hidden=!p.length;sbar.innerHTML='';if(!p.length)return;
   p.forEach(r=>{const t=document.createElement('span');const on=effective(r);t.className='tag'+(on?'':' reopen');t.textContent=(on?(r.dataset.opt?'◉ ':'✓ '):'↺ ')+r.dataset.ref;
@@ -833,13 +725,13 @@ rows.forEach(r=>{
     r.querySelector('.kc').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();flip()}}}
   const box=r.querySelector('input.ck');
   paint(r);
-  box.onchange=()=>{const file=fileCheck(r);let want=box.checked||(file==='agent'&&!(rowKey(r) in chk));
+  box.onchange=()=>{const before=snapAll(),chain=chainOf(r),was=chain.map(isComplete),file=fileCheck(r);let want=box.checked||(file==='agent'&&!(rowKey(r) in chk));
     if(isGroup(r)){const kids=childRows(r),k=kindsOf(r)[0],pick=kids.find(c=>c.dataset.rec);
       want=k!=='pending'&&k!=='done'&&!!pick;
       if(want)choose(pick);else if(k==='pending'||k==='done')kids.forEach(c=>setWant(c,false))}
     else if(r.dataset.opt){if(want)choose(r);else setWant(r,false)}
     else [r,...descendants(r)].forEach(node=>setWant(node,want));
-    lsSet(':chk',chk);lsSet(':sent',sent);paintTree();renderStatus();
+    lsSet(':chk',chk);lsSet(':sent',sent);paintTree();renderStatus();collapseCompleted(record(before),chain,was);
     approvalsChanged(box,want)};
   const b=r.querySelector('.ask');
   b.onclick=e=>{e.preventDefault();e.stopPropagation();
@@ -848,6 +740,65 @@ rows.forEach(r=>{
     try{navigator.clipboard.writeText((ap?ap+'\\n':'')+'Re: outline "'+DOC_TITLE+'" › '+headPath(r)+r.dataset.ref+' — ')}catch(err){}
     pending().forEach(x=>{sent[rowKey(x)]=effective(x)});lsSet(':sent',sent);renderStatus();
     toast(b);}});
+// Undo: each click that changes approvals (a node's or a topic's checkbox, an option pick) is one step, holding every
+// node it changed as it was before: its override and its status in the file. Undoing puts each node back, through the
+// same path as a click, so what was already sent is sent back (Reopened, Chosen, or Back to claim for a former claim).
+// The steps are kept per outline for this tab, so the reloads the agent's edits cause do not lose them.
+const UNDO=KEY+':undo';
+let undoSteps=[];try{undoSteps=JSON.parse(sessionStorage.getItem(UNDO)||'[]')}catch(e){}
+const undoBtn=document.getElementById('undo');
+const paintUndo=()=>{if(!undoBtn)return;undoBtn.disabled=!undoSteps.length;
+  undoBtn.title=undoSteps.length?'Undo your last approval ('+undoSteps.length+' step'+(undoSteps.length===1?'':'s')+', ⌘Z)':'Nothing to undo'};
+const saveUndo=()=>{undoSteps=undoSteps.slice(-50);try{sessionStorage.setItem(UNDO,JSON.stringify(undoSteps))}catch(e){};paintUndo()};
+const snapAll=()=>rows.map(r=>{const k=rowKey(r);return {k,has:k in chk,v:!!chk[k],file:fileCheck(r)}});
+const record=before=>{const nodes=before.filter(s=>(s.k in chk)!==s.has||(s.has&&chk[s.k]!==s.v));if(!nodes.length)return null;
+  const step={nodes,collapsed:[]};undoSteps.push(step);saveUndo();return step};
+function undoLast(){const step=undoSteps.pop();saveUndo();if(!step)return;
+  (step.collapsed||[]).forEach(expandAgain);
+  (Array.isArray(step)?step:step.nodes).forEach(s=>{const r=rows.find(x=>rowKey(x)===s.k);if(!r)return;
+    const want=s.has?s.v:s.file==='done';setWant(r,want);
+    // A former claim that has to be sent back goes as "Back to claim"; one never sent just drops its override.
+    if(!want&&s.file==='agent')backTo[s.k]=1});
+  lsSet(':chk',chk);lsSet(':sent',sent);lsSet(':backto',backTo);paintTree();renderStatus();
+  if(LINKED)approvalsChanged(undoBtn,false);notify('Undone')}
+if(undoBtn)undoBtn.onclick=undoLast;
+addEventListener('keydown',e=>{if(!(e.metaKey||e.ctrlKey)||e.shiftKey||e.altKey||e.key.toLowerCase()!=='z')return;
+  if(e.target.closest&&e.target.closest('input:not([type=checkbox]),textarea,[contenteditable],.xterm'))return;
+  if(!rows.length)return;e.preventDefault();undoLast()});
+// Completing a parent collapses it: when a click leaves every descendant approved (recorded or pending), or picks an
+// option, that node closes over half a second while the page scrolls it to the top, just below the sticky headers of
+// its ancestors. If the click completes several levels at once, the outermost one animates and the inner ones close
+// with it. The click's undo step lists what closed, so undoing opens it again.
+const chainOf=r=>{const c=[];for(let x=r;x;x=parentRow(x))if(childRows(x).length)c.push(x);const d=r.closest('details.h');if(d)c.push(d);return c};
+const allApproved=kinds=>kinds.length>0&&kinds.every(k=>k==='pending'||k==='done');
+const isComplete=n=>{if(n.tagName!=='DETAILS')return allApproved(kindsOf(n));
+  const top=[...n.querySelectorAll('tr.r')].filter(r=>!parentRow(r));return top.length>0&&top.every(r=>allApproved(kindsOf(r)))};
+const isOpen=n=>n.tagName==='DETAILS'?n.open:!n.classList.contains('closed');
+const nodeId=n=>n.tagName==='DETAILS'?{topic:path(n)}:{row:rowKey(n)};
+const closeNode=n=>{if(n.tagName==='DETAILS'){n.open=false;return}
+  n.classList.add('closed');state[rowKey(n)]=false;try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}};
+function expandAgain(id){if(id.topic){const d=[...document.querySelectorAll('details.h')].find(x=>path(x)===id.topic);if(d)d.open=true;return}
+  const r=rows.find(x=>rowKey(x)===id.row);if(!r)return;r.classList.remove('closed');state[id.row]=true;try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+function collapseCompleted(step,chain,was){const done=chain.filter((n,i)=>!was[i]&&isComplete(n)&&isOpen(n));if(!done.length)return;
+  if(step)step.collapsed=done.map(nodeId);saveUndo();
+  const outer=done[done.length-1];done.slice(0,-1).forEach(closeNode);
+  // The node's own place in the page: a stuck header reports where it sticks, so measure its box (row group or topic).
+  const head=outer.tagName==='DETAILS'?outer.querySelector(':scope>summary'):outer,box=outer.tagName==='DETAILS'?outer:outer.parentElement;
+  const body=outer.tagName==='DETAILS'?outer.querySelector(':scope>.body'):outer.nextElementSibling;
+  const from=scrollY,h0=body.offsetHeight,want=Math.max(0,box.getBoundingClientRect().top+from-stackAbove(head)-4);
+  // An item near the end can't reach the top once its children are gone, so a spacer under the outline makes room.
+  const room=want-(document.documentElement.scrollHeight-h0-innerHeight);
+  if(room>0){let sp=document.getElementById('scroll-room');if(!sp){sp=document.createElement('div');sp.id='scroll-room';document.body.appendChild(sp)}
+    sp.style.height=(sp.offsetHeight+room)+'px'}
+  body.style.overflow='hidden';body.style.height=h0+'px';const start=performance.now();
+  const step2=now=>{const t=Math.min(1,(now-start)/500),e=t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+    body.style.height=(h0*(1-e))+'px';scrollTo(0,from+(want-from)*e);
+    if(t<1)return requestAnimationFrame(step2);
+    closeNode(outer);body.style.height='';body.style.overflow='';scrollTo(0,want);queueStuck()};
+  requestAnimationFrame(step2)}
+// An override the file has caught up with (the agent recorded it) is dropped, so the file's own status shows again.
+rows.forEach(r=>{const k=rowKey(r);if(k in chk&&chk[k]===fileDone(r)){delete chk[k];delete sent[k];delete backTo[k]}});
+lsSet(':chk',chk);lsSet(':sent',sent);lsSet(':backto',backTo);paintTree();paintUndo();
 // Queue: an item leaves the left pane as soon as its bullet is approved or chosen here (the agent drops it from the
 // file later); clicking one shows its node in the Outline tab.
 // Scrolls el to the top, just below the top bar and the sticky headers of its ancestors (topic headings, parent rows),
@@ -935,7 +886,7 @@ if(unread.size){let list=document.querySelector('.rail .queue');
   if(!list){document.querySelector('.rail').insertAdjacentHTML('beforeend','<hr class="rail-sep"><ol class="queue" aria-label="Your queue"></ol>');list=document.querySelector('.rail .queue')}
   // Unread items come first in the left pane, in outline order.
   [...unread.keys()].reverse().forEach(r=>{const li=document.createElement('li'),q=document.createElement('button');
-    q.type='button';q.className='q q-unread';q.dataset.key=rowKey(r);q.title='Changed since you read it: '+r.dataset.ref+' (shows the bullet; click its diff button to see the change)';q.innerHTML=DIFF_ICON+'<span></span>';q.lastChild.textContent=r.dataset.num;
+    q.type='button';q.className='q q-unread';q.dataset.key=rowKey(r);q.title='Changed since you read it: '+r.dataset.ref+' (shows the node; click its diff button to see the change)';q.innerHTML=DIFF_ICON+'<span></span>';q.lastChild.textContent=r.dataset.num;
     q.onclick=()=>{if(tab!=='outline')setTab('outline');
       for(let e=r.parentElement;e;e=e.parentElement){if(e.tagName==='DETAILS')e.open=true;if(e.matches&&e.matches('tr.kids'))e.previousElementSibling.classList.remove('closed')}
       // Only shows the bullet: the change opens when you click its diff button, which pulses to point it out.
@@ -957,7 +908,7 @@ function showInbox(list,anchor,heading){inboxBox.replaceChildren();const h=docum
   if(!list.length){const p=document.createElement('div');p.className='empty';p.textContent='No messages yet.';inboxBox.append(p)}
   [...list].reverse().forEach(m=>{const el=document.createElement('div');el.className='msg'+(mseen.has(m.id)?'':' unseen');
     const meta=document.createElement('div');meta.className='meta';
-    if(m.num){const a=document.createElement('a');a.textContent=m.num;a.title='Show this bullet';a.onclick=()=>{inboxBox.hidden=true;revealNum(m.num)};meta.append(a)}
+    if(m.num){const a=document.createElement('a');a.textContent=m.num;a.title='Show this node';a.onclick=()=>{inboxBox.hidden=true;revealNum(m.num)};meta.append(a)}
     const t=document.createElement('span');t.textContent=new Date(m.at).toLocaleString([], {hour:'2-digit',minute:'2-digit',month:'short',day:'numeric'});meta.append(t);
     const body=document.createElement('div');body.innerHTML=m.html;el.append(meta,body);inboxBox.append(el)});
   inboxBox.hidden=false;const r=anchor.getBoundingClientRect(),w=inboxBox.offsetWidth,hh=inboxBox.offsetHeight;
@@ -973,7 +924,8 @@ function paintInbox(){if(!inboxBtn)return;
   nodes.forEach(([node,num,host])=>{if(!num||!host)return;const mine=msgs.filter(m=>m.num&&under(num,m));if(!mine.length)return;
     const fresh=mine.filter(m=>!mseen.has(m.id)).length,b=document.createElement('button');b.type='button';b.className='msgs'+(fresh?'':' seen');
     b.title=mine.length+' message'+(mine.length===1?'':'s')+' about '+num+(fresh?', '+fresh+' unseen':'');b.innerHTML=MAIL_ICON+'<span class="n"></span>';b.lastChild.textContent=fresh||'';
-    b.onclick=e=>{e.preventDefault();e.stopPropagation();showInbox(mine,b,'Messages about '+num)};host.append(b)})}
+    b.onclick=e=>{e.preventDefault();e.stopPropagation();showInbox(mine,b,'Messages about '+num)};
+    const icons=host.tagName==='SUMMARY'&&host.querySelector(':scope>.cks-extra');if(icons)icons.before(b);else host.append(b)})}
 if(inboxBtn){inboxBtn.onclick=e=>{e.stopPropagation();if(!inboxBox.hidden)return inboxBox.hidden=true;showInbox(msgs.slice(-10),inboxBtn,'Messages from the agent')};
   addEventListener('click',e=>{if(!inboxBox.hidden&&!inboxBox.contains(e.target))inboxBox.hidden=true});
   addEventListener('keydown',e=>{if(e.key==='Escape')inboxBox.hidden=true});

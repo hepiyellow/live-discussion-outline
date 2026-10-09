@@ -12,6 +12,26 @@ _Avoid_: Chat, conversation, thread
 The markdown file the agent keeps for a discussion, rendered by the server as the page.
 _Avoid_: Map, mirror, notes
 
+**Node**:
+A numbered heading in an outline, together with its text (everything under it up to the next heading); nodes nest at most six levels deep.
+_Avoid_: Bullet, item, row, point
+
+**Topic**:
+A top-level node.
+_Avoid_: Section, point
+
+**Bullet**:
+A plain list item inside a node's text; it has no number and no status.
+_Avoid_: Node, item
+
+**Status**:
+Where a node stands: **open** (no tag), a **claim** (the agent states it as settled or certain), or **approved** (the user approved it). A node whose descendants all share a status takes that status too.
+_Avoid_: Checkbox, resolved, agent-approved, done
+
+**Summary**:
+One sentence closing a long node that sums up that node's own text. It never answers a question; an answer changes the node's text or adds child nodes.
+_Avoid_: Answer, conclusion, bottom line
+
 **Project**:
 The group an outline is filed under: the workspace's name when the discussion started from a workspace, else the working folder's name.
 _Avoid_: Repo, folder
@@ -48,11 +68,11 @@ An outline item proposing something to do in the session itself (run tests, chan
 _Avoid_: Play task, step, job
 
 **Message**:
-A note the agent writes in its chat reply, tagged `@message`, about something the outline does not hold (the outcome of a request made in chat, a status, a warning); it may name the bullet it relates to.
+A note the agent writes in its chat reply, tagged `@message`, about something the outline does not hold (the outcome of a request made in chat, a status, a warning); it may name the node it relates to.
 _Avoid_: Notification, reply, response
 
 **Inbox**:
-Where the page lists messages: the last ten for the whole discussion, or those of one bullet and its descendants.
+Where the page lists messages: the last ten for the whole discussion, or those of one node and its descendants.
 _Avoid_: Mailbox, input box
 
 **Tab**:

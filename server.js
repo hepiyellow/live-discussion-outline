@@ -45,17 +45,19 @@ function extractHeader(source, label, maxLength) {
 }
 
 /**
- * The outline's header lines, and the source without them: `Resume:` (link or command the page copies), `Model:` (shown
+ * The outline's header lines, and the source without them: `Title:` (the discussion's name), `Resume:` (link or command the page copies), `Model:` (shown
  * as written), `Terminal:` (the tmux session the Terminal tab attaches to) and `Session:` (the agent's session id, whose
  * transcript the Transcript tab shows).
  */
 function extractHeaders(text) {
-    const resume = extractHeader(text, 'Resume', 500)
+    const title = extractHeader(text, 'Title', 300)
+    const resume = extractHeader(title.source, 'Resume', 500)
     const model = extractHeader(resume.source, 'Model', 100)
     const terminal = extractHeader(model.source, 'Terminal', 64)
     const session = extractHeader(terminal.source, 'Session', 36)
     const queue = extractQueue(session.source)
     return {
+        title: title.value,
         resume: resume.value,
         model: model.value,
         terminal: isSessionName(terminal.value) ? terminal.value : '',
@@ -65,18 +67,19 @@ function extractHeaders(text) {
     }
 }
 
-const QUEUE_HEADING = '## @queue'
+const QUEUE_HEADING = /^#{1,2} @queue$/
 const QUEUE_ITEM = /^[-*]\s+(\d+(?:\.\d+)*)\.?\s+@(decide|action|approve|read)\b\s*(.*)$/
 
 /**
- * The queue: a `## @queue` section (no number, so a discussion heading never matches) listing, in priority order,
- * `- <number> @decide|@action|@approve|@read <label>`. It runs to the next `## ` heading or the end, and is not part of the outline.
+ * The queue: a `# @queue` section (no number, so a topic never matches) listing, in priority order,
+ * `- <number> @decide|@action|@approve|@read <label>`. It runs to the next heading or the end, and is not part of the outline.
+ * Older outlines head it `## @queue`.
  */
 function extractQueue(source) {
     const lines = source.split('\n')
-    const start = lines.findIndex(line => line.trim() === QUEUE_HEADING)
+    const start = lines.findIndex(line => QUEUE_HEADING.test(line.trim()))
     if (start < 0) return { items: [], source }
-    let end = lines.findIndex((line, i) => i > start && line.startsWith('## '))
+    let end = lines.findIndex((line, i) => i > start && /^#{1,6} /.test(line))
     if (end < 0) end = lines.length
     const items = lines
         .slice(start + 1, end)
@@ -87,20 +90,19 @@ function extractQueue(source) {
     return { items, source: lines.join('\n') }
 }
 
-/** Title from the first "# " line, plus counts of status emoji on headings and bullets. */
+/** Title from the `Title:` line, plus counts of approved and open topics. */
 function summarize(file, fallback) {
-    const { resume, terminal, session, source } = extractHeaders(fs.readFileSync(file, 'utf8'))
+    const { title, resume, terminal, session, source } = extractHeaders(fs.readFileSync(file, 'utf8'))
     const lines = source.split('\n')
-    const heading = lines.find(line => line.startsWith('# '))
     const counts = { done: 0, open: 0, now: 0 }
     for (const line of lines) {
         const text = line.trimStart().replace(/^(#+|[-*])\s+/, '')
         if (text === line.trimStart()) continue
-        if (text.startsWith(STATUS_KEYS[0]) || /^(\d+(\.\d+)*\.?\s+)?@resolved\b/i.test(text)) counts.done++
+        if (text.startsWith(STATUS_KEYS[0]) || /^(\d+(\.\d+)*\.?\s+)?@approved\b/i.test(text)) counts.done++
         else if (text.startsWith(STATUS_KEYS[1])) counts.open++
         else if (text.startsWith(STATUS_KEYS[2])) counts.now++
     }
-    return { title: heading ? heading.slice(2).trim() : fallback, counts, checkbox: countCheckboxProgress(source), resume, terminal, session }
+    return { title: title || fallback, counts, checkbox: countCheckboxProgress(source), resume, terminal, session }
 }
 
 function json(res, status, value) {
@@ -311,7 +313,7 @@ const server = http.createServer((req, res) => {
             let tableHtml, plainHtml, headers
             try {
                 headers = extractHeaders(fs.readFileSync(file, 'utf8'))
-                tableHtml = renderMarkdown(headers.source, 'table')
+                tableHtml = renderMarkdown(headers.source, headers.title)
                 plainHtml = renderPlain(headers.source)
             } catch (e) {
                 return send(res, 500, 'text/plain', `render failed: ${e.message}`)
