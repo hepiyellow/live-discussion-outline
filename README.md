@@ -49,7 +49,7 @@ Features:
 
 ## Setup
 
-Requires Node 18+. The Terminal tab, and typing from the Transcript tab, also need tmux (`brew install tmux`); `npm install` builds nothing, since node-pty ships prebuilt binaries for macOS and Windows (other platforms compile it, and if that fails the Terminal tab is just not offered).
+Requires Node 20.19+ (or 22.12+). The Terminal tab, and typing from the Transcript tab, also need tmux (`brew install tmux`). `npm install` also builds the new page (a React app in `web/`, see below) into `web/dist` with Vite; node-pty ships prebuilt binaries for macOS and Windows (other platforms compile it, and if that fails the Terminal tab is just not offered).
 
 ```bash
 git clone https://github.com/hepiyellow/live-discussion-outline
@@ -77,6 +77,16 @@ The format is plain markdown: a `Title:` line, then numbered headings as nodes w
 ### Viewing
 
 Open the URL in a browser, or in an editor tab (in Cursor/VS Code: command palette → **Simple Browser: Show**, paste the URL).
+
+### The new page
+
+The page is being rebuilt as a React single-page app fed by JSON over SSE ([ADR 0001](docs/adr/0001-react-spa-fed-by-json-over-sse.md), [plan](docs/plans/viewer-spa.md)). Until it reaches parity it is served at `/app/<project>/<file>`, beside the current page at `/<project>/<file>`.
+
+```bash
+npm run build    # rebuilds web/dist after a change to web/ (npm install does this too)
+npm run dev      # or `npm start -- --dev`: serves web/src through Vite instead, reloading edits in place
+npm test         # type-checks web/ and runs the tests in test/
+```
 
 ## Configuration
 

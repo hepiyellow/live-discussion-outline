@@ -13,7 +13,8 @@ import { slashCommands } from './commands.js'
 const config = loadConfig()
 const { dir: ROOT, port: PORT, host: HOST } = config
 
-const modules = path.join(path.dirname(fileURLToPath(import.meta.url)), 'node_modules')
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const modules = path.join(HERE, 'node_modules')
 /** xterm.js for the Terminal tab, served from node_modules. */
 const VENDOR = {
     '/vendor/xterm.js': { file: path.join(modules, '@xterm/xterm/lib/xterm.js'), type: 'text/javascript' },
@@ -240,6 +241,38 @@ function listMaps() {
     return out.sort((a, b) => b.mtime - a.mtime)
 }
 
+/** The client of ADR 0001, built into web/dist by `npm install`. Served under /app/ beside the old page until the cutover. */
+const APP_DIST = path.join(HERE, 'web', 'dist')
+const APP_TYPES = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript',
+    '.css': 'text/css',
+    '.map': 'application/json',
+    '.json': 'application/json',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.ico': 'image/x-icon',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+}
+
+/** A file of the build, or else the app's shell, so that client routes like /app/<project>/<file> load the app. */
+function serveApp(res, pathname) {
+    const rel = pathname.slice('/app/'.length)
+    const file = path.resolve(APP_DIST, rel)
+    if (rel && file.startsWith(APP_DIST + path.sep) && fs.statSync(file, { throwIfNoEntry: false })?.isFile()) {
+        // File names under assets/ carry a hash of their content, so they never change.
+        const cache = rel.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-store'
+        res.writeHead(200, { 'content-type': APP_TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': cache })
+        return fs.createReadStream(file).pipe(res)
+    }
+    // A missing file is not a client route: answering it with the shell would hide a broken build.
+    if (rel.startsWith('assets/') || /\.(js|css|map|svg|png|ico|woff2?)$/.test(rel)) return send(res, 404, 'text/plain', 'not found')
+    const index = path.join(APP_DIST, 'index.html')
+    if (!fs.existsSync(index)) return send(res, 503, 'text/plain', 'The app is not built: run `npm run build`, or start the server with --dev.')
+    send(res, 200, 'text/html; charset=utf-8', fs.readFileSync(index))
+}
+
 function send(res, status, type, body) {
     res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' })
     res.end(body)
@@ -250,6 +283,12 @@ const server = http.createServer((req, res) => {
     const pathname = decodeURIComponent(url.pathname)
 
     if (pathname === '/health') return send(res, 200, 'text/plain', 'ok')
+
+    if (pathname === '/app') {
+        res.writeHead(301, { location: '/app/' })
+        return res.end()
+    }
+    if (pathname.startsWith('/app/')) return vite ? vite.middlewares(req, res, () => send(res, 404, 'text/plain', 'not found')) : serveApp(res, pathname)
 
     if (VENDOR[pathname]) {
         res.writeHead(200, { 'content-type': VENDOR[pathname].type, 'cache-control': 'max-age=86400' })
@@ -349,5 +388,21 @@ const server = http.createServer((req, res) => {
 })
 
 const terminalEnabled = await attachTerminals(server, PORT)
+
+/** With --dev, Vite serves /app/ from web/src as middleware and hot-reloads it over its own WebSocket on this server. */
+const vite = process.argv.includes('--dev')
+    ? await (await import('vite')).createServer({
+          configFile: path.join(HERE, 'web', 'vite.config.ts'),
+          server: { middlewareMode: true, hmr: { server } },
+          appType: 'spa',
+      })
+    : undefined
+
+// A WebSocket that neither the Terminal tab nor Vite's hot reload takes is closed.
+server.on('upgrade', (req, socket) => {
+    const terminal = terminalEnabled && new URL(req.url, 'http://localhost').pathname === '/term'
+    const hotReload = vite && /^vite-/.test(req.headers['sec-websocket-protocol'] || '')
+    if (!terminal && !hotReload) socket.destroy()
+})
 
 server.listen(PORT, HOST, () =>console.log(`live-discussion-outline on http://localhost:${PORT} watching ${ROOT}`))
