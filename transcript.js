@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
-import { renderPlain, escapeHtml } from './render.js'
+import { escapeHtml } from './render.js'
+import { renderPlain } from './outline.js'
 
 // The Transcript tab: Claude Code's session log (~/.claude/projects/<project>/<session id>.jsonl), streamed as
 // rendered messages over server-sent events. The log format is Claude Code's internal one and may change.

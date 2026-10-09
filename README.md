@@ -82,6 +82,8 @@ Open the URL in a browser, or in an editor tab (in Cursor/VS Code: command palet
 
 The page is being rebuilt as a React single-page app fed by JSON over SSE ([ADR 0001](docs/adr/0001-react-spa-fed-by-json-over-sse.md), [plan](docs/plans/viewer-spa.md)). Until it reaches parity it is served at `/app/<project>/<file>`, beside the current page at `/<project>/<file>`.
 
+It reads `/api/outline/<project>/<file>`: the outline as JSON (header lines, nodes, queue and the Markdown tab; `web/src/types.ts` describes it). `/api/outline/<project>/<file>/events` streams it, sent again whenever that file changes. Both pages read outlines with the one parser in `outline.js`.
+
 ```bash
 npm run build    # rebuilds web/dist after a change to web/ (npm install does this too)
 npm run dev      # or `npm start -- --dev`: serves web/src through Vite instead, reloading edits in place

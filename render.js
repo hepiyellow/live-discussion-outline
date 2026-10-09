@@ -1,6 +1,4 @@
-import MarkdownIt from 'markdown-it'
-
-const md = new MarkdownIt({ html: false, linkify: true })
+import { CLOSING_KINDS, HAS_TRAIL, md, parseOutline, plainTitle, splitTrail, statusOf } from './outline.js'
 
 const escapeHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
@@ -13,65 +11,6 @@ const PLAY_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="
 /** Pencil: renames the discussion. */
 const PENCIL_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.8 2.7l2.5 2.5L5.4 13.1l-3.1.6.6-3.1z"/><path d="M9.3 4.2l2.5 2.5"/></svg>'
 const COPY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>'
-
-/**
- * The outline's nodes are its headings: `# 2. @approved Title` is a topic, `## 2.1 @claim @options Title` a node under
- * it, down to `######`. A node's text is everything up to the next heading, rendered as ordinary markdown (bullets
- * included). Status and the other tags sit on the heading line, right after the number.
- */
-const HEAD_RE = /^(\d+(?:\.\d+)*)\.?(?:\s+|$)([\s\S]*)$/
-const TAG_RE = /^@(approved|claim|options|recommended|current|action|ran)\b\s*/i
-const REC_MARK = /@recommendation\./i
-/** Tags that open a node's closing lines, after its prose: `@Summary.`, `@Recommendation.`, `@Action.` (in any order). */
-const TRAIL_MARK = /@(summary|recommendation|action)\.\s*/gi
-const HAS_TRAIL = /@(summary|recommendation|action)\./i
-
-function headNode(text, level) {
-    const m = text.trim().match(HEAD_RE)
-    let rest = m ? m[2] : text.trim()
-    const tags = new Set()
-    for (let t; (t = rest.match(TAG_RE)); rest = rest.slice(t[0].length)) tags.add(t[1].toLowerCase())
-    return { level, num: m ? m[1] : '', title: rest.trim(), tags, body: [], children: [] }
-}
-
-/** The outline as a tree: the root holds any text before the first topic, and the topics. */
-export function parseOutline(source) {
-    const tokens = md.parse(source, {})
-    const root = { level: 0, num: '', title: '', tags: new Set(), body: [], children: [] }
-    const stack = [root]
-    for (let i = 0; i < tokens.length; i++) {
-        const t = tokens[i]
-        if (t.type !== 'heading_open') {
-            stack[stack.length - 1].body.push(t)
-            continue
-        }
-        const node = headNode(tokens[i + 1].content, Number(t.tag.slice(1)))
-        while (stack[stack.length - 1].level >= node.level) stack.pop()
-        stack[stack.length - 1].children.push(node)
-        stack.push(node)
-        i += 2
-    }
-    return root
-}
-
-/** open, agent (a claim, or a node carrying a recommendation) or done (the user approved it). */
-function statusOf(node) {
-    if (node.tags.has('approved')) return 'done'
-    if (node.tags.has('claim') || node.tags.has('recommended')) return 'agent'
-    return node.body.some(t => t.type === 'inline' && REC_MARK.test(t.content)) ? 'agent' : 'open'
-}
-
-/** A paragraph's prose and its tagged closing lines. */
-function splitTrail(text) {
-    const parts = { prose: text, summary: '', recommendation: '', action: '' }
-    const marks = [...text.matchAll(TRAIL_MARK)]
-    if (!marks.length) return parts
-    parts.prose = text.slice(0, marks[0].index).trim()
-    marks.forEach((m, i) => {
-        parts[m[1].toLowerCase()] = text.slice(m.index + m[0].length, i + 1 < marks.length ? marks[i + 1].index : text.length).trim()
-    })
-    return parts
-}
 
 const TRAIL_PILLS = {
     summary: '<span class="pill sum" title="A summary of this node\'s text">Summary</span>',
@@ -93,7 +32,7 @@ function renderBody(tokens) {
             flush()
             const parts = splitTrail(tokens[i + 1].content)
             if (parts.prose) html += `<p>${md.renderInline(parts.prose)}</p>`
-            for (const kind of ['summary', 'recommendation', 'action'])
+            for (const kind of CLOSING_KINDS)
                 if (parts[kind]) html += `<div class="rec-line">${TRAIL_PILLS[kind]} ${md.renderInline(parts[kind])}</div>`
             i += 2
         } else run.push(t)
@@ -101,8 +40,6 @@ function renderBody(tokens) {
     flush()
     return html
 }
-
-const plainTitle = title => title.replace(/[*_`]/g, '')
 
 /** Nodes below a topic become a table: number | title | text. Nodes with children get a nested table in a child row. */
 function rowsHtml(nodes, radio = false) {
@@ -166,26 +103,6 @@ function topicHtml(node) {
 export function renderMarkdown(source, title = '') {
     const root = parseOutline(source)
     return (title ? `<h1 data-title="${escapeHtml(title)}"><span class="tt">${md.renderInline(title)}</span><button class="rename" type="button" title="Rename this discussion" aria-label="Rename this discussion">${PENCIL_ICON}</button></h1>\n` : '') + renderBody(root.body) + root.children.map(topicHtml).join('')
-}
-
-/** Status counts over the nodes below the topics, for the index page's progress bar. */
-function countCheckboxProgress(source) {
-    const counts = { total: 0, done: 0, agent: 0, open: 0 }
-    const walk = node => node.children.forEach(n => {
-        if (n.level > 1) {
-            counts.total++
-            counts[statusOf(n)]++
-        }
-        walk(n)
-    })
-    walk(parseOutline(source))
-    return counts
-}
-
-const mdPlain = new MarkdownIt({ html: false, linkify: true })
-
-export function renderPlain(source) {
-    return mdPlain.render(source)
 }
 
 /** `waitFor` (a tmux session name) makes the page for a session just started: only its terminal, until its outline exists. */
@@ -1214,4 +1131,4 @@ es.onmessage=()=>{if(LIVE_TABS.includes(tab))stale=true;else location.reload()};
 </script></body></html>`
 }
 
-export { escapeHtml, countCheckboxProgress }
+export { escapeHtml }
