@@ -10,6 +10,8 @@ const INSERT_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none"
 const MAIL_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5"/><path d="m2 4.5 6 4.5 6-4.5"/></svg>'
 /** Play: runs an @action node. */
 const PLAY_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>'
+/** Pencil: renames the discussion. */
+const PENCIL_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.8 2.7l2.5 2.5L5.4 13.1l-3.1.6.6-3.1z"/><path d="M9.3 4.2l2.5 2.5"/></svg>'
 const COPY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="8" height="9" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>'
 
 /**
@@ -163,7 +165,7 @@ function topicHtml(node) {
 /** The page's outline: the title, any text before the first topic, then the topics. */
 export function renderMarkdown(source, title = '') {
     const root = parseOutline(source)
-    return (title ? `<h1>${md.renderInline(title)}</h1>\n` : '') + renderBody(root.body) + root.children.map(topicHtml).join('')
+    return (title ? `<h1 data-title="${escapeHtml(title)}"><span class="tt">${md.renderInline(title)}</span><button class="rename" type="button" title="Rename this discussion" aria-label="Rename this discussion">${PENCIL_ICON}</button></h1>\n` : '') + renderBody(root.body) + root.children.map(topicHtml).join('')
 }
 
 /** Status counts over the nodes below the topics, for the index page's progress bar. */
@@ -320,6 +322,12 @@ main{max-width:860px;margin:0 auto;padding:16px 20px 80px}
 .bar select{font:inherit;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:3px 6px;cursor:pointer}
 .bar select:disabled{color:var(--muted);cursor:default}
 #outline>h1,#outline-table>h1{font-size:1.85em;font-weight:700;line-height:1.2;margin:0 0 .85em;letter-spacing:-.02em}
+h1 .rename{display:inline-flex;align-items:center;vertical-align:middle;margin-left:10px;padding:4px;color:var(--muted);background:none;border:1px solid transparent;border-radius:6px;cursor:pointer;opacity:.6}
+h1 [hidden]{display:none}
+h1 .rename:hover,h1 .rename:focus-visible{opacity:1;color:var(--fg);border-color:var(--line)}
+h1 input.rename-in{font:inherit;letter-spacing:inherit;color:var(--fg);background:var(--bg);width:100%;box-sizing:border-box;padding:0 6px;margin:-1px -7px;border:1px solid var(--line);border-radius:6px}
+h1 input.rename-in:disabled{opacity:.6}
+h1 .rename-err{display:block;font-size:13px;font-weight:400;letter-spacing:0;color:#d1242f;margin-top:4px}
 details{margin:4px 0}
 details>summary{cursor:pointer;padding:3px 6px;border-radius:6px;list-style:none}
 details>summary::before,table.ol .tri{content:'▼';display:inline-block;width:16px;margin-right:6px;text-align:center;color:var(--muted);font-size:13px;line-height:1;user-select:none}
@@ -466,9 +474,14 @@ table.ol tr.r .env.pulse{animation:envpulse .5s ease-in-out 3}
 table.ol tr.r.parent .env.pulse{animation:envpulse-p .5s ease-in-out 3}
 @keyframes envpulse-p{50%{transform:translateY(-50%) scale(1.5);background:color-mix(in srgb,var(--accent) 25%,transparent)}}
 table.ol tr.r .env:hover{background:color-mix(in srgb,var(--accent) 38%,transparent)}
-.tx-del{color:#d1242f;background:color-mix(in srgb,#d1242f 18%,transparent)}
-.tx-add{animation:txadd 1s ease-out forwards}
-.tx-chg{animation:txchg 1s ease-out forwards}
+/* The diff animation: words are units (a word and the space after it) that grow in or collapse one by one while a cursor passes. */
+.tx-u{display:inline-block;white-space:pre;overflow:clip;vertical-align:baseline}
+.tx-n .tx-u:not(.on){display:none}
+.tx-n .tx-u.on{animation:txadd 1s ease-out forwards}
+.tx-n.c .tx-u.on{animation:txchg 1s ease-out forwards}
+.tx-o .tx-u{color:#d1242f;background:color-mix(in srgb,#d1242f 18%,transparent)}
+.tx-hide{display:none!important}
+.tx-cur{position:fixed;left:0;top:0;width:2px;margin-left:-1px;border-radius:1px;background:var(--accent);box-shadow:0 0 6px var(--accent);pointer-events:none;z-index:60;transition:transform .07s linear,height .07s linear,opacity .15s}
 @keyframes txadd{from{background:color-mix(in srgb,#2da44e 50%,transparent)}to{background:transparent}}
 @keyframes txchg{from{background:color-mix(in srgb,var(--fg) 35%,transparent)}to{background:transparent}}
 table.ol .pill.ran{color:var(--muted);background:color-mix(in srgb,var(--fg) 10%,transparent)}
@@ -547,6 +560,8 @@ body.show-term #composer{display:none}
 #composer .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #composer .chip button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;padding:0 4px}
 #composer .chip button:hover{color:var(--fg)}
+#composer .chip.go{cursor:pointer}
+#composer .chip.go:hover{background:color-mix(in srgb,var(--line) 90%,transparent)}
 #composer .send{flex:none;width:34px;height:34px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 #composer .send:disabled{opacity:.4;cursor:default}
 /* With the message box, page content and the approvals bar sit above it. */
@@ -573,6 +588,32 @@ const SESSION=${JSON.stringify(session || '')};
 const LINKED=!!document.getElementById('composer');
 // References name the outline by its title (its "# " line), not its file name.
 const DOC_TITLE=(document.querySelector('#outline-table>h1,#outline>h1')||{}).textContent||document.title;
+const OUTLINE=${JSON.stringify(project ? { project, file: title } : null)};
+// The pencil beside the title edits it in place: Enter saves (the server rewrites the outline's Title: line), Escape cancels.
+document.querySelectorAll('h1 .rename').forEach(btn=>{
+  const h1=btn.closest('h1'),tt=h1.querySelector('.tt');
+  btn.onclick=()=>{
+    if(!OUTLINE)return;
+    const input=document.createElement('input'),err=document.createElement('span');
+    input.className='rename-in';input.type='text';input.maxLength=300;input.value=h1.dataset.title;input.setAttribute('aria-label','Discussion name');
+    err.className='rename-err';err.hidden=true;
+    let busy=false,done=false;
+    const close=()=>{done=true;input.remove();err.remove();tt.hidden=false;btn.hidden=false;btn.focus()};
+    const save=async()=>{
+      if(busy||done)return;
+      const name=input.value.trim();
+      if(!name||name===h1.dataset.title)return close();
+      busy=true;input.disabled=true;
+      try{
+        const r=await fetch('/api/rename',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({project:OUTLINE.project,file:OUTLINE.file,title:name})});
+        if(!r.ok)throw new Error((await r.json()).error||'Not renamed');
+        h1.dataset.title=name;tt.textContent=name;close();
+      }catch(e){busy=false;input.disabled=false;err.textContent=e.message;err.hidden=false;input.focus()}};
+    input.onkeydown=e=>{
+      if(e.key==='Enter'&&!e.isComposing){e.preventDefault();save()}
+      else if(e.key==='Escape'){e.preventDefault();close()}};
+    input.onblur=save;
+    tt.hidden=true;btn.hidden=true;h1.append(input,err);input.focus();input.select()}});
 const INSERT_ICON=${JSON.stringify(INSERT_ICON)};
 // Linked, the reference becomes a chip in the message box (label: the item's number path and title); the full
 // reference line is what gets sent. Unlinked, the reference is copied, with " — " to type after.
@@ -652,14 +693,18 @@ const paint=r=>{const box=r.querySelector('input.ck');const on=effective(r),file
   let extra=r.querySelector('.cks-extra');
   if(!extra){extra=document.createElement('span');extra.className='cks-extra';box.after(extra);    }
   extra.replaceChildren();
-  if(kids.length){const agg=aggOf(kinds),mixed=agg==='mixed';
+  if(kids.length&&!opt){const agg=aggOf(kinds),mixed=agg==='mixed';
     box.classList.remove('rolled');
     box.checked=agg==='agent'||agg==='pending'||agg==='done';
     box.classList.toggle('agent',agg==='agent');box.classList.toggle('pending',agg==='pending');box.classList.toggle('mixed',mixed);
     box.title=mixed?'Mixed: children are '+kinds.map(k=>KIND_TITLE[k].toLowerCase()).join(', ')+' — click to approve all':KIND_TITLE[agg];
     if(mixed)kinds.forEach(kind=>{const s=document.createElement('span');s.className='tagico ck'+(kind==='open'?'':kind==='agent'?' agent on':kind==='pending'?' pending on':' on');s.title=KIND_TITLE[kind];extra.appendChild(s)});
     r.classList.toggle('s-done',kinds.length===1&&kinds[0]==='done')}
-  else{box.classList.remove('rolled');r.classList.toggle('s-done',(on&&file==='done')||(opt&&kindsOf(parentRow(r))[0]==='done'))}};
+  else{box.classList.remove('rolled','mixed');
+    // An option's radio is its own pick, whatever sits below it; the states of its children show as small marks beside it.
+    const below=kids.length?kinds.filter(k=>k!==ownKind(r)):[];
+    below.forEach(kind=>{const t=document.createElement('span');t.className='tagico ck'+(kind==='open'?'':kind==='agent'?' agent on':kind==='pending'?' pending on':' on');t.title='Below: '+KIND_TITLE[kind].toLowerCase();extra.appendChild(t)});
+    r.classList.toggle('s-done',(on&&file==='done'&&(!kids.length||kinds.every(k=>k==='done')))||(opt&&kindsOf(parentRow(r))[0]==='done'))}};
 // Topic headings carry the same rolled-up checkbox as parent rows, over every bullet inside them.
 const heads=[...document.querySelectorAll('#outline-table details.h')].map(d=>{
   const sm=d.querySelector(':scope>summary'),box=document.createElement('input');box.type='checkbox';box.className='ck';
@@ -847,41 +892,105 @@ document.querySelectorAll('tr.r[data-action] .play').forEach(b=>{const r=b.close
     catch(err){notify('Not sent: '+(err.message||err),true)}}});
 // Changed text is marked with a diff icon (plus over minus), in the agent's blue.
 const DIFF_ICON='<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 2.5v6M5 5.5h6M5 12.5h6"/></svg>';
-// Opening shows what changed: removed words turn red and erase themselves character by character (200 ms), then the
-// new text comes in with added words in green and rewritten words in white, both fading out over a second.
+// Opening shows what changed as a cursor passing through the text from its start. It scans over unchanged words
+// quickly; added words grow in one by one in green, pushing the rest along, and fade to nothing; removed words, in red,
+// collapse one by one; rewritten words collapse while the new ones grow in beside them (white, fading out).
 const words=t=>t.split(/(\\s+)/).filter(Boolean);
+// The text as blocks in order: unchanged ('eq'), 'add', 'del' and 'chg' (words replaced by others), each with its
+// character range in the old text (a) and in the new text (b).
 function diffWords(a,b){const n=a.length,m=b.length;if(n*m>250000)return null;
   const L=Array.from({length:n+1},()=>new Uint16Array(m+1));
   for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i][j]=a[i]===b[j]?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
   const ops=[];for(let i=0,j=0;i<n||j<m;){if(i<n&&j<m&&a[i]===b[j])ops.push(['=',a[i++].length,b[j++].length]);
     else if(j<m&&(i>=n||L[i][j+1]>=L[i+1][j]))ops.push(['+',0,b[j++].length]);else ops.push(['-',a[i++].length,0])}
-  // Character ranges: removed in the old text; added (pure insertions) or rewritten (insertions that replace something) in the new.
-  const del=[],add=[],chg=[];let ao=0,bo=0;
-  for(let k=0;k<ops.length;){if(ops[k][0]==='='){ao+=ops[k][1];bo+=ops[k][2];k++;continue}
-    const as=ao,bs=bo;while(k<ops.length&&ops[k][0]!=='='){ao+=ops[k][1];bo+=ops[k][2];k++}
-    if(ao>as)del.push([as,ao]);if(bo>bs)(ao>as?chg:add).push([bs,bo])}
-  return {del,add,chg}}
-// Wraps character ranges of root's text in spans of class cls (pieces per text node, last first so offsets hold).
-function wrapRanges(root,ranges,cls){if(!ranges.length)return [];const pieces=[],walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
-  for(let off=0,node;(node=walk.nextNode());){const s0=off,e0=off+node.data.length;off=e0;
-    for(const [s,e] of ranges){const ls=Math.max(s,s0),le=Math.min(e,e0);if(le>ls)pieces.push([node,ls-s0,le-s0])}}
-  return pieces.reverse().map(([node,ls,le])=>{const range=document.createRange(),sp=document.createElement('span');
-    range.setStart(node,ls);range.setEnd(node,le);sp.className=cls;range.surroundContents(sp);return sp})}
-function openUnread(r){const next=unread.get(r);if(next===undefined)return;unread.delete(r);
+  const blocks=[];let ao=0,bo=0;
+  for(let k=0;k<ops.length;){const as=ao,bs=bo,eq=ops[k][0]==='=';
+    while(k<ops.length&&(ops[k][0]==='=')===eq){ao+=ops[k][1];bo+=ops[k][2];k++}
+    blocks.push({k:eq?'eq':ao>as&&bo>bs?'chg':ao>as?'del':'add',a:[as,ao],b:[bs,bo]})}
+  return blocks}
+// Wraps character ranges of root's text (ascending, not overlapping) in spans, one per text node they touch (last
+// first, so earlier offsets hold); returns each range's spans in document order.
+function wrapGroups(root,ranges){const nodes=[],walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  for(let off=0,n;(n=walk.nextNode());){nodes.push([n,off,off+n.data.length]);off+=n.data.length}
+  const pieces=[];
+  ranges.forEach(([s,e],gi)=>nodes.forEach(([n,s0,e0])=>{const ls=Math.max(s,s0),le=Math.min(e,e0);if(le>ls)pieces.push([gi,n,ls-s0,le-s0])}));
+  const groups=ranges.map(()=>[]);
+  pieces.reverse().forEach(([gi,n,ls,le])=>{const rg=document.createRange(),sp=document.createElement('span');
+    rg.setStart(n,ls);rg.setEnd(n,le);rg.surroundContents(sp);groups[gi].unshift(sp)});
+  return groups}
+// Splits a span's text into units (a word with the space after it), each of which can grow in or collapse on its own.
+function unitize(sp,text=sp.textContent){const pre=!!sp.closest('pre');sp.textContent='';
+  return (text.match(/\\S+\\s*|\\s+/g)||[]).map(t=>{const u=document.createElement('span');u.className='tx-u';
+    u.textContent=pre?t:t.replace(/\\s+/g,' ');sp.appendChild(u);return u})}
+// Puts a cell's new content in place so that it reads as the old one: removed words come back as red ghosts at their
+// place, added words are hidden. Returns the steps in text order.
+function stageCell(c,diff,oldText){
+  const groups=wrapGroups(c,diff.filter(b=>b.b[1]>b.b[0]).map(b=>b.b));let gi=0;const steps=[];
+  diff.forEach(b=>{const spans=b.b[1]>b.b[0]?groups[gi++]:[];
+    if(b.k==='eq'){const stops=[];
+      spans.forEach(sp=>{sp.className='tx-q';const n=sp.firstChild,re=/\\S+/g;let m;
+        while(n&&n.nodeType===3&&(m=re.exec(n.data)))stops.push([n,m.index+m[0].length])});
+      steps.push({k:'eq',stops,spans});return}
+    const add=spans.flatMap(sp=>{sp.className='tx-n'+(b.k==='chg'?' c':'');return unitize(sp)});
+    let old=[];
+    if(b.a[1]>b.a[0]){const g=document.createElement('span');g.className='tx-o';
+      if(add.length)spans[0].before(g);
+      else{const prev=steps[steps.length-1],last=prev&&prev.spans&&prev.spans[prev.spans.length-1];
+        if(last)last.after(g);else c.prepend(g)}
+      old=unitize(g,oldText.slice(b.a[0],b.a[1]))}
+    steps.push({k:b.k,add,old})});
+  // A block whose words are all still hidden (a new paragraph or list item) is hidden too, until its first word comes in.
+  c.querySelectorAll('p,li,pre,blockquote,ul,ol,h1,h2,h3,h4,h5,h6,table,tr').forEach(e=>{
+    if(!e.textContent.trim())return;
+    const w=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);let shown=false;
+    for(let n;(n=w.nextNode());)if(n.data.trim()&&!n.parentElement.closest('.tx-n')){shown=true;break}
+    if(!shown)e.classList.add('tx-hide')});
+  return steps}
+const sleep=ms=>new Promise(res=>setTimeout(res,ms));
+const frames=(ms,fn)=>new Promise(res=>{const t0=performance.now();
+  const f=now=>{const p=Math.min(1,(now-t0)/ms);fn(p);if(p<1)requestAnimationFrame(f);else res()};requestAnimationFrame(f)});
+async function openUnread(r){const next=unread.get(r);if(next===undefined)return;unread.delete(r);
   r.querySelector('.env')?.remove();document.querySelector('.queue .q-unread[data-key="'+CSS.escape(rowKey(r))+'"]')?.parentElement.remove();
-  const parts=next.split(SEP),diffs=cellsOf(r).map((c,i)=>{const t=document.createElement('div');t.innerHTML=parts[i]??'';return diffWords(words(c.textContent),words(t.textContent))});
-  const dels=cellsOf(r).flatMap((c,i)=>diffs[i]?wrapRanges(c,diffs[i].del,'tx-del').map(sp=>[sp,sp.textContent]):[]);
-  const swap=()=>{const box=r.querySelector('td.c')?r:r.nextElementSibling,h0=box.offsetHeight;
-    setContent(r,next);seen[rowKey(r)]=next;saveSeen();
-    const marks=cellsOf(r).flatMap((c,i)=>diffs[i]?[...wrapRanges(c,diffs[i].add,'tx-add'),...wrapRanges(c,diffs[i].chg,'tx-chg')]:[]);
-    const h1=box.offsetHeight;box.style.overflow='hidden';box.style.height=h0+'px';void box.offsetHeight;
-    box.style.transition='height .3s ease';box.style.height=h1+'px';
-    setTimeout(()=>{box.style.height='';box.style.overflow='';box.style.transition='';queueStuck()},320);
-    setTimeout(()=>marks.forEach(sp=>{if(sp.isConnected)sp.replaceWith(...sp.childNodes)}),1050)};
-  if(!dels.length)return swap();
-  const t0=performance.now(),tick=setInterval(()=>{const f=Math.min(1,(performance.now()-t0)/200);
-    dels.forEach(([sp,text])=>{sp.textContent=text.slice(0,Math.round(text.length*(1-f)))});
-    if(f>=1){clearInterval(tick);swap()}},16)}
+  const parts=next.split(SEP),cells=cellsOf(r);seen[rowKey(r)]=next;saveSeen();
+  if(parts.length!==cells.length)return;
+  const olds=cells.map(c=>c.textContent),
+    diffs=cells.map((c,i)=>{const t=document.createElement('div');t.innerHTML=parts[i];return diffWords(words(olds[i]),words(t.textContent))});
+  const changed=d=>d&&d.some(b=>b.k!=='eq');
+  // Nobody is watching a hidden page (and it would not draw frames), or wants motion: the text just changes.
+  if(!diffs.some(changed)||document.visibilityState!=='visible'||matchMedia('(prefers-reduced-motion: reduce)').matches)return setContent(r,next);
+  const cur=document.createElement('div');cur.className='tx-cur';cur.style.opacity=0;document.body.appendChild(cur);
+  let placed=false;
+  const put=rc=>{if(!rc||(!rc.height&&!rc.width))return;
+    if(!placed)cur.style.transition='none';
+    cur.style.height=rc.height+'px';cur.style.transform='translate('+rc.left+'px,'+rc.top+'px)';
+    if(!placed){placed=true;cur.style.opacity=1;void cur.offsetWidth;cur.style.transition=''}};
+  const edge=(el,end)=>{const rc=el.getBoundingClientRect();return {left:end?rc.right:rc.left,top:rc.top,height:rc.height,width:0}};
+  const at=(n,o)=>{const rg=document.createRange();rg.setStart(n,o);rg.collapse(true);return rg.getClientRects()[0]||rg.getBoundingClientRect()};
+  try{
+    const stages=cells.map((c,i)=>{c.innerHTML=parts[i];return changed(diffs[i])?stageCell(c,diffs[i],olds[i]):null});
+    // The more there is to show, the faster the cursor goes.
+    const load=stages.reduce((n,st)=>n+(st?st.reduce((m,s)=>m+(s.k==='eq'?s.stops.length/6:s.add.length+s.old.length),0):0),0);
+    const speed=Math.min(4,Math.max(1,load/50));
+    const grow=(u,cell)=>{for(let e=u.parentElement;e;e=e.parentElement){e.classList.remove('tx-hide');if(e===cell)break}
+      u.classList.add('on');const w=u.getBoundingClientRect().width;
+      u.animate([{maxWidth:'0px',opacity:0},{maxWidth:w+'px',opacity:1}],{duration:130/speed,easing:'ease-out'})};
+    const shrink=u=>{const w=u.getBoundingClientRect().width;
+      u.animate([{maxWidth:w+'px',opacity:1},{maxWidth:'0px',opacity:0}],{duration:110/speed,easing:'ease-in',fill:'forwards'})};
+    for(let i=0;i<cells.length;i++){const st=stages[i];if(!st)continue;
+      for(const s of st){
+        if(s.k==='eq'){const n=s.stops.length;if(!n)continue;
+          await frames(Math.min(500,Math.max(60,n*9))/speed,p=>{const [node,off]=s.stops[Math.min(n-1,Math.floor(p*n))];put(at(node,off))});
+          continue}
+        if(s.old.length){put(edge(s.old[0],false));await sleep(90/speed)}
+        const n=Math.max(s.old.length,s.add.length);
+        for(let j=0;j<n;j++){const o=s.old[j],a=s.add[j];
+          if(o)shrink(o);if(a)grow(a,cells[i]);
+          const dur=(s.k==='add'?36:s.k==='del'?28:42)/speed;
+          await frames(dur,()=>put(a?edge(a,true):edge(o,false)))}
+        await sleep(40/speed)}}
+    // The last words are still fading; the cursor leaves once they have.
+    await sleep(800/Math.min(speed,2));cur.style.opacity=0;await sleep(160)
+  }finally{cells.forEach((c,i)=>{c.innerHTML=parts[i]});cur.remove();queueStuck()}}
 if(unread.size){let list=document.querySelector('.rail .queue');
   if(!list){document.querySelector('.rail').insertAdjacentHTML('beforeend','<hr class="rail-sep"><ol class="queue" aria-label="Your queue"></ol>');list=document.querySelector('.rail .queue')}
   // Unread items come first in the left pane, in outline order.
@@ -1011,7 +1120,11 @@ if(msg){const DRAFT=KEY+':draft',CHIPS=KEY+':chips',send=composer.querySelector(
   const saveChips=()=>{try{sessionStorage.setItem(CHIPS,JSON.stringify(chips))}catch(e){}};
   const drawChips=()=>{chipBox.replaceChildren(...chips.map((c,i)=>{const el=document.createElement('span');el.className='chip';el.title=c.ref;
       const t=document.createElement('span');t.textContent=c.label;const x=document.createElement('button');x.type='button';x.textContent='×';x.title='Remove';
-      x.onclick=()=>{chips.splice(i,1);saveChips();drawChips();msg.oninput();msg.focus()};el.append(t,x);return el}))};
+      x.onclick=()=>{chips.splice(i,1);saveChips();drawChips();msg.oninput();msg.focus()};el.append(t,x);
+      // The chip's label starts with its node's number: clicking the chip (not its x) shows that node, at the top.
+      const num=(/^(\\d+(?:\\.\\d+)*)\\.?\\s/.exec(c.label)||[])[1];
+      if(num){el.classList.add('go');el.onclick=e=>{if(e.target.closest('button'))return;if(!queueNode(num))return notify('Not in the outline',true);revealNum(num)}}
+      return el}))};
   addChip=(label,ref)=>{if(!chips.some(c=>c.ref===ref))chips.push({label:label||ref,ref});saveChips();drawChips();msg.oninput();msg.focus()};
   drawChips();
   // Slash commands: "/" at the start of the box lists the session's skills and commands (from /api/commands, once per

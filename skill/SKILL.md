@@ -72,7 +72,7 @@ What it means, and why you recommend it.
 ```
 
 **Header lines.** The file starts with these lines, in this order, with no heading before them:
-- `Title: <topic>` names the discussion (the page shows it as the title).
+- `Title: <topic>` names the discussion (the page shows it as the title). The user can rename the discussion with the pencil beside it, which rewrites this line; whatever it says now is the name, so keep it as it is when you edit the file.
 - `Resume: <link or command>` reopens this chat later; the page turns it into a copy button.
   - If the `resume=` template from the Start step is not empty, replace `{session}` in it with this conversation's session id (the `session=` value from the Start step; if that is empty, the id your tool uses for the chat, for example the session folder name in your scratch or transcript path) and write the result, exactly once, without code quotes.
   - If the template is empty and you know your own way to reopen a chat (a link or a command), write that.

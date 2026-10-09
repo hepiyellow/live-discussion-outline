@@ -32,6 +32,9 @@ fs.watch(ROOT, { recursive: true }, () => {
     }, 120)
 })
 
+/** Longest `Title:` value the page reads; a longer one is dropped. */
+const TITLE_MAX = 300
+
 const STATUS_KEYS = ['✅', '❓', '🔥']
 
 /** Pulls a `<Label>: <value>` line (if any) out of the first lines of the source; the value is used as written. */
@@ -50,7 +53,7 @@ function extractHeader(source, label, maxLength) {
  * transcript the Transcript tab shows).
  */
 function extractHeaders(text) {
-    const title = extractHeader(text, 'Title', 300)
+    const title = extractHeader(text, 'Title', TITLE_MAX)
     const resume = extractHeader(title.source, 'Resume', 500)
     const model = extractHeader(resume.source, 'Model', 100)
     const terminal = extractHeader(model.source, 'Terminal', 64)
@@ -145,6 +148,7 @@ async function startApi(req, res, pathname, url) {
             return json(res, 200, { terminal: await startSession(request, config) })
         }
         if (pathname === '/api/delete' && write) return json(res, 200, trashOutline(await readJson(req)))
+        if (pathname === '/api/rename' && write) return json(res, 200, renameOutline(await readJson(req)))
         if (pathname === '/api/outline-for') {
             const m = listMaps().find(o => o.terminal && o.terminal === url.searchParams.get('terminal'))
             return json(res, 200, m ? { href: `/${encodeURIComponent(m.project)}/${encodeURIComponent(m.file)}`, key: `map:${m.project}/${m.file}` } : {})
@@ -189,10 +193,29 @@ table.index tr.armed .trash::after{content:'Move to trash?'}
   addEventListener('click',e=>{if(!e.target.closest('tr.armed'))disarm()})})();
 </script>`
 
+const safeName = name => typeof name === 'string' && name && !name.startsWith('.') && !/[/\\]/.test(name)
+
+/** The pencil beside a discussion's title: rewrites the outline's `Title:` line, leaving the rest of the file as it is. */
+function renameOutline({ project, file, title }) {
+    if (!safeName(project) || !safeName(file)) throw new Error('bad outline name')
+    if (typeof title !== 'string') throw new Error('bad title')
+    // The page strips backticks around a `Title:` value, so store it the way it will be read back.
+    const name = title.replace(/\s+/g, ' ').trim().replace(/^`+|`+$/g, '').trim()
+    if (!name) throw new Error('The name cannot be empty.')
+    if (name.length > TITLE_MAX) throw new Error(`The name can be at most ${TITLE_MAX} characters.`)
+    const full = path.join(ROOT, project, `${file}.md`)
+    if (!fs.existsSync(full)) throw new Error('no such outline')
+    const lines = fs.readFileSync(full, 'utf8').split('\n')
+    const i = lines.slice(0, 8).findIndex(line => line.startsWith('Title: '))
+    if (i < 0) throw new Error('This outline has no Title line.')
+    lines[i] = `Title: ${name}${lines[i].endsWith('\r') ? '\r' : ''}`
+    fs.writeFileSync(full, lines.join('\n'))
+    return { title: name }
+}
+
 /** "Delete" in the Discussions list: moves the outline into <dir>/.trash/<project>/, where it can be moved back by hand. */
 function trashOutline({ project, file }) {
-    const safe = name => typeof name === 'string' && name && !name.startsWith('.') && !/[/\\]/.test(name)
-    if (!safe(project) || !safe(file)) throw new Error('bad outline name')
+    if (!safeName(project) || !safeName(file)) throw new Error('bad outline name')
     const from = path.join(ROOT, project, `${file}.md`)
     if (!fs.existsSync(from)) throw new Error('no such outline')
     const dir = path.join(ROOT, TRASH, project)
