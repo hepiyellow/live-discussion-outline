@@ -64,7 +64,9 @@ export async function startServer({ args = [] } = {}) {
     }
     /** Replaces outline <project>/<file> with a fixture outline, the way the agent rewrites it. */
     const swap = (target, fixture) => fs.copyFileSync(path.join(FIXTURES, 'outlines', `${fixture}.md`), path.join(dir, `${target}.md`))
-    return { url, dir, home, stop, swap }
+    /** Forgets the viewer state of every outline. */
+    const resetState = () => fs.rmSync(path.join(dir, '.state'), { recursive: true, force: true })
+    return { url, dir, home, stop, swap, resetState }
 }
 
 /**

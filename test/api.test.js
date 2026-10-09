@@ -38,6 +38,7 @@ describe('/api/outline', () => {
         const stream = await eventStream(`${server.url}/api/outline/demo/sample/events`)
         try {
             const first = JSON.parse((await stream.take()).data)
+            assert.equal((await stream.take()).event, 'state')
             assert.equal(first.nodes.find(n => n.num === '4').children[0].status, 'claim')
             server.swap('demo/sample', 'demo/sample-edited')
             const next = JSON.parse((await stream.take()).data)
@@ -53,6 +54,7 @@ describe('/api/outline', () => {
         const stream = await eventStream(`${server.url}/api/outline/demo/sample/events`)
         try {
             await stream.take()
+            await stream.take()
             fs.writeFileSync(path.join(server.dir, 'demo', 'other.md'), 'Title: Other\n\n# 1. A\n')
             await assert.rejects(stream.take(600), /no event/)
         } finally {
@@ -65,6 +67,7 @@ describe('/api/outline', () => {
         fs.copyFileSync(path.join(server.dir, 'demo', 'sample.md'), path.join(server.dir, 'demo', 'doomed.md'))
         const stream = await eventStream(`${server.url}/api/outline/demo/doomed/events`)
         try {
+            await stream.take()
             await stream.take()
             fs.rmSync(path.join(server.dir, 'demo', 'doomed.md'))
             assert.equal((await stream.take()).event, 'gone')
