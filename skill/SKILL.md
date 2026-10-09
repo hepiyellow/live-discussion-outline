@@ -43,7 +43,7 @@ Condensed content of that point.
   - [ ] 1.3.2 @recommended **(B) Second option.** What it means, and why you recommend it.
   - [ ] 1.3.3 **(C) Third option.** What it means and what it costs.
 
-## ❓ 2. Next point
+## 2. Next point
 ...
 ```
 
@@ -52,14 +52,14 @@ Condensed content of that point.
   - If the template is empty and you know your own way to reopen a chat (a link or a command), write that.
   - Otherwise omit the line. Never invent an id or a command.
 - Line 3 is `Model: <model name>, <effort level>` (for example `Model: Claude Sonnet 5.5, medium`); the page shows it top-right beside the copy button. Write the model you are running as and the reasoning effort you know you are using. Omit the effort if you do not know it, and omit the line if you do not know the model. Never guess. Update it if the model or effort changes mid-discussion.
-- Each numbered or bulleted point from your answers is a `##` heading that keeps its number (`## ❓ 2. Title`). Deeper levels use `###`.
+- Each numbered or bulleted point from your answers is a `##` heading that keeps its number (`## 2. Title`). Deeper levels use `###`.
 - Body content under a heading is the substance of that point: claims, reasons, commands, code blocks. Trim filler; do not paste whole answers.
 - The user's follow-up questions and your answers nest as `-` bullets under the point they belong to; a bullet with sub-bullets becomes collapsible in the page.
 - **Number every heading and every bullet with its full path** in the file: `1`, `1.1`, `1.1.1`, `2`, `2.1`, … Numbers follow the structure and restart under each parent. Never leave a nested bullet unnumbered. The viewer shows only the last segment (and the full path on hover), but the file keeps the full path.
 - **Every bullet has a bold title.** Write `- [ ] <number> **Title.** content`: a short bold title (2 to 6 words, ending in a period or colon inside the bold), then the content as normal text. The viewer renders each nesting level as a table with columns number, title, content. Never put the whole bullet in bold, and never leave the title out.
 - **Chat answers use the same numbering, always as full paths.** Once this skill is invoked, whenever you answer with points or suggest options, number them with their full path (`1.1`, `1.2`, `2.1`, `2.2`; never a bare `1`, `2`, `3` under a parent), so a reader scrolling back in the chat can tell where a point sits and what its parents are. Use exactly those numbers in the outline so the user can say "2.1" and mean the same thing in both places. New follow-ups continue the sequence under their parent; do not renumber existing items.
 - **Clarifications go into the bullet they clarify.** When the user asks about, corrects or narrows existing bullets (for example "what do you mean by 2.1.3?" or "clarify the bullets in 2.1"), edit those bullets in place: fold the answer into the wording of each affected bullet (`2.1.0` … `2.1.6`) and keep its number. Do not append a new bullet that restates or summarizes them (a `2.1.7 Clarification: …` after six bullets it explains). Add a new numbered bullet only for content that is new and does not belong in any existing bullet, such as a new question or a new sub-point. When an answer touches several bullets, update each one. If a bullet becomes much longer, keep its first line as the claim and put the detail in sub-bullets under it. Chat replies can still be longer than the outline; the outline holds the merged result.
-- **Headings** start with a status emoji: ❓ open / not yet discussed, 🔥 on the path to the latest discussed bullet, ✅ resolved.
+- **Headings** carry a status emoji only when it means something: 🔥 on the path to the latest discussed bullet, ✅ resolved. An open or not-yet-discussed heading has no emoji. Never write ❓ before a topic heading (`## 2. Title`, not `## ❓ 2. Title`).
 - **Every bullet starts with a checkbox**, `- [ ]`, `- [a]`, or `- [x]`:
   - `[ ]` is open. `[a]` is agent-approved: write it when you make a claim the conversation already settled, or a claim you are certain of (a fact, a constraint, or a conclusion you are stating as yours). The viewer shows a blue outlined tick. Do not write `[a]` for something that still needs a user decision.
   - `[x]` means the **user** approved it, and writing `[x]` is what turns the viewer's green outlined pending tick into a filled checkbox. A tick the user makes in the viewer (on an open box or on a blue agent tick) stays green-outlined until you record it. Write `[x]` only when the user approved that bullet, in chat or in a pasted line such as `Approved in the outline: 2.1.3 …; 2.1.5 ….` (the viewer writes these when the user ticks boxes). Never write `[x]` on your own judgment; your own certainty is `[a]`. A pasted `Reopened in the outline: …` line means change those boxes back to `[ ]`.

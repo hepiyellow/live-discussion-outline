@@ -66,7 +66,8 @@ function listToHtml(tokens, i, j, radio = false) {
         }
         rows.push(rowHtml(text || '', extra, kids, kidCount, radio))
     }
-    return `<table class="ol"><tbody>\n${rows.join('')}</tbody></table>\n`
+    // One <tbody> per row: it is the box a sticky parent row stays inside, until its last child has scrolled past.
+    return `<table class="ol">\n${rows.map(row => `<tbody>${row}</tbody>\n`).join('')}</table>\n`
 }
 
 const CHECK_RE = /^\s*\[([ xXaA])\]\s*/
@@ -311,7 +312,16 @@ pre code{background:none;padding:0}
 details.s-fire>summary{background:var(--fire);border-left:3px solid var(--fireline)}
 details.s-done>summary{color:var(--done)}
 body.only-open details.s-done{display:none}
-table.ol{width:100%;border-collapse:collapse}
+table.ol,table.ol>tbody,table.ol tr.kids,table.ol tr.kids>td{display:block}
+table.ol{width:100%}
+table.ol tr.r{display:grid;grid-template-columns:96px 26% minmax(0,1fr);min-height:var(--rh)}
+table.ol tr.r>td{min-width:0}
+:root{--rh:32px;--barh:44px}
+details.h>summary,table.ol tr.r.parent{position:sticky;top:calc(var(--barh) + var(--d,0) * var(--rh));background:var(--bg);z-index:1}
+details.h>summary{box-sizing:border-box;min-height:var(--rh);border-bottom:1px solid var(--line);border-radius:0}
+details.h>summary.stuck{height:var(--rh);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+table.ol tr.r.stuck{box-sizing:border-box;height:var(--rh);overflow:hidden;box-shadow:0 1px 0 var(--line)}
+table.ol tr.r.stuck>td.t,table.ol tr.r.stuck>td.c{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 table.ol td{vertical-align:top;padding:4px 8px;border-bottom:1px solid var(--line)}
 table.ol td.n{white-space:nowrap;width:1%;color:var(--muted);font-variant-numeric:tabular-nums;padding-right:8px}
 table.ol .nh{display:flex;align-items:center;gap:2px}
@@ -496,6 +506,17 @@ expand.onclick=()=>all(true);collapse.onclick=()=>all(false);
 fire.onclick=()=>{const all=document.querySelectorAll((document.getElementById('outline-table')?'#outline-table ':'#outline ')+'details.s-fire,tr.s-fire');const d=all[all.length-1];if(!d)return;
   for(let e=d.parentElement;e;e=e.parentElement){if(e.tagName==='DETAILS')e.open=true;if(e.tagName==='TR'&&e.classList.contains('kids'))e.previousElementSibling.classList.remove('closed')}
   if(d.tagName==='DETAILS')d.open=true;d.scrollIntoView({block:'center'})};
+// Sticky, stackable headers: each topic / parent row sticks below its ancestors' headers until its own block ends.
+const stickies=[...document.querySelectorAll('details.h>summary,tr.r.parent')];
+const stackTop=()=>document.querySelector('.bar').offsetHeight;
+stickies.forEach(el=>{let d=0;for(let e=el.tagName==='SUMMARY'?el.parentElement.parentElement:el.parentElement;e;e=e.parentElement)if((e.tagName==='DETAILS'&&e.classList.contains('h'))||(e.tagName==='TR'&&e.classList.contains('kids')))d++;el.style.setProperty('--d',d)});
+let stickyQueued=false;
+const markStuck=()=>{stickyQueued=false;const bar=stackTop(),rh=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rh'))||32;
+  document.documentElement.style.setProperty('--barh',bar+'px');
+  stickies.forEach(el=>{const top=bar+Number(el.style.getPropertyValue('--d'))*rh;
+    el.classList.toggle('stuck',el.getBoundingClientRect().top<=top+0.5&&el.parentElement.getBoundingClientRect().bottom>top+1)})};
+const queueStuck=()=>{if(!stickyQueued){stickyQueued=true;requestAnimationFrame(markStuck)}};
+addEventListener('scroll',queueStuck,{passive:true});addEventListener('resize',queueStuck);addEventListener('click',()=>setTimeout(queueStuck,0));markStuck();
 const y=sessionStorage.getItem(KEY+':y');if(y)scrollTo(0,Number(y));
 addEventListener('scroll',()=>sessionStorage.setItem(KEY+':y',String(scrollY)));
 document.querySelectorAll('tr[data-href]').forEach(tr=>{const go=e=>{if(e.metaKey||e.ctrlKey)open(tr.dataset.href,'_blank');else location.href=tr.dataset.href};
