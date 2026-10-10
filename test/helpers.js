@@ -38,10 +38,16 @@ export async function startServer({ args = [] } = {}) {
         stdio: ['ignore', 'pipe', 'pipe'],
     })
     let log = ''
+    let stopping = false
     child.stdout.on('data', d => (log += d))
     child.stderr.on('data', d => (log += d))
+    // A server that dies during the tests would only show as refused connections: say why.
+    child.on('exit', code => {
+        if (!stopping) console.error(`the test server exited (${code}):\n${log}`)
+    })
     const url = `http://127.0.0.1:${port}`
     const stop = async () => {
+        stopping = true
         if (child.exitCode === null) {
             child.kill()
             await new Promise(r => child.once('exit', r))
