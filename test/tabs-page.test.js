@@ -14,7 +14,7 @@ describe('the Transcript and Terminal tabs', () => {
     })
     beforeEach(async () => {
         server.resetState()
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1200, height: 800 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1200, height: 800 } })
         await page.locator('.outline-tab h1').waitFor()
     })
     afterEach(async () => {

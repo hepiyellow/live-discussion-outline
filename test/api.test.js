@@ -76,20 +76,12 @@ describe('/api/outline', () => {
         }
     })
 
-    test('the old page still renders the outline', async () => {
-        const res = await fetch(`${server.url}/demo/sample`)
-        assert.equal(res.status, 200)
-        const html = await res.text()
-        assert.match(html, /Caching for the search service/)
-        assert.match(html, /data-num="3\.1\.1\.1\.1\.1"/)
-        assert.match(html, /◉ Pick one/)
-        assert.match(html, /💡 Recommended/)
-        assert.match(html, /<div class="rec-line"><span class="pill sum"/)
-        assert.match(html, /class="q q-decide" data-num="2\.1"/)
-    })
-
-    test('the old outline list still reads the outline', async () => {
-        const html = await (await fetch(`${server.url}/`)).text()
-        assert.match(html, /Caching for the search service/)
+    test('no route serves the old page', async () => {
+        for (const p of ['/', '/demo/sample', '/live?t=x', '/events', '/transcript?id=x']) {
+            const html = await (await fetch(server.url + p)).text()
+            assert.match(html, /<div id="root"><\/div>/, p)
+            assert.doesNotMatch(html, /class="ol"|Discussions|renderPage/, p)
+        }
+        assert.equal((await fetch(`${server.url}/vendor/xterm.js`)).status, 404)
     })
 })

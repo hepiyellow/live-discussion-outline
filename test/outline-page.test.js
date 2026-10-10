@@ -21,7 +21,7 @@ describe('the Outline tab', () => {
     beforeEach(async () => {
         server.swap('demo/sample', 'demo/sample')
         server.resetState()
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1200, height: 900 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1200, height: 900 } })
         await page.locator('.outline-tab h1').waitFor()
     })
     afterEach(async () => {
@@ -173,7 +173,7 @@ describe('the Outline tab', () => {
     })
 
     test('a missing outline says so', async () => {
-        const other = await openPage(browser, `${server.url}/app/demo/nope`)
+        const other = await openPage(browser, `${server.url}/demo/nope`)
         await other.getByText('There is no outline demo/nope').waitFor()
         await other.close()
     })
@@ -193,8 +193,8 @@ describe('the viewer state', () => {
     const hidden = (page, num) => page.locator(`.outline-tab [data-num="${num}"]`).isHidden()
 
     test('a node collapsed stays collapsed after a reload, and a second window follows', async () => {
-        const one = await openPage(browser, `${server.url}/app/demo/sample`)
-        const two = await openPage(browser, `${server.url}/app/demo/sample`)
+        const one = await openPage(browser, `${server.url}/demo/sample`)
+        const two = await openPage(browser, `${server.url}/demo/sample`)
         await one.locator('.outline-tab [data-num="3.1"]').click()
         assert.equal(await hidden(one, '3.1.1'), true)
         await two.waitForFunction(() => document.querySelector('.outline-tab [data-num="3.1.1"]').offsetParent === null)

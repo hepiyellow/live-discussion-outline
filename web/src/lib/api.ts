@@ -16,4 +16,4 @@ export async function api<T>(url: string, body?: unknown): Promise<T> {
 }
 
 /** The app's page for an outline. */
-export const outlineHref = (project: string, file: string) => `/app/${encodeURIComponent(project)}/${encodeURIComponent(file)}`
+export const outlineHref = (project: string, file: string) => `/${encodeURIComponent(project)}/${encodeURIComponent(file)}`

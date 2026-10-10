@@ -16,7 +16,7 @@ describe('the outline list', () => {
     })
     beforeEach(async () => {
         server.swap('demo/sample', 'demo/sample')
-        page = await openPage(browser, `${server.url}/app/`, { viewport: { width: 1200, height: 800 } })
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1200, height: 800 } })
         await page.locator('[data-outline="demo/sample"]').waitFor()
     })
     afterEach(async () => {
@@ -48,7 +48,7 @@ describe('the outline list', () => {
         assert.match(await row('sample').locator('[data-progress]').textContent(), /✅ 4 · 6 agent · ☐ 10/)
         assert.equal(await row('sample').getByRole('button', { name: 'Copy the link that reopens this chat' }).count(), 1)
         await row('sample').locator('td').nth(1).click()
-        await page.waitForURL(/\/app\/demo\/sample$/)
+        await page.waitForURL(/\/demo\/sample$/)
         await page.locator('.outline-tab h1').waitFor()
     })
 
@@ -78,7 +78,7 @@ describe('the outline list', () => {
     })
 
     test('the page title has the same pencil', async () => {
-        await page.goto(`${server.url}/app/demo/sample`)
+        await page.goto(`${server.url}/demo/sample`)
         await page.locator('.outline-tab h1').getByRole('button', { name: 'Rename' }).click()
         await page.getByRole('textbox', { name: 'Outline name' }).fill('Caching, renamed')
         await page.getByRole('textbox', { name: 'Outline name' }).press('Enter')

@@ -15,7 +15,7 @@ describe('inbox, input box and spinner', () => {
         await server?.stop()
     })
     const open = async () => {
-        await page.goto(`${server.url}/app/demo/sample`)
+        await page.goto(`${server.url}/demo/sample`)
         await page.locator('.outline-tab h1').waitFor()
     }
     beforeEach(async () => {
