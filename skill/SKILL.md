@@ -1,13 +1,13 @@
 ---
 name: live-discussion-outline
-description: Start and maintain a numbered markdown outline of the current conversation, served as collapsible live-reloading HTML by the local live-discussion-outline server. User-invoked only.
+description: Start and maintain a numbered markdown outline of the current conversation, served as a collapsible, live-updating page by the local live-discussion-outline server. User-invoked only.
 disable-model-invocation: true
 argument-hint: "[topic]"
 ---
 
 # Live discussion outline
 
-Mirror this conversation into a markdown file. The local server in this checkout renders it as collapsible HTML and reloads the page on every edit. You only write markdown.
+Mirror this conversation into a markdown file. The local server in this checkout shows it as a collapsible page that updates on every edit. You only write markdown.
 
 ## Start
 

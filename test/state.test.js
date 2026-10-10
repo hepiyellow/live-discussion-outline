@@ -102,14 +102,4 @@ describe('/api/state', () => {
             stream.close()
         }
     })
-
-    test('the old page’s change events ignore state writes', async () => {
-        const stream = await eventStream(`${server.url}/events`)
-        try {
-            await patch({ open: { 4: false } })
-            await assert.rejects(stream.take(600), /no event/)
-        } finally {
-            stream.close()
-        }
-    })
 })

@@ -19,7 +19,7 @@ describe('unread changes', () => {
         page.checkErrors = () => {
             if (errors.length) throw errors[0]
         }
-        await page.goto(`${server.url}/app/demo/sample`)
+        await page.goto(`${server.url}/demo/sample`)
         await page.locator('.outline-tab h1').waitFor()
     }
     beforeEach(async () => {

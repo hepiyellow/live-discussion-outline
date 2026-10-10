@@ -2,13 +2,11 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { renderMarkdown, renderPage, escapeHtml } from './render.js'
-import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload, renderPlain } from './outline.js'
+import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload } from './outline.js'
 import { loadConfig } from './config.js'
-import { attachTerminals, fromLocalPage, hasSession, isSessionName, sendToTerminal } from './terminal.js'
-import { isSessionId, streamActivity, streamMessages, streamTranscript, streamTranscriptEntries } from './transcript.js'
+import { attachTerminals, fromLocalPage, hasSession, sendToTerminal } from './terminal.js'
+import { isSessionId, streamActivity, streamMessages, streamTranscriptEntries } from './transcript.js'
 import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolder, startSession } from './start.js'
-import { startDialogHtml } from './start-dialog.js'
 import { slashCommands } from './commands.js'
 import { STATE_DIR, createStateStore } from './state.js'
 
@@ -16,19 +14,11 @@ const config = loadConfig()
 const { dir: ROOT, port: PORT, host: HOST } = config
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const modules = path.join(HERE, 'node_modules')
-/** xterm.js for the Terminal tab, served from node_modules. */
-const VENDOR = {
-    '/vendor/xterm.js': { file: path.join(modules, '@xterm/xterm/lib/xterm.js'), type: 'text/javascript' },
-    '/vendor/xterm.css': { file: path.join(modules, '@xterm/xterm/css/xterm.css'), type: 'text/css' },
-    '/vendor/addon-fit.js': { file: path.join(modules, '@xterm/addon-fit/lib/addon-fit.js'), type: 'text/javascript' },
-}
 
 fs.mkdirSync(ROOT, { recursive: true })
 
 const TRASH = '.trash'
 
-const clients = new Set()
 let debounce
 const viewerState = createStateStore(ROOT)
 // Writes to the viewer state and the trash are not outline changes.
@@ -36,7 +26,6 @@ const IGNORED = new Set([STATE_DIR, TRASH])
 const changed = () => {
     clearTimeout(debounce)
     debounce = setTimeout(() => {
-        for (const res of clients) res.write('data: change\n\n')
         pushOutlines()
         pushList()
     }, 120)
@@ -207,7 +196,7 @@ function readJson(req) {
     })
 }
 
-/** Routes behind "New discussion": what can be started, starting it, and finding the outline it writes. */
+/** Routes behind "New session": what can be started, starting it, and finding the outline it writes. */
 async function startApi(req, res, pathname, url) {
     const write = req.method === 'POST'
     if (!fromLocalPage(req, PORT, { write }) || (write && !/^application\/json\b/.test(req.headers['content-type'] || ''))) return send(res, 403, 'text/plain', 'forbidden')
@@ -248,30 +237,6 @@ function runningInApp() {
     return running
 }
 
-const TRASH_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5"/></svg>'
-
-// The trash button asks once ("Move to trash?") before it moves the outline; swiping a row left (trackpad or touch) asks the same.
-const DELETE_SCRIPT = `<style>
-table.index td.del{width:1%;padding:0 6px}
-table.index .trash{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12px;color:var(--muted);background:none;border:1px solid transparent;border-radius:6px;padding:4px 6px;cursor:pointer;white-space:nowrap}
-table.index .trash:hover{color:#d1242f;border-color:var(--line)}
-table.index tr.armed .trash{color:#fff;background:#d1242f;border-color:#d1242f}
-table.index tr.armed .trash::after{content:'Move to trash?'}
-</style><script>
-(()=>{const disarm=()=>document.querySelectorAll('tr.armed').forEach(r=>r.classList.remove('armed'));
-  const arm=r=>{disarm();r.classList.add('armed');clearTimeout(r._t);r._t=setTimeout(()=>r.classList.remove('armed'),5000)};
-  document.querySelectorAll('table.index .trash').forEach(b=>{const row=b.closest('tr');
-    b.onclick=async e=>{e.stopPropagation();if(!row.classList.contains('armed'))return arm(row);
-      b.disabled=true;const r=await fetch('/api/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({project:b.dataset.project,file:b.dataset.file})});
-      if(r.ok)row.remove();else{b.disabled=false;b.title=(await r.json()).error||'Not moved'}};
-    let dx=0,x0=null;
-    row.addEventListener('wheel',e=>{if(Math.abs(e.deltaX)<=Math.abs(e.deltaY))return;dx+=e.deltaX;
-      if(dx>40){arm(row);dx=0}else if(dx<-40){row.classList.remove('armed');dx=0}},{passive:true});
-    row.addEventListener('touchstart',e=>{x0=e.touches[0].clientX},{passive:true});
-    row.addEventListener('touchend',e=>{if(x0===null)return;const d=e.changedTouches[0].clientX-x0;x0=null;if(d<-40)arm(row);else if(d>40)row.classList.remove('armed')})});
-  addEventListener('click',e=>{if(!e.target.closest('tr.armed'))disarm()})})();
-</script>`
-
 const safeName = name => typeof name === 'string' && name && !name.startsWith('.') && !/[/\\]/.test(name)
 
 /** The pencil beside a discussion's title: rewrites the outline's `Title:` line, leaving the rest of the file as it is. */
@@ -292,7 +257,7 @@ function renameOutline({ project, file, title }) {
     return { title: name }
 }
 
-/** "Delete" in the Discussions list: moves the outline into <dir>/.trash/<project>/, where it can be moved back by hand. */
+/** "Delete" in the outline list: moves the outline into <dir>/.trash/<project>/, where it can be moved back by hand. */
 function trashOutline({ project, file }) {
     if (!safeName(project) || !safeName(file)) throw new Error('bad outline name')
     const from = path.join(ROOT, project, `${file}.md`)
@@ -319,7 +284,7 @@ function listMaps() {
     return out.sort((a, b) => b.mtime - a.mtime)
 }
 
-/** The client of ADR 0001, built into web/dist by `npm install`. Served under /app/ beside the old page until the cutover. */
+/** The page: a React app (ADR 0001), built into web/dist by `npm install`. */
 const APP_DIST = path.join(HERE, 'web', 'dist')
 const APP_TYPES = {
     '.html': 'text/html; charset=utf-8',
@@ -334,9 +299,9 @@ const APP_TYPES = {
     '.woff2': 'font/woff2',
 }
 
-/** A file of the build, or else the app's shell, so that client routes like /app/<project>/<file> load the app. */
+/** A file of the build, or else the app's shell, so that client routes (/, /<project>/<file>, /live) load the app. */
 function serveApp(res, pathname) {
-    const rel = pathname.slice('/app/'.length)
+    const rel = pathname.slice(1)
     const file = path.resolve(APP_DIST, rel)
     if (rel && file.startsWith(APP_DIST + path.sep) && fs.statSync(file, { throwIfNoEntry: false })?.isFile()) {
         // File names under assets/ carry a hash of their content, so they never change.
@@ -362,21 +327,10 @@ const server = http.createServer((req, res) => {
 
     if (pathname === '/health') return send(res, 200, 'text/plain', 'ok')
 
-    if (pathname === '/app') {
-        res.writeHead(301, { location: '/app/' })
+    // The app was served under /app/ while the old page still had these paths; links to it still work.
+    if (pathname === '/app' || pathname.startsWith('/app/')) {
+        res.writeHead(301, { location: (url.pathname.slice('/app'.length) || '/') + url.search })
         return res.end()
-    }
-    if (pathname.startsWith('/app/')) return vite ? vite.middlewares(req, res, () => send(res, 404, 'text/plain', 'not found')) : serveApp(res, pathname)
-
-    if (VENDOR[pathname]) {
-        res.writeHead(200, { 'content-type': VENDOR[pathname].type, 'cache-control': 'max-age=86400' })
-        return fs.createReadStream(VENDOR[pathname].file).pipe(res)
-    }
-
-    if (pathname === '/transcript') {
-        const id = url.searchParams.get('id') || ''
-        if (!fromLocalPage(req, PORT, { write: false }) || !isSessionId(id)) return send(res, 403, 'text/plain', 'forbidden')
-        return streamTranscript(req, res, id)
     }
 
     // The message box's spinner: whether the session's agent is in a turn.
@@ -434,66 +388,15 @@ const server = http.createServer((req, res) => {
 
     if (pathname.startsWith('/api/')) return startApi(req, res, pathname, url)
 
-    // A session the page just started: its terminal, until the agent writes the outline and the page moves there.
-    if (pathname === '/live') {
-        const name = url.searchParams.get('t') || ''
-        if (!isSessionName(name)) return send(res, 404, 'text/plain', 'not found')
-        return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: `Starting ${name}`, plainHtml: '', terminal: name, terminalTab: terminalEnabled, waitFor: name, storageKey: `live:${name}` }))
-    }
-
-    if (pathname === '/events') {
-        res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
-        res.write('retry: 1000\n\n')
-        clients.add(res)
-        req.on('close', () => clients.delete(res))
-        return
-    }
-
-    if (pathname === '/') {
-        const rows = listMaps()
-            .map(m => {
-                const href = `/${encodeURIComponent(m.project)}/${encodeURIComponent(m.file)}`
-                const cb = m.checkbox
-                let progress
-                if (cb.total) {
-                    const hPct = Math.round((cb.done / cb.total) * 100)
-                    const aPct = Math.round((cb.agent / cb.total) * 100)
-                    progress = `<div class="progress" title="${cb.done} human-approved · ${cb.agent} agent-approved · ${cb.open} open (of ${cb.total} checkboxes)"><div class="meter"><span class="human" style="width:${hPct}%"></span><span class="agent" style="width:${aPct}%"></span></div><span class="nums">✅ ${cb.done} · <span class="agent-n">${cb.agent}</span> agent · ☐ ${cb.open}</span></div>`
-                } else {
-                    const { done, open, now } = m.counts
-                    const total = done + open + now
-                    const pct = total ? Math.round((done / total) * 100) : 0
-                    progress = `<div class="progress" title="${done} resolved of ${total}"><div class="meter"><span class="human" style="width:${pct}%"></span></div><span class="nums">✅ ${done} · ❓ ${open}</span></div>`
-                }
-                return `<tr tabindex="0" data-href="${href}"><td>${escapeHtml(m.title)}</td><td>${escapeHtml(m.project)}</td><td class="progress-cell">${progress}</td><td>${m.resume ? `<button class="copy" data-copy="${escapeHtml(m.resume)}" title="Copy the link that reopens this chat">📋</button>` : ''}</td><td>${escapeHtml(new Date(m.mtime).toLocaleString().replace(',', ''))}</td><td class="del"><button class="trash" type="button" data-project="${escapeHtml(m.project)}" data-file="${escapeHtml(m.file)}" title="Move to trash" aria-label="Move to trash">${TRASH_ICON}</button></td></tr>`
-            })
-            .join('')
-        const body = `<div class="index-head"><h1>Discussions</h1><button id="newd-open" type="button">New discussion</button></div>${startDialogHtml()}<table class="index"><thead><tr><th>Name</th><th>Project</th><th>Progress</th><th>Chat</th><th>Updated</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6">No outlines yet.</td></tr>'}</tbody></table>${DELETE_SCRIPT}`
-        return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: 'Discussions', bodyHtml: body, storageKey: 'index' }))
-    }
-
-    const parts = pathname.split('/').filter(Boolean)
-    if (parts.length === 2 && parts.every(p => !p.includes('..') && !p.includes('\\'))) {
-        const file = path.join(ROOT, parts[0], `${parts[1]}.md`)
-        if (path.resolve(file).startsWith(ROOT + path.sep) && fs.existsSync(file)) {
-            let tableHtml, plainHtml, headers
-            try {
-                headers = extractHeaders(fs.readFileSync(file, 'utf8'))
-                tableHtml = renderMarkdown(headers.source, headers.title)
-                plainHtml = renderPlain(headers.source)
-            } catch (e) {
-                return send(res, 500, 'text/plain', `render failed: ${e.message}`)
-            }
-            const { resume, model, terminal, session, queue } = headers
-            return send(res, 200, 'text/html; charset=utf-8', renderPage({ title: parts[1], tableHtml, plainHtml, resume, model, terminal, terminalTab: terminalEnabled && !!terminal, session, queue, project: parts[0], folder: session ? sessionFolder(session) : undefined, storageKey: `map:${parts[0]}/${parts[1]}` }))
-        }
-    }
-    send(res, 404, 'text/plain', 'not found')
+    // Everything else is the app: its files, or its shell for the routes it shows.
+    if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'text/plain', 'method not allowed')
+    if (vite) return vite.middlewares(req, res, () => send(res, 404, 'text/plain', 'not found'))
+    serveApp(res, pathname)
 })
 
 const terminalEnabled = await attachTerminals(server, PORT)
 
-/** With --dev, Vite serves /app/ from web/src as middleware and hot-reloads it over its own WebSocket on this server. */
+/** With --dev, Vite serves the app from web/src as middleware and hot-reloads it over its own WebSocket on this server. */
 const vite = process.argv.includes('--dev')
     ? await (await import('vite')).createServer({
           configFile: path.join(HERE, 'web', 'vite.config.ts'),
@@ -506,7 +409,7 @@ const vite = process.argv.includes('--dev')
 server.on('upgrade', (req, socket) => {
     const { pathname } = new URL(req.url, 'http://localhost')
     const terminal = terminalEnabled && pathname === '/term'
-    const hotReload = vite && pathname === '/app/' && /^vite-/.test(req.headers['sec-websocket-protocol'] || '')
+    const hotReload = vite && pathname === '/' && /^vite-/.test(req.headers['sec-websocket-protocol'] || '')
     if (!terminal && !hotReload) socket.destroy()
 })
 

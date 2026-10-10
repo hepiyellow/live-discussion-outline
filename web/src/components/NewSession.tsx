@@ -16,7 +16,7 @@ const ago = (t: number) => {
 }
 
 /** The page for a session just started: its terminal, until the agent writes the outline. */
-const liveHref = (terminal: string) => `/app/live?t=${encodeURIComponent(terminal)}`
+const liveHref = (terminal: string) => `/live?t=${encodeURIComponent(terminal)}`
 
 const row = 'flex cursor-pointer items-baseline gap-2.5 rounded-md px-2 py-[7px] hover:bg-accent'
 

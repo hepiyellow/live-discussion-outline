@@ -2,10 +2,10 @@ import MarkdownIt from 'markdown-it'
 import { isSessionName } from './terminal.js'
 import { isSessionId } from './transcript.js'
 
-// The one parser of outlines, shared by the old page (render.js) and the outline's JSON (`outlinePayload`).
+// The one parser of outlines: header lines, queue and nodes, into the JSON the page shows (`outlinePayload`).
 
 /** The server's markdown renderer: the page never renders markdown itself (ADR 0001). */
-export const md = new MarkdownIt({ html: false, linkify: true })
+const md = new MarkdownIt({ html: false, linkify: true })
 
 /** Longest `Title:` value the page reads; a longer one is dropped. */
 export const TITLE_MAX = 300
@@ -76,9 +76,9 @@ const TAG_RE = /^@(approved|claim|options|recommended|current|action|ran)\b\s*/i
 const REC_MARK = /@recommendation\./i
 /** Tags that open a node's closing lines, after its prose: `@Summary.`, `@Recommendation.`, `@Action.` (in any order). */
 const TRAIL_MARK = /@(summary|recommendation|action)\.\s*/gi
-export const HAS_TRAIL = /@(summary|recommendation|action)\./i
+const HAS_TRAIL = /@(summary|recommendation|action)\./i
 /** The order closing lines are shown in. */
-export const CLOSING_KINDS = ['summary', 'recommendation', 'action']
+const CLOSING_KINDS = ['summary', 'recommendation', 'action']
 
 function headNode(text, level) {
     const m = text.trim().match(HEAD_RE)
@@ -89,7 +89,7 @@ function headNode(text, level) {
 }
 
 /** The outline as a tree of markdown tokens: the root holds any text before the first topic, and the topics. */
-export function parseOutline(source) {
+function parseOutline(source) {
     const tokens = md.parse(source, {})
     const root = { level: 0, num: '', title: '', tags: new Set(), body: [], children: [] }
     const stack = [root]
@@ -109,14 +109,14 @@ export function parseOutline(source) {
 }
 
 /** open, agent (a claim, or a node carrying a recommendation) or done (the user approved it). */
-export function statusOf(node) {
+function statusOf(node) {
     if (node.tags.has('approved')) return 'done'
     if (node.tags.has('claim') || node.tags.has('recommended')) return 'agent'
     return node.body.some(t => t.type === 'inline' && REC_MARK.test(t.content)) ? 'agent' : 'open'
 }
 
 /** A paragraph's prose and its tagged closing lines. */
-export function splitTrail(text) {
+function splitTrail(text) {
     const parts = { prose: text, summary: '', recommendation: '', action: '' }
     const marks = [...text.matchAll(TRAIL_MARK)]
     if (!marks.length) return parts
@@ -127,7 +127,7 @@ export function splitTrail(text) {
     return parts
 }
 
-export const plainTitle = title => title.replace(/[*_`]/g, '')
+const plainTitle = title => title.replace(/[*_`]/g, '')
 
 /** Status counts over the nodes below the topics, for the outline list's progress bar. */
 export function countCheckboxProgress(source) {

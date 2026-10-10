@@ -9,7 +9,7 @@ One piece of work done with an agent (deciding, planning, coding or acting), mir
 _Avoid_: Discussion, chat, conversation, thread, and a bare "session" (that is the agent's own)
 
 **Outline**:
-The markdown file the agent keeps for an outline session, rendered by the server as the page.
+The markdown file the agent keeps for an outline session, which the page shows.
 _Avoid_: Map, mirror, notes
 
 **Title**:
@@ -102,6 +102,10 @@ _Avoid_: Chat tab, console
 **Transcript tab**:
 The tab that shows the linked session's transcript as rendered messages.
 _Avoid_: Chat tab, chat view
+
+**Viewer state**:
+What the page remembers for the user about one outline (open nodes, unsent approvals, what was read, undo steps, seen messages, the input box's draft, the tab shown), kept by the server so every window on the outline shows the same.
+_Avoid_: Local storage, preferences, settings (that is the settings file)
 
 **Input box**:
 The box fixed at the bottom of the window that types a message into the linked session's session terminal, whichever tab is shown; it is disabled while the Terminal tab is shown, since that tab takes typing itself.
