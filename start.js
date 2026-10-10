@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { execFileSync } from './log.js'
 import { isSessionId } from './transcript.js'
 
 // Starting a discussion from the page: a new Claude Code session in a tmux session, opened on a workspace, a folder,

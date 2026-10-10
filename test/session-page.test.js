@@ -5,7 +5,7 @@ import { launchBrowser, startServer, until } from './helpers.js'
 // sample.md links a session (Terminal: and Session: lines) whose transcript is the fixture. The tests answer /send.
 
 describe('inbox, input box and spinner', () => {
-    let server, browser, page, sent
+    let server, browser, page, sent, stopped
     before(async () => {
         server = await startServer()
         browser = await launchBrowser()
@@ -26,6 +26,11 @@ describe('inbox, input box and spinner', () => {
         await page.route('**/send', async route => {
             sent.push(route.request().postDataJSON().text)
             await route.fulfill({ status: 200, body: 'sent' })
+        })
+        stopped = []
+        await page.route('**/stop', async route => {
+            stopped.push(route.request().postDataJSON().terminal)
+            await route.fulfill({ status: 200, body: 'stopped' })
         })
         const errors = []
         page.on('pageerror', e => errors.push(e))
@@ -86,14 +91,48 @@ describe('inbox, input box and spinner', () => {
         await node('3.2').evaluate(e => e.scrollIntoView({ block: 'center' }))
         await node('3.2').hover()
         await node('3.2').locator('.ask').click()
-        await page.locator('[data-chip="3.2 Time to live"]').waitFor()
+        const chip = page.locator('[data-chip="3.2 Time to live"]')
+        await chip.waitFor()
+        // The click shows in the chip, which grows and shrinks once; no notice slides in for it.
+        assert.equal(await chip.evaluate(e => getComputedStyle(e).animationName), 'chipin')
+        assert.equal(await chip.evaluate(e => getComputedStyle(e).animationIterationCount), '1')
+        assert.equal(await page.getByText('Added to the message box').count(), 0)
+        // Adding it again plays the pulse again, on the one chip.
+        await chip.evaluate(e => (e.dataset.old = '1'))
+        await node('3.2').hover()
+        await node('3.2').locator('.ask').click()
+        await page.locator('[data-chip="3.2 Time to live"]:not([data-old])').waitFor()
+        assert.equal(await page.locator('[data-chip]').count(), 1)
         await box().fill('Why 60 seconds?')
         await box().press('Enter')
         assert.equal(await waitSent(1), 'Re: outline "Caching for the search service" › 3. Invalidation › 3.2 Time to live\nWhy 60 seconds?')
         await page.locator('[data-chip]').waitFor({ state: 'detached' })
         assert.equal(await box().inputValue(), '')
-        // Sending starts the spinner: the agent is working.
+        // Sending starts the working dot on the button: the agent is working.
         await page.locator('[role="status"][data-busy]').waitFor()
+    })
+
+    test('while the agent works the button stops it, until a new message is typed', async () => {
+        // Idle with nothing typed: a send button that cannot be pressed, and no dot.
+        assert.equal(await page.getByRole('button', { name: 'Send' }).isDisabled(), true)
+        assert.equal(await page.locator('[aria-label="The agent is idle"]').isVisible(), false)
+        await box().fill('Go on')
+        await box().press('Enter')
+        await waitSent(1)
+        const dot = page.locator('[role="status"][data-busy]')
+        await dot.waitFor()
+        await page.getByRole('button', { name: 'Stop' }).waitFor()
+        // Typing a new message brings the send button back; the dot keeps blinking.
+        await box().fill('And another thing')
+        await page.getByRole('button', { name: 'Send' }).waitFor()
+        assert.equal(await page.getByRole('button', { name: 'Stop' }).count(), 0)
+        assert.equal(await dot.isVisible(), true)
+        assert.notEqual(await dot.evaluate(e => getComputedStyle(e).animationName), 'none')
+        await box().fill('')
+        await page.getByRole('button', { name: 'Stop' }).click()
+        await until(() => stopped.length === 1, { what: 'the stop to be sent' })
+        assert.deepEqual(stopped, ['ldo-sample'])
+        assert.deepEqual(sent, ['Go on'])
     })
 
     test('Shift+Enter adds a line; Backspace at the start drops the last chip', async () => {

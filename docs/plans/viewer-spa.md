@@ -121,7 +121,7 @@ Each test copies the fixtures into a temporary folder and starts the server with
 
 ### 7. Transcript and Terminal tabs
 
-- `transcript.js` sends typed entries (`assistant-text`, `user-text`, `tool-use`, `tool-result`, `title`) on a new `/api/transcript` stream; the old `/transcript` stays until step 9.
+- `transcript.js` sends typed entries (`assistant-text`, `user-text`, `tool-use`, `tool-result`, `title`) on the outline's stream, as `transcript` events, once the page asks for them (`?transcript=1`); the old `/transcript` stays until step 9. The page holds that one stream only (a browser allows six connections to one server across its windows), so the session's messages and activity travel on it too.
 - One component per entry type; tool calls and results collapse.
 - Terminal tab: xterm mounted through a ref on the existing `/term` socket, loaded only when the tab opens.
 - Outline changes no longer wait while these tabs are open, since nothing reloads.

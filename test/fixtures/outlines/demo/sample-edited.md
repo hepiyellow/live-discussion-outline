@@ -6,11 +6,11 @@ Session: 3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f
 
 The search service answers in 900 ms at p95. This outline decides how to cache its results.
 
-# 1. @approved Goals
+# 1. @user-approved Goals
 
-## 1.1 @approved Cut p95 latency below 200 ms
+## 1.1 @user-approved Cut p95 latency below 200 ms
 
-## 1.2 @approved Keep results fresh within a minute
+## 1.2 @user-approved Keep results fresh within a minute
 
 Stale results confuse users who just edited a document.
 
@@ -22,23 +22,23 @@ Two places could hold the cache, and the choice drives everything after it.
 
 Where cached results are kept. Pick one of the options below.
 
-### 2.1.1 (A) In each service instance
+### 2.1.1 @option_A In each service instance
 
 Fast, but every instance warms its own copy.
 
-### 2.1.2 @recommended (B) A shared Redis cluster
+### 2.1.2 @recommended @option_B A shared Redis cluster
 
 One warm copy for all instances, at the cost of a network hop.
 
-## 2.2 @approved @options Eviction policy
+## 2.2 @user-approved @options Eviction policy
 
 Which entries leave first when memory runs out. Pick one of the options below.
 
-### 2.2.1 @approved (A) Least recently used
+### 2.2.1 @user-approved @option_A Least recently used
 
-### 2.2.2 @recommended (B) Least frequently used
+### 2.2.2 @recommended @option_B Least frequently used
 
-## 2.3 @claim Cache key
+## 2.3 @agent-claim Cache key
 
 The key is the normalized query plus the user's locale and the tenant.
 Results differ by tenant as well as by locale, so both are part of it.
@@ -56,7 +56,7 @@ Replay yesterday's queries against staging with the cache on.
 
 @Action. Runs the replay script against staging and reports the hit rate.
 
-## 2.5 @action @ran Add cache metrics to the dashboard
+## 2.5 @action-done Add cache metrics to the dashboard
 
 Hits, misses and evictions now show on the search dashboard.
 
@@ -90,11 +90,11 @@ Entries expire after 60 seconds whatever happens.
 
 Replay the top thousand queries before taking traffic.
 
-# 4. @claim Rollout
+# 4. @agent-claim Rollout
 
-## 4.1 @approved Behind a feature flag per tenant
+## 4.1 @user-approved Behind a feature flag per tenant
 
-## 4.2 @claim Start with internal tenants
+## 4.2 @agent-claim Start with internal tenants
 
 # @queue
 - 2.1 @decide Pick where the cache lives.

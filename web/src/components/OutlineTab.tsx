@@ -4,6 +4,7 @@ import { Statuses } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
 import { OutlineCtx, Topic, type OutlineContext } from './NodeView'
+import { waiting } from './queue'
 import { RenameTitle } from './RenameTitle'
 
 /** Which topics and parents the viewer opened or closed; the rest follow `startsOpen`. */
@@ -13,7 +14,7 @@ export const isOpenIn = (open: OpenNodes) => (node: OutlineNode) => (node.num in
 
 /** The Outline tab: the title, any text before the first topic, then the topics with their nodes. */
 /** The user's actions on nodes, from useApprovals. */
-export type NodeActions = Pick<OutlineContext, 'linked' | 'onCheck' | 'onTopicCheck' | 'onRun' | 'onReference' | 'unread' | 'opening' | 'onOpenUnread' | 'messagesFor' | 'seen' | 'onSeen' | 'onReveal'>
+export type NodeActions = Pick<OutlineContext, 'linked' | 'onCheck' | 'onTopicCheck' | 'onRun' | 'onReference' | 'unread' | 'opening' | 'onOpenUnread' | 'unreadUnder' | 'onOpenUnreadUnder' | 'messagesFor' | 'seen' | 'onSeen' | 'onReveal'>
 
 interface Props {
     outline: Outline
@@ -26,9 +27,17 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     const root = useRef<HTMLDivElement>(null)
     const ctx = useMemo<OutlineContext>(() => {
         const isOpen = isOpenIn(viewer.open)
+        const statuses = new Statuses(outline.nodes, viewer.overrides)
         return {
             ...actions,
-            statuses: new Statuses(outline.nodes, viewer.overrides),
+            statuses,
+            // The first item about a node, as the left pane lists them.
+            queued: new Map(
+                waiting(outline.queue, statuses, viewer.runs)
+                    .filter(q => !q.missing)
+                    .reverse()
+                    .map(q => [q.item.num, q.item]),
+            ),
             isOpen,
             toggle: node => onToggle(node, !isOpen(node)),
             current: currentPath(outline.nodes),

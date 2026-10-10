@@ -67,8 +67,8 @@ export class Approvals {
         const st = this.statuses()
         const box = st.box(node)
         const shownChecked = box.state !== 'open' && box.state !== 'mixed'
-        // A claim shows a tick, but a click on it queues the user's approval rather than clearing it.
-        const want = !shownChecked || (node.status === 'claim' && !(node.num in this.draft.overrides))
+        // A claim, and an action the agent has done, show a tick, but a click on it queues the user's approval rather than clearing it.
+        const want = !shownChecked || ((node.status === 'claim' || box.state === 'done') && !(node.num in this.draft.overrides))
         if (st.isGroup(node)) {
             const kind = st.kindsOf(node)[0]
             const pick = node.children.find(c => c.tags.includes('recommended'))
@@ -77,7 +77,7 @@ export class Approvals {
             return
         }
         if (st.isOption(node)) {
-            if (box.state === 'open' || box.state === 'claim') this.choose(node)
+            if (box.state === 'open' || box.state === 'claim' || box.state === 'done') this.choose(node)
             else this.setWant(node, false)
             return
         }
@@ -154,8 +154,8 @@ export function approvalText(outline: Outline, draft: Draft, nums: string[]) {
 export function settledPatch(outline: Outline, v: ViewerState): StatePatch | null {
     const done = new Map(allNodes(outline.nodes).map(n => [n.num, n.status === 'approved']))
     const settled = Object.keys(v.overrides).filter(k => !done.has(k) || v.overrides[k] === done.get(k))
-    // A run request ends once the node is no longer an action waiting to run (the agent marked it @ran).
-    const waiting = new Set(allNodes(outline.nodes).filter(n => n.tags.includes('action') && !n.tags.includes('ran')).map(n => n.num))
+    // A run request ends once the node is no longer an action waiting to run (the agent marked it done or failed).
+    const waiting = new Set(allNodes(outline.nodes).filter(n => n.tags.includes('action') && !n.tags.includes('ran') && !n.tags.includes('failed')).map(n => n.num))
     const ran = Object.keys(v.runs).filter(k => !waiting.has(k))
     // What was sent and is now what the file says needs no remembering.
     const stale = Object.keys(v.sent).filter(k => !(k in v.overrides) && (!done.has(k) || v.sent[k] === done.get(k)))

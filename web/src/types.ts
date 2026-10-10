@@ -4,7 +4,8 @@
 export type Status = 'open' | 'claim' | 'approved'
 
 /** The `@` tags a node's heading line can carry, right after its number. */
-export type Tag = 'approved' | 'claim' | 'options' | 'recommended' | 'current' | 'action' | 'ran'
+/** The tags of a node, by the names the code uses: `@user-approved` is `approved`, `@agent-claim` is `claim`, `@action-done` is `action` and `ran`, `@action-failed` is `action` and `failed`. */
+export type Tag = 'approved' | 'claim' | 'options' | 'option' | 'recommended' | 'current' | 'action' | 'ran' | 'failed'
 
 /** A closing line of a node's text: `@Summary.`, `@Recommendation.` or `@Action.`, shown after its own tag. */
 export interface ClosingLine {
@@ -22,6 +23,8 @@ export interface OutlineNode {
     tags: Tag[]
     /** The status in the file, from the node's own tags (a parent's rolled-up status is the page's to work out). */
     status: Status
+    /** The letter of an option tagged `@option_A`; its title then starts with `(A)`. */
+    option?: string
     /** The title as plain text, for references. */
     title: string
     /** The title as inline HTML. */
@@ -109,7 +112,7 @@ export interface Chip {
     ref: string
 }
 
-/** An `@message` paragraph of the agent's chat reply, from GET /messages (transcript.js). */
+/** An `@message` paragraph of the agent's chat reply, from the outline's stream (transcript.js). */
 export interface Message {
     id: string
     /** ISO time. */
@@ -132,7 +135,7 @@ export type StatePatch = {
     [K in keyof ViewerState]?: ViewerState[K] extends Record<string, infer V> ? Record<string, V | null> : ViewerState[K]
 }
 
-/** An entry of the Transcript tab, from GET /api/transcript (transcript.js). */
+/** An entry of the Transcript tab, from the outline's stream (transcript.js). */
 export type TranscriptEntry =
     | { type: 'assistant-text'; html: string }
     /** A prompt (or a system line, such as a local command's output); `note` says how it arrived. */

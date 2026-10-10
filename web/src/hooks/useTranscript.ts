@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import type { TranscriptEntry } from '@/types'
 
 type ToolUse = Extract<TranscriptEntry, { type: 'tool-use' }>
@@ -15,10 +14,11 @@ export interface Transcript {
     title: string
 }
 
-const empty: Transcript = { status: 'loading', items: [], title: '' }
+/** Before the stream sends anything of the transcript (useOutline follows it once the tab has been opened). */
+export const emptyTranscript: Transcript = { status: 'loading', items: [], title: '' }
 
 /** Adds a batch of entries: a result fills in the tool call it answers, the custom title wins. */
-function add(t: Transcript, entries: TranscriptEntry[], custom: { current: boolean }): Transcript {
+export function addEntries(t: Transcript, entries: TranscriptEntry[], custom: { current: boolean }): Transcript {
     let items = t.items
     let title = t.title
     for (const e of entries) {
@@ -31,26 +31,4 @@ function add(t: Transcript, entries: TranscriptEntry[], custom: { current: boole
         } else items = [...items, e]
     }
     return { status: 'ready', items, title }
-}
-
-/** The linked session's transcript, followed live once `enabled` (the tab has been opened). */
-export function useTranscript(session: string, enabled: boolean) {
-    const [transcript, setTranscript] = useState<Transcript>(empty)
-    useEffect(() => {
-        if (!session || !enabled) return
-        setTranscript(empty)
-        const custom = { current: false }
-        const es = new EventSource(`/api/transcript?id=${encodeURIComponent(session)}`)
-        es.onmessage = e => setTranscript(t => add(t, JSON.parse(e.data) as TranscriptEntry[], custom))
-        es.addEventListener('reset', () => {
-            custom.current = false
-            setTranscript(empty)
-        })
-        es.addEventListener('missing', () => {
-            setTranscript({ ...empty, status: 'missing' })
-            es.close()
-        })
-        return () => es.close()
-    }, [session, enabled])
-    return transcript
 }

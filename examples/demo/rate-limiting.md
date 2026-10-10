@@ -1,15 +1,15 @@
 Title: Rate limiting for a public API
 
-# 1. @approved Where to enforce the limits
+# 1. @user-approved Where to enforce the limits
 
 Decided: enforce at the gateway.
 
-## 1.1 @approved Gateway, not in each service
+## 1.1 @user-approved Gateway, not in each service
 
 - 1.1.1 One place to change; services stay simple
 - 1.1.2 Cost: the gateway must know the customer identity
 
-## 1.2 @approved Per-service limits as a second layer
+## 1.2 @user-approved Per-service limits as a second layer
 
 - 1.2.1 Rejected: duplicates logic and drifts out of sync
 
@@ -19,7 +19,7 @@ Token bucket allows short bursts while holding a steady average rate. Fixed wind
 
 ## 2.1 Token bucket or sliding window?
 
-### 2.1.1 @approved Fixed window: simple, but the boundary double-burst rules it out
+### 2.1.1 @user-approved Fixed window: simple, but the boundary double-burst rules it out
 
 ### 2.1.2 @current Sliding window counter: less memory than a full log, about ±5% error
 
@@ -41,8 +41,8 @@ Token bucket allows short bursts while holding a steady average rate. Fixed wind
 
 ## 3.2 Burst allowance for new customers
 
-# 4. @approved Scope of the first release
+# 4. @user-approved Scope of the first release
 
-## 4.1 @approved Per API key only; per-IP limits come later
+## 4.1 @user-approved Per API key only; per-IP limits come later
 
 - 4.1.1 IP limits need a decision about shared NATs first

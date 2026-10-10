@@ -1,8 +1,8 @@
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { execFileSync } from './log.js'
 
 // The Terminal tab: a WebSocket on /term?s=<tmux session> attaches a tmux client in a pty and pipes it to xterm.js in the page.
 
@@ -40,6 +40,12 @@ export async function sendToTerminal(name, text) {
     // Give the agent's UI a moment to take the paste before Enter submits it.
     await new Promise(r => setTimeout(r, 150))
     execFileSync('tmux', ['send-keys', '-t', pane, 'Enter'])
+}
+
+/** Presses Escape in the session's active pane: the agent stops the turn it is in, as if the user pressed it there. */
+export function stopInTerminal(name) {
+    if (!isSessionName(name) || !hasSession(name)) throw new Error(`no tmux session ${name}`)
+    execFileSync('tmux', ['send-keys', '-t', `=${name}:`, 'Escape'])
 }
 
 /** npm unpacks node-pty's prebuilt spawn-helper without its execute bit on macOS, and every spawn then fails. */

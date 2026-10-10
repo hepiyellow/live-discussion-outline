@@ -5,13 +5,15 @@ import { fileURLToPath } from 'node:url'
 import { renderMarkdown, renderPage, escapeHtml } from './render.js'
 import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload, renderPlain } from './outline.js'
 import { loadConfig } from './config.js'
-import { attachTerminals, fromLocalPage, hasSession, isSessionName, sendToTerminal } from './terminal.js'
-import { isSessionId, streamActivity, streamMessages, streamTranscript, streamTranscriptEntries } from './transcript.js'
+import { attachTerminals, fromLocalPage, hasSession, isSessionName, sendToTerminal, stopInTerminal } from './terminal.js'
+import { followSession, isSessionId, streamActivity, streamMessages, streamTranscript } from './transcript.js'
 import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolder, startSession } from './start.js'
 import { startDialogHtml } from './start-dialog.js'
 import { slashCommands } from './commands.js'
 import { STATE_DIR, createStateStore } from './state.js'
+import { installLogging } from './log.js'
 
+installLogging()
 const config = loadConfig()
 const { dir: ROOT, port: PORT, host: HOST } = config
 
@@ -127,8 +129,42 @@ function pushOutlines() {
             if (data === last) continue
             res.write(data ? `data: ${data}\n\n` : 'event: gone\ndata: \n\n')
             streams.set(res, data)
+            if (outline) followLinked(res, outline.session)
         }
     }
+}
+
+/** What each open outline stream follows of its outline's linked session: `{ session, transcript, stop }`. */
+const linked = new Map()
+
+/**
+ * Puts the outline's linked session on its stream (transcript.js `followSession`), so the page holds one connection
+ * however much it shows: a browser allows six to one server, across all its windows, and every further request waits.
+ * Called again when the outline changes, it follows the session the outline links to now.
+ */
+function followLinked(res, session, transcript = linked.get(res)?.transcript ?? false) {
+    const id = isSessionId(session || '') ? session : ''
+    const now = linked.get(res)
+    if (now?.session === id) return
+    now?.stop()
+    const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    const entry = { session: id, transcript, stop: () => {} }
+    linked.set(res, entry)
+    if (!id) return send('session', '')
+    let told = false
+    // A session that has just started has no transcript yet: look again until it does.
+    const start = () => {
+        const stop = followSession(id, send, { transcript })
+        if (stop) return (entry.stop = stop)
+        if (!told) {
+            send('session', id)
+            send('transcript-missing', null)
+        }
+        told = true
+        const timer = setTimeout(start, 2000)
+        entry.stop = () => clearTimeout(timer)
+    }
+    start()
 }
 
 /**
@@ -152,8 +188,12 @@ async function stateApi(req, res, parts) {
     json(res, 200, state)
 }
 
-/** GET /api/outline/<project>/<file>[/events]: the outline's JSON, or a stream of it, sent again on each change of that file. */
-function outlineApi(req, res, parts) {
+/**
+ * GET /api/outline/<project>/<file>[/events]: the outline's JSON, or a stream of it, sent again on each change of that
+ * file. The stream is the one connection an outline's page holds: it also carries the viewer state and the linked
+ * session (its messages and activity, and with `?transcript=1` its transcript).
+ */
+function outlineApi(req, res, parts, url) {
     const [project, file, events] = parts
     if (parts.length > 3 || (events !== undefined && events !== 'events')) return send(res, 404, 'text/plain', 'not found')
     const outline = readOutline(project, file)
@@ -165,10 +205,13 @@ function outlineApi(req, res, parts) {
     const key = JSON.stringify([project, file])
     if (!outlineStreams.has(key)) outlineStreams.set(key, new Map())
     outlineStreams.get(key).set(res, data)
+    followLinked(res, outline.session, url.searchParams.get('transcript') === '1')
     req.on('close', () => {
         const streams = outlineStreams.get(key)
         streams?.delete(res)
         if (!streams?.size) outlineStreams.delete(key)
+        linked.get(res)?.stop()
+        linked.delete(res)
     })
 }
 
@@ -182,7 +225,7 @@ function summarize(file, fallback) {
     for (const line of lines) {
         const text = line.trimStart().replace(/^(#+|[-*])\s+/, '')
         if (text === line.trimStart()) continue
-        if (text.startsWith(STATUS_KEYS[0]) || /^(\d+(\.\d+)*\.?\s+)?@approved\b/i.test(text)) counts.done++
+        if (text.startsWith(STATUS_KEYS[0]) || /^(\d+(\.\d+)*\.?\s+)?@(user-)?approved\b/i.test(text)) counts.done++
         else if (text.startsWith(STATUS_KEYS[1])) counts.open++
         else if (text.startsWith(STATUS_KEYS[2])) counts.now++
     }
@@ -406,10 +449,22 @@ const server = http.createServer((req, res) => {
         return
     }
 
+    // The input box's stop button: presses Escape in the outline's tmux session, which stops the agent's turn.
+    if (pathname === '/stop' && req.method === 'POST') {
+        if (!fromLocalPage(req, PORT, { write: true }) || !/^application\/json\b/.test(req.headers['content-type'] || '')) return send(res, 403, 'text/plain', 'forbidden')
+        readJson(req)
+            .then(({ terminal }) => {
+                stopInTerminal(String(terminal))
+                send(res, 200, 'text/plain', 'stopped')
+            })
+            .catch(e => send(res, 409, 'text/plain', e.message))
+        return
+    }
+
     if (pathname.startsWith('/api/outline/')) {
         if (!fromLocalPage(req, PORT, { write: false })) return send(res, 403, 'text/plain', 'forbidden')
         try {
-            return outlineApi(req, res, pathname.slice('/api/outline/'.length).split('/'))
+            return outlineApi(req, res, pathname.slice('/api/outline/'.length).split('/'), url)
         } catch (e) {
             return send(res, 500, 'text/plain', `render failed: ${e.message}`)
         }
@@ -423,13 +478,6 @@ const server = http.createServer((req, res) => {
     if (pathname.startsWith('/api/state/')) {
         if (!fromLocalPage(req, PORT, { write: false })) return send(res, 403, 'text/plain', 'forbidden')
         return stateApi(req, res, pathname.slice('/api/state/'.length).split('/'))
-    }
-
-    // The Transcript tab: the session's transcript as typed entries.
-    if (pathname === '/api/transcript') {
-        const id = url.searchParams.get('id') || ''
-        if (!fromLocalPage(req, PORT, { write: false }) || !isSessionId(id)) return send(res, 403, 'text/plain', 'forbidden')
-        return streamTranscriptEntries(req, res, id)
     }
 
     if (pathname.startsWith('/api/')) return startApi(req, res, pathname, url)

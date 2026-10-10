@@ -5,6 +5,20 @@ export function allNodes(nodes: OutlineNode[]): OutlineNode[] {
     return nodes.flatMap(n => [n, ...allNodes(n.children)])
 }
 
+/**
+ * Numbers that more than one node carries, in the order they first repeat. The page knows a node by its number (its
+ * approval, what was read of it, the messages about it), so nodes that share one cannot be told apart.
+ */
+export function duplicateNums(nodes: OutlineNode[]): string[] {
+    const seen = new Set<string>()
+    const twice = new Set<string>()
+    for (const { num } of allNodes(nodes)) {
+        if (num && seen.has(num)) twice.add(num)
+        seen.add(num)
+    }
+    return [...twice]
+}
+
 /** The number of a node's parent: `2.1` for `2.1.3`, `` for a topic. */
 export const parentNum = (num: string) => num.split('.').slice(0, -1).join('.')
 
