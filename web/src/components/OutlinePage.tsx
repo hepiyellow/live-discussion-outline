@@ -1,40 +1,26 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { useApprovals } from '@/hooks/useApprovals'
 import { useOutline } from '@/hooks/useOutline'
 import { allNodes, currentPath, isParent, pathNums } from '@/lib/outline'
+import { Statuses } from '@/lib/status'
 import { scrollToNode } from '@/lib/sticky'
-import type { OutlineNode } from '@/types'
-import { OutlineTab, type OpenNodes } from './OutlineTab'
+import type { Outline, OutlineNode, QueueItem, StatePatch, ViewerState } from '@/types'
+import { useNotify } from './Notice'
+import { OutlineTab, type NodeActions } from './OutlineTab'
 import { Rail } from './Rail'
+import { StatusBar } from './StatusBar'
 import { TopBar, type TabName } from './TopBar'
 
 /** One outline: its tabs, kept up to date as the agent edits the file, without reloading. */
 export function OutlinePage({ project, file }: { project: string; file: string }) {
     const { state, viewer, patch } = useOutline(project, file)
-    const [tab, setTab] = useState<TabName>('outline')
-    const open: OpenNodes = viewer.open
     const outline = state.status === 'ready' || state.status === 'gone' ? state.outline : null
 
     useEffect(() => {
         document.title = outline?.title || file
     }, [outline?.title, file])
-
-    const onToggle = useCallback((node: OutlineNode, value: boolean) => patch({ open: { [node.num]: value } }), [patch])
-    const setAll = (value: boolean) => {
-        if (!outline) return
-        patch({ open: Object.fromEntries(allNodes(outline.nodes).filter(n => isParent(n) || n.level === 1).map(n => [n.num, value])) })
-    }
-    /** Opens the way to a node (and a topic itself), then scrolls it to the top, below the headers above it. */
-    const reveal = (num: string) => {
-        flushSync(() => {
-            setTab('outline')
-            patch({ open: Object.fromEntries(pathNums(num).slice(0, num.includes('.') ? -1 : undefined).map(n => [n, true])) })
-        })
-        const el = document.querySelector(`.outline-tab [data-num="${CSS.escape(num)}"]`)
-        if (el) setTimeout(() => scrollToNode(el), 0)
-    }
-    const current = outline ? [...currentPath(outline.nodes)].pop() : undefined
 
     if (!outline)
         return (
@@ -48,21 +34,89 @@ export function OutlinePage({ project, file }: { project: string; file: string }
                 )}
             </main>
         )
+    return <Loaded outline={outline} gone={state.status === 'gone'} viewer={viewer} patch={patch} />
+}
+
+interface LoadedProps {
+    outline: Outline
+    gone: boolean
+    viewer: ViewerState
+    patch: (p: StatePatch) => Promise<void>
+}
+
+function Loaded({ outline, gone, viewer, patch }: LoadedProps) {
+    const [tab, setTab] = useState<TabName>('outline')
+    const notify = useNotify()
+    const approvals = useApprovals(outline, viewer, patch)
+    const { clickNode, clickTopic, run, reference, undo, linked } = approvals
+    const actions = useMemo<NodeActions>(
+        () => ({ linked, onCheck: clickNode, onTopicCheck: clickTopic, onRun: run, onReference: reference }),
+        [linked, clickNode, clickTopic, run, reference],
+    )
+    const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
+
+    const onToggle = useCallback((node: OutlineNode, value: boolean) => patch({ open: { [node.num]: value } }), [patch])
+    const setAll = (value: boolean) => patch({ open: Object.fromEntries(allNodes(outline.nodes).filter(n => isParent(n) || n.level === 1).map(n => [n.num, value])) })
+
+    /** Opens the way to a node (and a topic itself), then scrolls it to the top, below the headers above it. */
+    const reveal = (num: string, then?: (el: HTMLElement) => void) => {
+        flushSync(() => {
+            setTab('outline')
+            patch({ open: Object.fromEntries(pathNums(num).slice(0, num.includes('.') ? -1 : undefined).map(n => [n, true])) })
+        })
+        const el = document.querySelector<HTMLElement>(`.outline-tab [data-num="${CSS.escape(num)}"]`)
+        if (el) setTimeout(() => scrollToNode(el, () => then?.(el)), 0)
+        return !!el
+    }
+    /** A queue item shows its node, marked for a moment with a line in the item's color. */
+    const openQueued = (item: QueueItem, color: string) => {
+        const found = reveal(item.num, el => {
+            el.style.setProperty('--qline', color)
+            el.removeAttribute('data-qmark')
+            void el.offsetWidth
+            el.setAttribute('data-qmark', '')
+            setTimeout(() => el.removeAttribute('data-qmark'), 1700)
+        })
+        if (!found) notify('Not in the outline', true)
+    }
+    const current = [...currentPath(outline.nodes)].pop()
+
+    // ⌘Z (Ctrl+Z) outside text fields takes back the last approval.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return
+            if ((e.target as Element).closest?.('input:not([type=checkbox]),textarea,[contenteditable],.xterm')) return
+            e.preventDefault()
+            undo()
+        }
+        addEventListener('keydown', onKey)
+        return () => removeEventListener('keydown', onKey)
+    }, [undo])
+
     return (
         <Tabs value={tab} onValueChange={v => setTab(v as TabName)} className="block pl-[76px]">
-            <Rail />
-            <TopBar outline={outline} tab={tab} onExpandAll={() => setAll(true)} onCollapseAll={() => setAll(false)} onJump={current ? () => reveal(current) : undefined} />
-            {state.status === 'gone' && (
+            <Rail queue={outline.queue} statuses={statuses} runs={viewer.runs} onOpen={openQueued} />
+            <TopBar
+                outline={outline}
+                tab={tab}
+                onExpandAll={() => setAll(true)}
+                onCollapseAll={() => setAll(false)}
+                onJump={current ? () => reveal(current) : undefined}
+                undoSteps={viewer.undo.length}
+                onUndo={undo}
+            />
+            {gone && (
                 <p role="status" className="mx-auto mt-4 max-w-[860px] rounded-md border border-danger/40 px-4 py-2 text-sm text-danger">
                     This outline was moved or deleted. What you see is its last version.
                 </p>
             )}
             <TabsContent value="outline" forceMount hidden={tab !== 'outline'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
-                <OutlineTab outline={outline} open={open} onToggle={onToggle} />
+                <OutlineTab outline={outline} viewer={viewer} actions={actions} onToggle={onToggle} />
             </TabsContent>
             <TabsContent value="md" forceMount hidden={tab !== 'md'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
                 <div className="markdown" dangerouslySetInnerHTML={{ __html: outline.markdown }} />
             </TabsContent>
+            {tab !== 'md' && <StatusBar outline={outline} viewer={viewer} pending={approvals.pending} onDrop={approvals.drop} onCopy={() => approvals.copyPending()} />}
         </Tabs>
     )
 }

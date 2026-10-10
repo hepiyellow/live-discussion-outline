@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Copy, Crosshair, FileText, Folder, ListCollapse, ListTree } from 'lucide-react'
+import { Check, Copy, Crosshair, FileText, Folder, ListCollapse, ListTree, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Outline } from '@/types'
@@ -13,6 +13,8 @@ interface Props {
     onCollapseAll: () => void
     /** Undefined when the outline has no @current node. */
     onJump?: () => void
+    undoSteps: number
+    onUndo: () => void
 }
 
 /** The copy button for the `Resume:` line: the link or command that reopens the chat. */
@@ -38,7 +40,7 @@ function ResumeCopy({ resume }: { resume: string }) {
 }
 
 /** The bar over every tab: the tabs, the Outline tab's tools, then the project, model and resume link. */
-export function TopBar({ outline, tab, onExpandAll, onCollapseAll, onJump }: Props) {
+export function TopBar({ outline, tab, onExpandAll, onCollapseAll, onJump, undoSteps, onUndo }: Props) {
     return (
         <header data-topbar className="sticky top-0 z-20 flex h-11 items-center gap-1 border-b bg-background px-4 whitespace-nowrap">
             <TabsList className="mr-2">
@@ -59,6 +61,16 @@ export function TopBar({ outline, tab, onExpandAll, onCollapseAll, onJump }: Pro
                     </Button>
                     <Button variant="ghost" size="icon-sm" title="Jump to the current node" aria-label="Jump to the current node" disabled={!onJump} onClick={onJump}>
                         <Crosshair />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Undo your last approval"
+                        title={undoSteps ? `Undo your last approval (${undoSteps} step${undoSteps === 1 ? '' : 's'}, ⌘Z)` : 'Nothing to undo'}
+                        disabled={!undoSteps}
+                        onClick={onUndo}
+                    >
+                        <Undo2 />
                     </Button>
                 </>
             )}
