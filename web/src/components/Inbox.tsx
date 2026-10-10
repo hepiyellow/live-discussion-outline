@@ -41,7 +41,7 @@ interface InboxProps {
     onReveal: (num: string) => void
 }
 
-/** The left pane's red envelope: the last ten messages from the agent, with the count of those not seen yet. */
+/** The queue column's red envelope, under the queue: the last ten messages from the agent, with the count of those not seen yet. */
 export function InboxButton({ messages, seen, onSeen, onReveal }: InboxProps) {
     const [open, setOpen] = useState(false)
     if (!messages.length) return null
@@ -60,7 +60,7 @@ export function InboxButton({ messages, seen, onSeen, onReveal }: InboxProps) {
                     type="button"
                     aria-label="Messages from the agent"
                     title={`${messages.length} message${messages.length === 1 ? '' : 's'} from the agent${unseen ? `, ${unseen} unseen` : ''}`}
-                    className="mt-auto mb-3 flex w-16 shrink-0 flex-col items-center gap-[3px] rounded-lg border pt-[7px] pb-[5px] text-[11px] text-danger hover:bg-accent"
+                    className="flex w-16 shrink-0 flex-col items-center gap-[3px] rounded-lg border pt-[7px] pb-[5px] text-[11px] text-danger hover:bg-accent"
                 >
                     <Mail className="size-3.5" aria-hidden="true" />
                     {unseen > 0 && <span className="min-w-3.5 rounded-lg bg-danger px-1 text-center text-[10px] leading-3.5 text-white">{unseen}</span>}

@@ -1,14 +1,13 @@
 import { useState } from 'react'
-import { Check, Copy, Crosshair, FileText, Folder, ListCollapse, ListTree, MessagesSquare, SquareTerminal, Undo2 } from 'lucide-react'
+import { Check, ChevronDown, Copy, Crosshair, Folder, ListCollapse, ListTree, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Outline, TabName } from '@/types'
-import { ModelPicker } from './ModelPicker'
 
 
 interface Props {
     outline: Outline
     tab: TabName
+    onTab: (t: TabName) => void
     onExpandAll: () => void
     onCollapseAll: () => void
     /** Undefined when the outline has no @current node. */
@@ -39,24 +38,13 @@ function ResumeCopy({ resume }: { resume: string }) {
     )
 }
 
-/** The bar over every tab: the tabs, the Outline tab's tools, then the project, model and resume link. */
-export function TopBar({ outline, tab, onExpandAll, onCollapseAll, onJump, undoSteps, onUndo }: Props) {
+/** The bar over every tab: the session's name, the Outline tab's tools, then the project, resume link and the tab dropdown. */
+export function TopBar({ outline, tab, onTab, onExpandAll, onCollapseAll, onJump, undoSteps, onUndo }: Props) {
     return (
         <header data-topbar className="sticky top-0 z-20 flex h-11 items-center gap-1 border-b bg-background px-4 whitespace-nowrap">
-            <TabsList className="mr-2">
-                <TabsTrigger value="outline" title="The collapsible outline">
-                    <ListTree /> Outline
-                </TabsTrigger>
-                <TabsTrigger value="md" title="The plain rendered markdown">
-                    <FileText /> Markdown
-                </TabsTrigger>
-                <TabsTrigger value="transcript" title={outline.session ? "The session's messages, rendered" : 'Not linked to a session yet'}>
-                    <MessagesSquare /> Transcript
-                </TabsTrigger>
-                <TabsTrigger value="term" title={outline.terminalTab ? `The session's live terminal (tmux ${outline.terminal})` : 'Not running in tmux'}>
-                    <SquareTerminal /> Terminal
-                </TabsTrigger>
-            </TabsList>
+            <span className="mr-2 min-w-0 max-w-[40%] truncate text-sm font-medium" title={outline.title || outline.file}>
+                {outline.title || outline.file}
+            </span>
             {tab === 'outline' && (
                 <>
                     <Button variant="ghost" size="icon-sm" title="Expand all" aria-label="Expand all" onClick={onExpandAll}>
@@ -87,8 +75,26 @@ export function TopBar({ outline, tab, onExpandAll, onCollapseAll, onJump, undoS
                         <span className="truncate">{outline.project}</span>
                     </span>
                 )}
-                <ModelPicker outline={outline} />
                 {outline.resume && <ResumeCopy resume={outline.resume} />}
+                <span className="relative inline-flex items-center">
+                    <select
+                        aria-label="View"
+                        title="Switch between the outline, markdown, transcript and terminal"
+                        className="appearance-none rounded-md border bg-background py-[3px] pr-6 pl-2 text-[13px] text-foreground"
+                        value={tab}
+                        onChange={e => onTab(e.target.value as TabName)}
+                    >
+                        <option value="outline">Outline</option>
+                        <option value="md">Markdown</option>
+                        <option value="transcript" disabled={!outline.session}>
+                            Transcript
+                        </option>
+                        <option value="term" disabled={!outline.terminalTab}>
+                            Terminal
+                        </option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-1.5 size-3.5" aria-hidden="true" />
+                </span>
             </div>
         </header>
     )

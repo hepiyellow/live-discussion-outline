@@ -31,7 +31,7 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
         return {
             ...actions,
             statuses,
-            // The first item about a node, as the left pane lists them.
+            // The first item about a node, as the queue column lists them.
             queued: new Map(
                 waiting(outline.queue, statuses, viewer.runs)
                     .filter(q => !q.missing)

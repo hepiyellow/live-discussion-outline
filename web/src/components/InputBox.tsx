@@ -4,6 +4,7 @@ import { Command, CommandItem, CommandList } from '@/components/ui/command'
 import { sendToSession, stopSession } from '@/lib/send'
 import { cn } from '@/lib/utils'
 import type { Chip, Outline, SlashCommand, StatePatch, ViewerState } from '@/types'
+import { ModelPicker } from './ModelPicker'
 import { useNotify } from './Notice'
 
 interface Props {
@@ -254,6 +255,10 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
                     onBlur={() => setFocused(false)}
                     onKeyDown={onKeyDown}
                 />
+                {/* The bar fixed at the bottom of the box: the session's model and effort, on the right. */}
+                <div className="flex justify-end border-t px-1 pt-1 pb-0.5">
+                    <ModelPicker outline={outline} />
+                </div>
             </div>
             <span className="relative shrink-0">
                 <button
