@@ -62,7 +62,7 @@ export function scrollToNode(el: Element, done?: () => void) {
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
     const start = performance.now()
     const step = (now: number) => {
-        const t = reduce ? 1 : Math.min(1, (now - start) / 200)
+        const t = reduce ? 1 : Math.max(0, Math.min(1, (now - start) / 200))
         scrollTo(0, from + (to - from) * (1 - Math.pow(1 - t, 3)))
         if (t < 1) requestAnimationFrame(step)
         else done?.()
@@ -92,7 +92,7 @@ export function collapseAnimated(num: string, done: () => void) {
     body.style.height = `${h0}px`
     const start = performance.now()
     const step = (now: number) => {
-        const t = Math.min(1, (now - start) / 500)
+        const t = Math.max(0, Math.min(1, (now - start) / 500))
         const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
         body.style.height = `${h0 * (1 - e)}px`
         scrollTo(0, from + (want - from) * e)

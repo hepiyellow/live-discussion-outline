@@ -147,12 +147,18 @@ function stageCell(c: HTMLElement, diff: Block[], oldText: string): Step[] {
 }
 
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
+/** Calls fn on each frame for ms, with progress from 0 to 1. */
 const frames = (ms: number, fn: (p: number) => void) =>
-    new Promise<void>(res => {
+    new Promise<void>((res, rej) => {
         const t0 = performance.now()
         const f = (now: number) => {
-            const p = Math.min(1, (now - t0) / ms)
-            fn(p)
+            // A frame's time is when the frame began, which can be just before t0.
+            const p = Math.max(0, Math.min(1, (now - t0) / ms))
+            try {
+                fn(p)
+            } catch (e) {
+                return rej(e)
+            }
             if (p < 1) requestAnimationFrame(f)
             else res()
         }
