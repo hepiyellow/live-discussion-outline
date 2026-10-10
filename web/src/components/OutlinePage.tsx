@@ -34,7 +34,7 @@ export function OutlinePage({ project, file }: { project: string; file: string }
             <main className="mx-auto max-w-[860px] p-8 text-muted-foreground">
                 {state.status === 'missing' ? (
                     <p>
-                        There is no outline {project}/{file}. <a className="underline" href="/">All outlines</a>
+                        There is no outline {project}/{file}. <a className="underline" href="/app/">All outlines</a>
                     </p>
                 ) : (
                     <p>Loading…</p>

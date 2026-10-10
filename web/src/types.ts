@@ -143,3 +143,39 @@ export type TranscriptEntry =
     | { type: 'tool-result'; toolUseId: string; text: string; error: boolean }
     /** The session's name: one set with /rename is custom and wins over the generated one. */
     | { type: 'title'; title: string; custom: boolean }
+
+/** An outline in the list, from GET /api/outlines (server.js). */
+export interface OutlineSummary {
+    project: string
+    file: string
+    title: string
+    /** Status counts over the nodes below the topics. */
+    checkbox: { total: number; done: number; agent: number; open: number }
+    /** Older outlines without status tags: emoji counts. */
+    counts: { done: number; open: number; now: number }
+    resume: string
+    terminal: string
+    session: string
+    /** Last change, in ms since the epoch. */
+    mtime: number
+}
+
+export interface OutlineList {
+    outlines: OutlineSummary[]
+    /** Whether this server can show terminals (node-pty loaded). */
+    terminals: boolean
+}
+
+/** What "New session" can start from, from GET /api/start-options (start.js). */
+export interface StartOptions {
+    workspaces: { file: string; name: string; folders: { name: string }[] }[]
+    sessions: { id: string; mtime: number; cwd: string; title: string; openIn?: { app: string; pid?: number; tmux?: string } }[]
+}
+
+/** A folder and its subfolders, from GET /api/dirs. */
+export interface DirListing {
+    path: string
+    parent: string
+    repo: boolean
+    dirs: { name: string; repo: boolean }[]
+}

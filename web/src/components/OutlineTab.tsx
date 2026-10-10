@@ -4,6 +4,7 @@ import { Statuses } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
 import { OutlineCtx, Topic, type OutlineContext } from './NodeView'
+import { RenameTitle } from './RenameTitle'
 
 /** Which topics and parents the viewer opened or closed; the rest follow `startsOpen`. */
 export type OpenNodes = Record<string, boolean>
@@ -65,7 +66,13 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     return (
         <OutlineCtx.Provider value={ctx}>
             <div ref={root} className="outline-tab">
-                {outline.title && <h1 className="mb-[0.85em] text-[1.85em] leading-tight font-bold tracking-tight">{outline.title}</h1>}
+                {outline.title && (
+                    <h1 className="mb-[0.85em] text-[1.85em] leading-tight font-bold tracking-tight">
+                        <RenameTitle project={outline.project} file={outline.file} title={outline.title}>
+                            <span data-title>{outline.title}</span>
+                        </RenameTitle>
+                    </h1>
+                )}
                 {outline.intro && <div className="outline-intro" dangerouslySetInnerHTML={{ __html: outline.intro }} />}
                 {outline.nodes.map(n => (
                     <Topic key={n.num} node={n} />

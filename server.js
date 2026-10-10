@@ -38,6 +38,7 @@ const changed = () => {
     debounce = setTimeout(() => {
         for (const res of clients) res.write('data: change\n\n')
         pushOutlines()
+        pushList()
     }, 120)
 }
 function watchOutlines() {
@@ -57,6 +58,40 @@ function watchOutlines() {
     })
 }
 watchOutlines()
+
+/** Open streams of the outline list, each with the list it last sent. */
+const listStreams = new Map()
+
+/** The outline list's JSON: every outline, newest first, and whether this server can show terminals. */
+function outlineList() {
+    return JSON.stringify({ outlines: listMaps(), terminals: terminalEnabled })
+}
+
+/** Sends each stream of the outline list the list again if it changed. */
+function pushList() {
+    if (!listStreams.size) return
+    let data
+    try {
+        data = outlineList()
+    } catch (e) {
+        return console.error(`outline list: ${e.message}`)
+    }
+    for (const [res, last] of listStreams) {
+        if (data === last) continue
+        res.write(`data: ${data}\n\n`)
+        listStreams.set(res, data)
+    }
+}
+
+/** GET /api/outlines: the outline list. /api/outlines/events streams it, sent again whenever it changes. */
+function listApi(req, res, events) {
+    const data = outlineList()
+    if (!events) return send(res, 200, 'application/json', data)
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
+    res.write(`retry: 1000\n\ndata: ${data}\n\n`)
+    listStreams.set(res, data)
+    req.on('close', () => listStreams.delete(res))
+}
 
 /** Open outline streams, by outline: each stream with the payload it last sent. */
 const outlineStreams = new Map()
@@ -197,7 +232,7 @@ async function startApi(req, res, pathname, url) {
         if (pathname === '/api/rename' && write) return json(res, 200, renameOutline(await readJson(req)))
         if (pathname === '/api/outline-for') {
             const m = listMaps().find(o => o.terminal && o.terminal === url.searchParams.get('terminal'))
-            return json(res, 200, m ? { href: `/${encodeURIComponent(m.project)}/${encodeURIComponent(m.file)}`, key: `map:${m.project}/${m.file}` } : {})
+            return json(res, 200, m ? { href: `/${encodeURIComponent(m.project)}/${encodeURIComponent(m.file)}`, key: `map:${m.project}/${m.file}`, project: m.project, file: m.file } : {})
         }
         send(res, 404, 'text/plain', 'not found')
     } catch (e) {
@@ -378,6 +413,11 @@ const server = http.createServer((req, res) => {
         } catch (e) {
             return send(res, 500, 'text/plain', `render failed: ${e.message}`)
         }
+    }
+
+    if (pathname === '/api/outlines' || pathname === '/api/outlines/events') {
+        if (!fromLocalPage(req, PORT, { write: false })) return send(res, 403, 'text/plain', 'forbidden')
+        return listApi(req, res, pathname.endsWith('/events'))
     }
 
     if (pathname.startsWith('/api/state/')) {

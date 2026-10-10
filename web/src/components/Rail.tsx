@@ -54,7 +54,7 @@ export function Rail({ queue = [], statuses, runs = {}, onOpen, unread = [], onO
     const items = statuses ? queue.map(item => ({ item, ...handled(item, statuses, runs) })).filter(q => !q.done) : []
     return (
         <nav className="fixed inset-y-0 left-0 z-30 flex w-[76px] flex-col items-center overflow-y-auto border-r bg-background pt-2">
-            <a href="/" title="All outlines" className="flex w-16 flex-col items-center gap-1 rounded-lg border py-2 text-[11px] text-foreground no-underline hover:bg-accent">
+            <a href="/app/" title="All outlines" className="flex w-16 flex-col items-center gap-1 rounded-lg border py-2 text-[11px] text-foreground no-underline hover:bg-accent">
                 <List className="size-7" aria-hidden="true" />
                 Outlines
             </a>
