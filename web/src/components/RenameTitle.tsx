@@ -10,13 +10,15 @@ interface Props {
     className?: string
     /** What the title is shown in while not edited. */
     children: React.ReactNode
+    /** Classes added to the pencil button. */
+    buttonClassName?: string
 }
 
 /**
  * A title with a pencil beside it: click, type a new name, Enter saves (the server rewrites the outline's Title:
  * line), Escape cancels. The outline's stream brings the new name back.
  */
-export function RenameTitle({ project, file, title, className, children }: Props) {
+export function RenameTitle({ project, file, title, className, children, buttonClassName }: Props) {
     const [editing, setEditing] = useState(false)
     const [value, setValue] = useState(title)
     const [error, setError] = useState('')
@@ -83,7 +85,10 @@ export function RenameTitle({ project, file, title, className, children }: Props
                 type="button"
                 title="Rename"
                 aria-label="Rename"
-                className="ml-2 inline-flex shrink-0 rounded-md border border-transparent p-1 align-middle text-muted-foreground opacity-60 hover:border-border hover:text-foreground hover:opacity-100 focus-visible:opacity-100"
+                className={cn(
+                    'ml-2 inline-flex shrink-0 rounded-md border border-transparent p-1 align-middle text-muted-foreground opacity-60 hover:border-border hover:text-foreground hover:opacity-100 focus-visible:opacity-100',
+                    buttonClassName,
+                )}
                 onClick={e => {
                     e.stopPropagation()
                     done.current = false

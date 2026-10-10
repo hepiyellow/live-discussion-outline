@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
 import { eventStream, launchBrowser, openPage, startServer } from './helpers.js'
@@ -7,18 +8,22 @@ import { eventStream, launchBrowser, openPage, startServer } from './helpers.js'
 // The outlines pane on the left of every page: outlines grouped by project, kept up to date without a reload.
 
 describe('the outlines pane', () => {
-    let server, browser, page
+    let server, browser, page, workspaces
     before(async () => {
-        server = await startServer()
+        // A workspace named "ws", where New looks for workspace files.
+        workspaces = fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-ws-'))
+        fs.writeFileSync(path.join(workspaces, 'ws.code-workspace'), JSON.stringify({ folders: [{ path: '.' }] }))
+        server = await startServer({ env: { OUTLINE_WORKSPACE_DIRS: workspaces } })
         browser = await launchBrowser()
     })
     after(async () => {
         await browser?.close()
         await server?.stop()
+        fs.rmSync(workspaces, { recursive: true, force: true })
     })
     beforeEach(() => {
         server.swap('demo/sample', 'demo/sample')
-        for (const dir of ['other', 'newer']) fs.rmSync(path.join(server.dir, dir), { recursive: true, force: true })
+        for (const dir of ['other', 'newer', 'ws']) fs.rmSync(path.join(server.dir, dir), { recursive: true, force: true })
         fs.rmSync(path.join(server.dir, 'demo', 'fresh.md'), { force: true })
     })
     afterEach(async () => {
@@ -121,5 +126,53 @@ describe('the outlines pane', () => {
         assert.equal(Math.round((await pane().boundingBox()).width), 400)
         await handle.dblclick()
         assert.equal(Math.round((await pane().boundingBox()).width), 260)
+    })
+
+    test('the search hides outlines that do not match, and groups left empty, and survives opening one', async () => {
+        write('other', 'old', 'An older outline', 3600)
+        write('other', 'new', 'A newer outline', 60)
+        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1280, height: 800 } })
+        await pane().locator('[data-pane-outline="other/new"]').waitFor()
+        const search = page.getByRole('searchbox', { name: 'Search outlines' })
+        // Every word must match, in the title or the project, in any case.
+        await search.fill('NEWER outline')
+        assert.deepEqual(await groups(), [{ project: 'other', titles: ['A newer outline'] }])
+        await search.fill('demo caching')
+        assert.deepEqual(await groups(), [{ project: 'demo', titles: ['Caching for the search service', 'Caching for the search service'] }])
+        await search.fill('nothing like this')
+        assert.deepEqual(await groups(), [])
+        await pane().getByText('No outlines match.').waitFor()
+        await search.press('Escape')
+        assert.equal(await search.inputValue(), '')
+        assert.equal((await groups()).length, 2)
+        await search.fill('older')
+        await pane().locator('[data-pane-outline="other/old"]').click()
+        await page.waitForURL('**/app/other/old')
+        assert.equal(await page.getByRole('searchbox', { name: 'Search outlines' }).inputValue(), 'older')
+        assert.deepEqual(await groups(), [{ project: 'other', titles: ['An older outline'] }])
+    })
+
+    test('New opens the new-session dialog from any page', async () => {
+        for (const url of ['/app/demo/sample', '/app/', '/app/live?t=no-such-session']) {
+            page = await openPage(browser, `${server.url}${url}`, { viewport: { width: 1280, height: 800 } })
+            await pane().getByRole('button', { name: 'New', exact: true }).click()
+            await page.getByRole('dialog', { name: 'New session' }).waitFor()
+            page.checkErrors()
+            await page.close()
+            page = null
+        }
+    })
+
+    test("a workspace's group comes first, however old its outlines", async () => {
+        write('ws', 'plan', 'Workspace plan', 7200)
+        write('other', 'new', 'A newer outline', 60)
+        const t = new Date(Date.now() - 1800 * 1000)
+        for (const f of ['sample', 'sample-edited']) fs.utimesSync(path.join(server.dir, 'demo', `${f}.md`), t, t)
+        assert.deepEqual((await (await fetch(`${server.url}/api/outlines`)).json()).workspaces, ['ws'])
+        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1280, height: 800 } })
+        await pane().locator('[data-pane-outline="ws/plan"]').waitFor()
+        assert.deepEqual((await groups()).map(g => g.project), ['ws', 'other', 'demo'])
+        assert.equal(await pane().locator('section[data-project="ws"]').getAttribute('data-workspace'), 'true')
+        assert.equal(await pane().locator('section[data-project="other"]').getAttribute('data-workspace'), null)
     })
 })

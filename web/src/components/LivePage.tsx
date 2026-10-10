@@ -45,7 +45,7 @@ export function LivePage({ terminal }: { terminal: string }) {
     const outline = { terminal, terminalTab: !!terminals } as Outline
     return (
         <div className="pl-(--pane-w)">
-            <OutlinesPane list={list} />
+            <OutlinesPane list={list} starting={terminal} />
             <header data-topbar className="sticky top-0 z-20 flex h-11 items-center gap-2 border-b bg-background px-4 text-[13px] text-muted-foreground">
                 <span className="font-medium text-foreground">Terminal</span>
                 <span role="status">Waiting for the agent to write the outline…</span>

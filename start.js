@@ -318,5 +318,30 @@ export async function startSession(request, { workspaceDirs, claudeCommand: conf
     const env = project ? ['-e', `OUTLINE_PROJECT=${project}`] : []
     // `--` ends claude's options, so the variadic --add-dir does not swallow the prompt.
     execFileSync('tmux', ['new-session', '-d', '-s', name, '-c', cwd, '-x', '160', '-y', '45', ...env, claudeCommand(configured), ...args, '--', prompt])
+    // What the outlines pane shows for the session until its outline appears (startedSessions): kept on the tmux
+    // session itself, so it outlives a restart of this server and goes away with the session.
+    const target = `=${name}:`
+    const option = (key, value) => ['set-option', '-t', target, key, String(value).replace(/\s+/g, ' ')]
+    try {
+        execFileSync('tmux', [...option('@outline-project', project || path.basename(cwd)), ';', ...option('@outline-title', label), ';', ...option('@outline-started', Date.now())], { stdio: 'ignore' })
+    } catch {}
     return name
+}
+
+/**
+ * The tmux sessions "New session" started that are still running, each as `{ terminal, project, title, started }`
+ * (started in ms since the epoch), read from what startSession kept on them. None when tmux is not there.
+ */
+export function startedSessions() {
+    let out
+    try {
+        out = execFileSync('tmux', ['list-sessions', '-F', '#{session_name}\t#{@outline-started}\t#{@outline-project}\t#{@outline-title}'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    } catch {
+        return []
+    }
+    return out
+        .split('\n')
+        .map(line => line.split('\t'))
+        .filter(([terminal, started]) => terminal && Number(started) > 0)
+        .map(([terminal, started, project, title]) => ({ terminal, project, title: title || project, started: Number(started) }))
 }

@@ -24,9 +24,9 @@ const freePort = () =>
  * Starts the server on a free port, with `HOME` and the outlines folder in a new temporary folder, so it reads neither
  * the user's settings file nor their outlines. The folder gets a copy of the fixtures: test/fixtures/outlines as the
  * outlines folder, and the transcripts where Claude Code keeps them (~/.claude/projects/<folder>/<session id>.jsonl).
- * Call `stop()` when done.
+ * `env` adds to the server's environment. Call `stop()` when done.
  */
-export async function startServer({ args = [] } = {}) {
+export async function startServer({ args = [], env = {} } = {}) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-test-'))
     const dir = path.join(home, 'outlines')
     fs.cpSync(path.join(FIXTURES, 'outlines'), dir, { recursive: true })
@@ -34,7 +34,7 @@ export async function startServer({ args = [] } = {}) {
     const port = await freePort()
     const child = spawn(process.execPath, [path.join(ROOT, 'server.js'), ...args], {
         cwd: ROOT,
-        env: { ...process.env, HOME: home, OUTLINE_DIR: dir, OUTLINE_PORT: String(port), OUTLINE_HOST: '127.0.0.1', OUTLINE_CONFIG: path.join(home, 'none.json') },
+        env: { ...process.env, HOME: home, OUTLINE_DIR: dir, OUTLINE_PORT: String(port), OUTLINE_HOST: '127.0.0.1', OUTLINE_CONFIG: path.join(home, 'none.json'), ...env },
         stdio: ['ignore', 'pipe', 'pipe'],
     })
     let log = ''

@@ -163,8 +163,22 @@ export interface OutlineSummary {
     mtime: number
 }
 
+/** A session "New session" started whose outline has not appeared yet, from its tmux session (start.js startedSessions). */
+export interface StartingSession {
+    /** Its tmux session. */
+    terminal: string
+    project: string
+    /** The topic typed in the dialog, or the project's name. */
+    title: string
+    /** When it started, in ms since the epoch. */
+    started: number
+}
+
 export interface OutlineList {
     outlines: OutlineSummary[]
+    starting: StartingSession[]
+    /** The names of the workspaces New can start from: a project with one of these names is a workspace. */
+    workspaces: string[]
     /** Whether this server can show terminals (node-pty loaded). */
     terminals: boolean
 }

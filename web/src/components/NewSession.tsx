@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { api } from '@/lib/api'
+import { api, liveHref } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DirListing, StartOptions } from '@/types'
 
@@ -15,16 +15,14 @@ const ago = (t: number) => {
     return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`
 }
 
-/** The page for a session just started: its terminal, until the agent writes the outline. */
-const liveHref = (terminal: string) => `/app/live?t=${encodeURIComponent(terminal)}`
-
 const row = 'flex cursor-pointer items-baseline gap-2.5 rounded-md px-2 py-[7px] hover:bg-accent'
 
 /**
  * "New session": starts an agent session in tmux from a Cursor workspace, a folder, or a past Claude Code session
- * (resumed), with the skill as its first message, and shows its terminal until the outline appears.
+ * (resumed), with the skill as its first message, and shows its terminal until the outline appears. `trigger` is the
+ * button that opens it, when not the default one.
  */
-export function NewSession() {
+export function NewSession({ trigger }: { trigger?: React.ReactNode } = {}) {
     const [open, setOpen] = useState(false)
     const [kind, setKind] = useState<Kind>('workspace')
     const [options, setOptions] = useState<StartOptions | null>(null)
@@ -85,9 +83,11 @@ export function NewSession() {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                    New session
-                </Button>
+                {trigger ?? (
+                    <Button variant="outline" size="sm">
+                        New session
+                    </Button>
+                )}
             </DialogTrigger>
             <DialogContent className="flex max-h-[min(720px,calc(100vh-48px))] w-[min(720px,calc(100vw-32px))] flex-col gap-0 p-0 sm:max-w-none">
                 <DialogHeader className="px-5 pt-4 pb-2">

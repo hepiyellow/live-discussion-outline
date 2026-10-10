@@ -7,7 +7,7 @@ import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload, rende
 import { loadConfig } from './config.js'
 import { attachTerminals, fromLocalPage, hasSession, isSessionName, sendToTerminal, stopInTerminal } from './terminal.js'
 import { followSession, isSessionId, streamActivity, streamMessages, streamTranscript } from './transcript.js'
-import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolder, startSession } from './start.js'
+import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolder, startedSessions, startSession } from './start.js'
 import { startDialogHtml } from './start-dialog.js'
 import { slashCommands } from './commands.js'
 import { STATE_DIR, createStateStore } from './state.js'
@@ -67,9 +67,43 @@ watchOutlines()
  */
 const listStreams = new Map()
 
-/** The outline list's JSON: every outline, newest first, and whether this server can show terminals. */
+/**
+ * The names of the workspaces New can start from (start.js `findWorkspaces`): a project with one of these names is a
+ * workspace, and the pane lists it first. The scan reads recent sessions and lists folders, too slow for every list
+ * sent, so its result is kept here: found once the server is up, again every few minutes, and whenever New scans anyway.
+ */
+let workspaceNames = []
+function refreshWorkspaces(found) {
+    let names
+    try {
+        names = [...new Set((found ?? findWorkspaces(config.workspaceDirs)).map(w => w.name))].sort()
+    } catch (e) {
+        return console.error(`workspaces: ${e.message}`)
+    }
+    if (names.join('\n') === workspaceNames.join('\n')) return
+    workspaceNames = names
+    pushList()
+}
+setInterval(refreshWorkspaces, 5 * 60 * 1000).unref()
+
+// A starting session leaves the list when its outline appears (a change in the outlines folder) or when it ends, which
+// nothing announces: look again every few seconds while the list has one.
+setInterval(() => listHadStarting && pushList(), 3000).unref()
+
+/** Whether the list last made had sessions starting: while it does, it is made again every few seconds (see below). */
+let listHadStarting = false
+
+/**
+ * The outline list's JSON: every outline, newest first; the sessions New started whose outline has not appeared yet
+ * (no outline names their tmux session on its `Terminal:` line); the workspaces' names; and whether this server can
+ * show terminals.
+ */
 function outlineList() {
-    return JSON.stringify({ outlines: listMaps(), terminals: terminalEnabled })
+    const outlines = listMaps()
+    const linked = new Set(outlines.map(o => o.terminal).filter(Boolean))
+    const starting = startedSessions().filter(s => !linked.has(s.terminal))
+    listHadStarting = starting.length > 0
+    return JSON.stringify({ outlines, starting, workspaces: workspaceNames, terminals: terminalEnabled })
 }
 
 /** Sends each stream of the outline list the list again if it changed. */
@@ -265,7 +299,9 @@ async function startApi(req, res, pathname, url) {
     try {
         if (pathname === '/api/start-options') {
             const running = runningInApp()
-            return json(res, 200, { workspaces: findWorkspaces(config.workspaceDirs), sessions: recentSessions().map(s => ({ ...s, openIn: running.get(s.id) })) })
+            const workspaces = findWorkspaces(config.workspaceDirs)
+            refreshWorkspaces(workspaces)
+            return json(res, 200, { workspaces, sessions: recentSessions().map(s => ({ ...s, openIn: running.get(s.id) })) })
         }
         if (pathname === '/api/commands') {
             const session = url.searchParams.get('session') || ''
@@ -277,7 +313,9 @@ async function startApi(req, res, pathname, url) {
             const request = await readJson(req)
             const inTmux = request.kind === 'resume' && runningInApp().get(request.id)
             if (inTmux?.tmux) return json(res, 409, { error: `This session is already running in tmux session ${inTmux.tmux}.`, openIn: inTmux })
-            return json(res, 200, { terminal: await startSession(request, config) })
+            const terminal = await startSession(request, config)
+            pushList()
+            return json(res, 200, { terminal })
         }
         if (pathname === '/api/delete' && write) return json(res, 200, trashOutline(await readJson(req)))
         if (pathname === '/api/rename' && write) return json(res, 200, renameOutline(await readJson(req)))
@@ -566,4 +604,7 @@ server.on('upgrade', (req, socket) => {
     if (!terminal && !hotReload) socket.destroy()
 })
 
-server.listen(PORT, HOST, () =>console.log(`live-discussion-outline on http://localhost:${PORT} watching ${ROOT}`))
+server.listen(PORT, HOST, () => {
+    console.log(`live-discussion-outline on http://localhost:${PORT} watching ${ROOT}`)
+    setTimeout(refreshWorkspaces, 0)
+})
