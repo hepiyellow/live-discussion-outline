@@ -86,6 +86,52 @@ function renderEntry(e) {
 }
 
 /**
+ * User-side text as a typed entry: plain prompts, plus the tagged forms Claude Code stores for slash commands, `!`
+ * commands and channel events; a local command's output is a system line. Null for what the page does not show.
+ */
+function userEntry(text, note) {
+    let m
+    if (text.startsWith('<system-reminder>') || text.startsWith('<local-command-caveat>') || text.startsWith('<bash-stdout>')) return null
+    const entry = (t, n, system = false) => ({ type: 'user-text', text: t.trim(), ...(n ? { note: n } : {}), ...(system ? { system } : {}) })
+    if (text.startsWith('<command-') && (m = text.match(/<command-name>([^<]*)<\/command-name>/)))
+        return entry(`${m[1]} ${(text.match(/<command-args>([^<]*)<\/command-args>/) || [])[1] || ''}`)
+    if ((m = text.match(/^<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/))) return entry(m[1], undefined, true)
+    if ((m = text.match(/^<bash-input>([\s\S]*?)<\/bash-input>/))) return entry(`! ${m[1]}`, note)
+    if ((m = text.match(/^<channel [^>]*>\n?([\s\S]*?)\n?<\/channel>/))) return entry(m[1], 'via channel')
+    return entry(text, note)
+}
+
+/**
+ * One log entry → typed entries for the Transcript tab (web/src/types.ts): `assistant-text` (its markdown as HTML),
+ * `user-text`, `tool-use`, `tool-result` (naming the tool call it answers) and `title` (one set with /rename is custom
+ * and wins over the generated one).
+ */
+export function transcriptEntries(e) {
+    if (e.type === 'custom-title' && e.customTitle) return [{ type: 'title', title: e.customTitle, custom: true }]
+    if (e.type === 'ai-title' && e.aiTitle) return [{ type: 'title', title: e.aiTitle, custom: false }]
+    if (e.isSidechain) return []
+    const out = []
+    if (e.type === 'assistant') {
+        for (const b of e.message?.content || []) {
+            if (b.type === 'text' && b.text.trim()) out.push({ type: 'assistant-text', html: renderPlain(b.text) })
+            else if (b.type === 'tool_use')
+                out.push({ type: 'tool-use', id: b.id, name: toolName(b.name), summary: toolSummary(b.input || {}), input: clip(JSON.stringify(b.input, null, 2), 4000) })
+        }
+    } else if (e.type === 'user' && !e.isMeta) {
+        const content = e.message?.content
+        if (typeof content === 'string') out.push(userEntry(content))
+        else
+            for (const b of content || []) {
+                if (b.type === 'tool_result') out.push({ type: 'tool-result', toolUseId: b.tool_use_id, text: clip(resultText(b.content), 4000), error: !!b.is_error })
+                else if (b.type === 'text') out.push(userEntry(b.text))
+            }
+    } else if (e.type === 'attachment' && e.attachment?.type === 'queued_command' && e.attachment.humanTurn) {
+        out.push(userEntry(e.attachment.prompt || '', 'sent while Claude was working'))
+    }
+    return out.filter(Boolean)
+}
+
+/**
  * Follows a session's transcript over server-sent events: `onEntries(entries)` gets everything so far, then each batch
  * the session appends; `onReset()` runs if the file shrinks (rewritten). Returns false when there is no transcript.
  */
@@ -210,4 +256,18 @@ export function streamMessages(req, res, id) {
         first = false
         if (found.length) res.write(`data: ${JSON.stringify(found)}\n\n`)
     }, () => res.write('event: reset\ndata: \n\n'))
+}
+
+/** GET /api/transcript?id=<session id>: the typed entries so far, then each batch the session appends. */
+export function streamTranscriptEntries(req, res, id) {
+    follow(
+        req,
+        res,
+        id,
+        entries => {
+            const items = entries.flatMap(transcriptEntries)
+            if (items.length) res.write(`data: ${JSON.stringify(items)}\n\n`)
+        },
+        () => res.write('event: reset\ndata: \n\n'),
+    )
 }

@@ -9,14 +9,16 @@ import { useOutline } from '@/hooks/useOutline'
 import { allNodes, currentPath, isParent, nodeLabel, pathNums } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import { scrollToNode } from '@/lib/sticky'
-import type { Outline, OutlineNode, QueueItem, StatePatch, ViewerState } from '@/types'
+import type { Outline, OutlineNode, QueueItem, StatePatch, TabName, ViewerState } from '@/types'
 import { InboxButton } from './Inbox'
 import { InputBox } from './InputBox'
 import { useNotify } from './Notice'
 import { OutlineTab, type NodeActions } from './OutlineTab'
 import { Rail } from './Rail'
 import { StatusBar } from './StatusBar'
-import { TopBar, type TabName } from './TopBar'
+import { TopBar } from './TopBar'
+import { TerminalTab } from './TerminalTab'
+import { TranscriptTab } from './TranscriptTab'
 
 /** One outline: its tabs, kept up to date as the agent edits the file, without reloading. */
 export function OutlinePage({ project, file }: { project: string; file: string }) {
@@ -51,7 +53,14 @@ interface LoadedProps {
 }
 
 function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
-    const [tab, setTab] = useState<TabName>('outline')
+    // The tab lives in the viewer state; until it arrives, the Outline tab shows.
+    const tab: TabName = stateLoaded ? viewer.tab : 'outline'
+    const setTab = useCallback((t: TabName) => patch({ tab: t }), [patch])
+    // Live tabs start following the session the first time they show.
+    const [opened, setOpened] = useState<Set<TabName>>(new Set())
+    useEffect(() => {
+        if (!opened.has(tab)) setOpened(o => new Set(o).add(tab))
+    }, [tab, opened])
     const notify = useNotify()
     const session = useSession(outline.session)
     const approvals = useApprovals(outline, viewer, patch, session.working)
@@ -97,7 +106,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
     /** Opens the way to a node (and a topic itself), then scrolls it to the top, below the headers above it. */
     const reveal = (num: string, then?: (el: HTMLElement) => void) => {
         flushSync(() => {
-            setTab('outline')
+            if (tab !== 'outline') setTab('outline')
             patch({ open: Object.fromEntries(pathNums(num).slice(0, num.includes('.') ? -1 : undefined).map(n => [n, true])) })
         })
         const el = document.querySelector<HTMLElement>(`.outline-tab [data-num="${CSS.escape(num)}"]`)
@@ -175,14 +184,21 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
             <TabsContent value="md" forceMount hidden={tab !== 'md'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
                 <div className="markdown" dangerouslySetInnerHTML={{ __html: outline.markdown }} />
             </TabsContent>
-            {linked && (
+            <TabsContent value="transcript" forceMount hidden={tab !== 'transcript'} className="mx-auto max-w-[900px] px-5 pb-20">
+                <TranscriptTab outline={outline} active={tab === 'transcript'} opened={opened.has('transcript')} />
+            </TabsContent>
+            <TabsContent value="term" forceMount hidden={tab !== 'term'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
+                <TerminalTab outline={outline} active={tab === 'term'} opened={opened.has('term')} />
+            </TabsContent>
+            {/* The Terminal tab takes typing itself. */}
+            {linked && tab !== 'term' && (
                 <>
                     {/* Room under the content for the input box. */}
                     <div aria-hidden="true" style={{ height: 'var(--composer-h, 60px)' }} />
                     <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} onSent={session.working} onReveal={reveal} focusKey={focusKey} />
                 </>
             )}
-            {tab !== 'md' && <StatusBar outline={outline} viewer={viewer} pending={approvals.pending} onDrop={approvals.drop} onCopy={() => approvals.copyPending()} />}
+            {tab === 'outline' && <StatusBar outline={outline} viewer={viewer} pending={approvals.pending} onDrop={approvals.drop} onCopy={() => approvals.copyPending()} />}
         </Tabs>
     )
 }
