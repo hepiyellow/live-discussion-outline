@@ -176,6 +176,20 @@ describe('the Outline tab', () => {
         assert.equal(await visible('1.1'), true)
     })
 
+    test('a question that lost @options is still a pick of one', async () => {
+        const file = path.join(server.dir, 'demo', 'lost.md')
+        fs.writeFileSync(file, 'Title: Lost\n\n# 1. Topic\n\n## 1.1 @user-approved Where?\n\nPick one of the options below.\n\n### 1.1.1 @user-approved @option_A Here\n\n### 1.1.2 @option_B There\n')
+        const other = await openPage(browser, `${server.url}/app/demo/lost`)
+        try {
+            assert.match(await other.locator('.outline-tab [data-num="1.1"] .node-title').textContent(), /Pick one/)
+            assert.equal(await other.locator('.outline-tab [data-num="1.1.2"] > .ck').getAttribute('role'), 'radio')
+            assert.match(await other.locator('.outline-tab [data-num="1.1.1"] .node-title').textContent(), /\(A\) Here/)
+        } finally {
+            await other.close()
+            fs.rmSync(file, { force: true })
+        }
+    })
+
     test('nodes that share a number are pointed out', async () => {
         // The page knows a node by its number: an approval of one would reach the others, under the wrong title.
         assert.equal(await page.locator('[data-duplicates]').count(), 0)

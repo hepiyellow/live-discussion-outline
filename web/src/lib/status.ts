@@ -54,7 +54,12 @@ export class Statuses {
     ran = (node: OutlineNode) => node.tags.includes('ran')
     /** Whether the node counts as approved, the user's unrecorded change included. */
     effective = (node: OutlineNode) => (node.num in this.overrides ? this.overrides[node.num] : this.fileDone(node))
-    isGroup = (node: OutlineNode) => node.tags.includes('options') && node.children.length > 0
+    /**
+     * A question with its options under it. `@options` says so, but a node whose children carry option letters
+     * (`@option_A`) is one too: an agent that records the user's pick sometimes drops `@options`, and the pick is still
+     * a pick of one.
+     */
+    isGroup = (node: OutlineNode) => node.children.length > 0 && (node.tags.includes('options') || node.children.some(c => !!c.option))
     isOption = (node: OutlineNode) => {
         const parent = this.parent(node)
         return !!parent && this.isGroup(parent)

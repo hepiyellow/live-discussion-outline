@@ -86,7 +86,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
     )
     const messagesFor = useCallback((num: string) => messagesAbout(num, session.messages), [session.messages])
     const onSeen = useCallback((ids: string[]) => patch({ seen: Object.fromEntries(ids.map(id => [id, 1])) }), [patch])
-    const { unread, opening, openUnread, unreadNums } = useUnread(outline, viewer, stateLoaded, patch)
+    const { unread, opening, openUnread, unreadNums, unreadUnder, openUnreadUnder } = useUnread(outline, viewer, stateLoaded, patch)
     const actions = useMemo<NodeActions>(
         () => ({
             linked,
@@ -97,12 +97,14 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
             unread,
             opening,
             onOpenUnread: openUnread,
+            unreadUnder,
+            onOpenUnreadUnder: openUnreadUnder,
             messagesFor,
             seen: viewer.seen,
             onSeen,
             onReveal: (num: string) => revealRef.current(num),
         }),
-        [linked, clickNode, clickTopic, run, onReference, unread, opening, openUnread, messagesFor, viewer.seen, onSeen],
+        [linked, clickNode, clickTopic, run, onReference, unread, opening, openUnread, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen],
     )
     const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
     const duplicates = useMemo(() => duplicateNums(outline.nodes), [outline])

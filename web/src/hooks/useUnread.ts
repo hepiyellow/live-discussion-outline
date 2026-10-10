@@ -58,5 +58,54 @@ export function useUnread(outline: Outline, viewer: ViewerState, stateLoaded: bo
     )
 
     const unreadNums = useMemo(() => [...unread.keys()].filter(n => !opening.has(n)), [unread, opening])
-    return { unread, opening, openUnread, unreadNums }
+
+    /** The nodes under `num` (not `num` itself) with a change to open, in outline order. */
+    const unreadUnder = useCallback((num: string) => unreadNums.filter(n => n.startsWith(`${num}.`)), [unreadNums])
+
+    /**
+     * Opens every change under a node. The node stays where it is on the screen: the browser's own scroll anchoring is
+     * switched off meanwhile (it would keep some other element still, and move this one), and the node's offset from the
+     * top of the window is held while its descendants change size. Changes in view play their animation, together; the
+     * rest (collapsed, or off screen) are taken in at once.
+     */
+    const openUnreadUnder = useCallback(
+        async (node: OutlineNode) => {
+            const nums = unreadUnder(node.num)
+            if (!nums.length) return
+            const anchor = document.querySelector<HTMLElement>(`.outline-tab [data-num="${CSS.escape(node.num)}"]`)
+            const top = anchor?.getBoundingClientRect().top ?? 0
+            const root = document.documentElement
+            const anchoring = root.style.overflowAnchor
+            root.style.overflowAnchor = 'none'
+            let holding = true
+            const hold = () => {
+                if (!holding) return
+                const delta = (anchor?.getBoundingClientRect().top ?? top) - top
+                if (Math.abs(delta) > 0.5) scrollBy(0, delta)
+                requestAnimationFrame(hold)
+            }
+            requestAnimationFrame(hold)
+            try {
+                const inView = (num: string) => {
+                    const body = document.querySelector(`.outline-tab [data-num="${CSS.escape(num)}"]`)
+                    const r = body?.getBoundingClientRect()
+                    return !!r && r.height > 0 && r.bottom > 0 && r.top < innerHeight
+                }
+                const now = (num: string) => allNodes(latest.current.nodes).find(n => n.num === num)
+                const animated = nums.filter(inView)
+                const rest = nums.filter(n => !animated.includes(n))
+                const quiet = Object.fromEntries(rest.flatMap(n => (now(n) ? [[n, readVersion(now(n)!)]] : [])))
+                const nodes = animated.flatMap(n => (now(n) ? [now(n)!] : []))
+                await Promise.all([Object.keys(quiet).length ? patch({ read: quiet }) : Promise.resolve(), ...nodes.map(n => openUnread(n))])
+            } finally {
+                // One more frame, so the last change has been laid out before the hold ends.
+                await new Promise(r => requestAnimationFrame(() => r(null)))
+                holding = false
+                root.style.overflowAnchor = anchoring
+            }
+        },
+        [unreadUnder, openUnread, patch],
+    )
+
+    return { unread, opening, openUnread, unreadNums, unreadUnder, openUnreadUnder }
 }

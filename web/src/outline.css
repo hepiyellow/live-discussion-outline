@@ -303,9 +303,25 @@
 }
 .ask:hover { color: var(--foreground); background: color-mix(in srgb, var(--border) 40%, transparent); }
 .ask:focus-visible, :is(.row, .topic-head):hover .ask { opacity: 1; }
-.row.parent > .ask { grid-area: ask; margin-left: 6px; }
 .row.leaf > .ask { grid-area: ask; align-self: start; position: relative; margin: 8px 10px 0 0; }
-.topic-head > .ask { margin-left: 4px; }
+/* A parent's hover buttons: the reference, and the diff of what changed under it. */
+.asks { display: inline-flex; align-items: center; }
+.row.parent > .asks { grid-area: ask; margin-left: 6px; }
+.topic-head > .asks { margin-left: 4px; }
+.ask-diff {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--claim);
+    opacity: 0;
+    cursor: pointer;
+}
+.ask-diff svg { width: 14px; height: 14px; }
+.ask-diff:hover { background: color-mix(in srgb, var(--claim) 22%, transparent); }
+.ask-diff:focus-visible, :is(.row, .topic-head):hover .ask-diff { opacity: 1; }
 
 /* Checkboxes that can be clicked. */
 button.ck { cursor: pointer; transition: box-shadow 0.04s linear, border-color 0.04s linear; }

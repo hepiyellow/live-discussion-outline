@@ -1,5 +1,5 @@
 import { createContext, useContext, type KeyboardEvent, type MouseEvent } from 'react'
-import { ChevronDown, Copy, MessageSquarePlus } from 'lucide-react'
+import { ChevronDown, Copy, Reply } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Statuses } from '@/lib/status'
 import { DONE_PILL, FAILED_PILL, contentHtml, type NodeContent } from '@/lib/content'
@@ -29,6 +29,9 @@ export interface OutlineContext {
     /** Unread nodes being opened: their diff button is gone, their text animating. */
     opening: Set<string>
     onOpenUnread: (node: OutlineNode) => void
+    /** The nodes under a node with a change to open, and opening them all. */
+    unreadUnder: (num: string) => string[]
+    onOpenUnreadUnder: (node: OutlineNode) => void
     /** The agent's messages about a node or any node under it. */
     messagesFor: (num: string) => Message[]
     seen: Record<string, number>
@@ -117,8 +120,34 @@ function Ask({ node }: { node: OutlineNode }) {
                 onReference(node)
             }}
         >
-            {linked ? <MessageSquarePlus className="size-3.5" /> : <Copy className="size-3.5" />}
+            {linked ? <Reply className="size-3.5" /> : <Copy className="size-3.5" />}
         </button>
+    )
+}
+
+/** A parent's buttons on hover: the reference, and the diff of everything changed under it. */
+function Asks({ node }: { node: OutlineNode }) {
+    const { unreadUnder, onOpenUnreadUnder } = useOutlineCtx()
+    const under = unreadUnder(node.num).length
+    return (
+        <span className="asks">
+            <Ask node={node} />
+            {under > 0 && (
+                <button
+                    type="button"
+                    className="ask-diff"
+                    data-unread-under={under}
+                    title={`${under} change${under === 1 ? '' : 's'} under this node since you read ${under === 1 ? 'it' : 'them'}: click to see all`}
+                    aria-label={`See what changed under ${node.num}`}
+                    onClick={e => {
+                        e.stopPropagation()
+                        onOpenUnreadUnder(node)
+                    }}
+                >
+                    {DIFF_ICON}
+                </button>
+            )}
+        </span>
     )
 }
 
@@ -208,7 +237,7 @@ function Group({ node }: { node: OutlineNode }) {
                 <ChevronDown className="tri size-4" aria-hidden="true" />
                 <span className="num">{node.num}</span>
                 <Title node={node} titleHtml={shown.titleHtml} />
-                <Ask node={node} />
+                <Asks node={node} />
                 <Messages node={node} />
                 <span className="kc" role="button" tabIndex={0} title={`${count} direct child${count === 1 ? '' : 'ren'} — click the row to collapse or expand`} onKeyDown={onKey}>
                     <span>{count}</span>
@@ -265,7 +294,7 @@ export function Topic({ node }: { node: OutlineNode }) {
                 <span className="node-title" dangerouslySetInnerHTML={{ __html: `${node.num}. ${node.titleHtml}` }} />
                 <Messages node={node} />
                 <Extras kinds={box.extras} />
-                <Ask node={node} />
+                <Asks node={node} />
             </div>
             <div className="topic-body" hidden={!open}>
                 {html && <Html className="topic-text node-html" html={html} />}

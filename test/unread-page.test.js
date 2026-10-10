@@ -116,6 +116,46 @@ describe('unread changes', () => {
         assert.doesNotMatch(await node('3.3').locator('.node-html').innerHTML(), /tx-/)
     })
 
+    test('a parent’s hover button opens every change under it, and the parent stays where it is', async () => {
+        await open()
+        await firstVisit()
+        server.swap('demo/sample', 'demo/sample-edited')
+        await node('2.3').locator('> .env').waitFor()
+        // Scrolled so that topic 2 is well below the top of the window, and not stuck.
+        await node('1').evaluate(e => e.scrollIntoView({ block: 'start' }))
+        const head = node('2')
+        await head.scrollIntoViewIfNeeded()
+        await page.evaluate(() => scrollBy(0, -250))
+        const topBefore = await head.evaluate(e => e.getBoundingClientRect().top)
+        await head.hover()
+        const button = head.locator('.ask-diff')
+        assert.equal(await button.getAttribute('data-unread-under'), '1')
+        await button.click()
+        await page.locator('[data-unread]').waitFor({ state: 'detached' })
+        await page.waitForFunction(() => !document.querySelector('.tx-cur'))
+        assert.match(await text('2.3'), /Results differ by tenant as well as by locale/)
+        assert.equal(await node('2.3').locator('> .env').count(), 0)
+        assert.equal(await head.locator('.ask-diff').count(), 0)
+        const topAfter = await head.evaluate(e => e.getBoundingClientRect().top)
+        assert.ok(Math.abs(topAfter - topBefore) < 1, `the parent moved from ${topBefore} to ${topAfter}`)
+        assert.match((await readState())['2.3'], /and the tenant/)
+    })
+
+    test('a collapsed parent’s hover button takes in its changes at once', async () => {
+        await open()
+        await firstVisit()
+        server.swap('demo/sample', 'demo/sample-edited')
+        await node('2.3').locator('> .env').waitFor()
+        await node('2').click()
+        await node('2.3').waitFor({ state: 'hidden' })
+        await node('2').hover()
+        await node('2').locator('.ask-diff').click()
+        await page.waitForFunction(() => !document.querySelector('[data-unread]'))
+        assert.match((await readState())['2.3'], /and the tenant/)
+        // Nothing was opened that the viewer had collapsed.
+        assert.equal(await node('2.3').isVisible(), false)
+    })
+
     test('what was read survives a reload', async () => {
         await open()
         await firstVisit()

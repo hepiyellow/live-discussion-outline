@@ -146,7 +146,8 @@ export function splitTrail(text) {
 export const plainTitle = title => title.replace(/[*_`]/g, '')
 
 /** An `@options` question with its options under it: the page shows it as one choice. */
-const isQuestion = node => node.tags.has('options') && node.children.length > 0
+// (a node whose children are lettered options, `@option_A`, is one even when its `@options` was dropped)
+const isQuestion = node => node.children.length > 0 && (node.tags.has('options') || node.children.some(c => c.option))
 
 /** The statuses under a node, of the nodes that hold one of their own: its leaves, and each question as one. */
 function statusesUnder(node, seen = new Set()) {
@@ -235,6 +236,21 @@ function nodeJson(node) {
     }
 }
 
+/** The Markdown tab shows the source: an option's `@option_A` tag reads there as it does on the page, `(A)` before its title. */
+function optionLetters(source) {
+    let fence = false
+    return source
+        .split('\n')
+        .map(line => {
+            if (line.trimStart().startsWith('```')) fence = !fence
+            if (fence) return line
+            const m = line.match(/^(#{1,6} \d+(?:\.\d+)*\.?(?:\s+@[\w-]+)*?)\s+@option[_-]([a-z])\b(.*)$/i)
+            if (!m) return line
+            return `${m[1]} (${m[2].toUpperCase()})${m[3]}`.replace(/\s+$/, '')
+        })
+        .join('\n')
+}
+
 /** What the page shows of an outline (web/src/types.ts describes it): its header lines, nodes, queue and Markdown tab. */
 export function outlinePayload(text) {
     const { source, ...headers } = extractHeaders(text)
@@ -243,6 +259,6 @@ export function outlinePayload(text) {
         ...headers,
         intro: md.renderer.render(root.body, md.options, {}),
         nodes: root.children.map(nodeJson),
-        markdown: renderPlain(source),
+        markdown: renderPlain(optionLetters(source)),
     }
 }

@@ -81,6 +81,13 @@ test('the approval of the user is written @user-approved; older outlines say @ap
     assert.equal(status('@user-approved @options').status, 'approved')
 })
 
+test('a question whose options carry letters is a question without @options too', () => {
+    const lines = tag => ['Title: T', '', '# 1. Topic', '', `## 1.1 ${tag} Where?`, '', '### 1.1.1 @user-approved @option_A Here', '', '### 1.1.2 @option_B There', '', '### 1.1.3 @option_C Nowhere', ''].join('\n')
+    // Picked: the other options are neither open nor claimed, with the tag or without it.
+    for (const tag of ['@user-approved @options', '@user-approved'])
+        assert.deepEqual(countCheckboxProgress(lines(tag)), { total: 1, done: 1, agent: 0, open: 0 }, tag)
+})
+
 test('tags that say who or what, and the older names for them', () => {
     const tags = heading => outlinePayload(`Title: T\n\n# 1. Topic\n\n## 1.1 ${heading}\n`).nodes[0].children[0]
     for (const tag of ['@agent-claim', '@claim']) {
@@ -98,6 +105,10 @@ test('tags that say who or what, and the older names for them', () => {
     assert.deepEqual([option.option, option.title, option.titleHtml, option.tags], ['B', '(B) Second option', '(B) Second option', ['recommended', 'option']])
     assert.equal(tags('@option-c @user-approved Third').title, '(C) Third')
     assert.equal(tags('(A) First').option, undefined)
+    // The Markdown tab shows the letter as the page does.
+    const md = outlinePayload('Title: T\n\n# 1. Q\n\n## 1.1 @options Which?\n\n### 1.1.1 @recommended @option_B Second\n').markdown
+    assert.match(md, /<h3>1\.1\.1 @recommended \(B\) Second<\/h3>/)
+    assert.doesNotMatch(md, /@option_/)
     // `@options` (the question) is not `@option_…` (one of its options).
     assert.deepEqual(tags('@options Which one?').tags, ['options'])
 })
