@@ -1,10 +1,34 @@
 # Live Discussion Outline
 
-When an AI agent answers with several numbered points and you drill into one, then go back to another, the chat scrolls away from you. This tool mirrors the conversation into a markdown outline that the agent keeps up to date, and serves it as a collapsible web page that reloads itself on every change.
+**A working interface that keeps the whole conversation inside human attention — and it's already replaced my chat.**
 
-It is agent-agnostic. The server only watches a folder of markdown files; any agent that can write a file (Cursor, Codex, Gemini CLI, Aider, …) can feed it. A ready-made `/live-discussion-outline` skill is included for agents that support skills; for the others you give the agent the same instructions as a rule.
+An agent can hold a million tokens and attend to all of them at once. You can hold a handful of things. So in a long session with a coding agent, the bottleneck is not the model, it is you: you lose the thread, forget what was decided three topics ago, and scroll back up to find the one answer you need while the chat keeps growing below you.
 
-The solution has three parts:
+This is not a companion to the chat. It replaces it. The agent keeps a numbered, collapsible outline of the work as it goes (topics, claims, decisions, what is still open) and you live in that outline: you read it, approve nodes, pick options, run actions and type your next message, all from the page. The transcript is still there, one tab away, for the rare time you need it.
+
+I have been building and using it for a few days, and it has already replaced the chat for me completely. It feels cognitively different: lighter, calmer, easier to think in.
+
+## Why the agent writes it
+
+Tools that visualize a conversation read the transcript after the fact and redraw it: a tree of messages, a nicer chat window. They work with any chat, and the agent never knows they exist. But a transcript only holds what was said. It cannot tell which points are settled, which are claims waiting for your approval, what needs a decision, or what can be folded away. Only the agent understands the work well enough to know that.
+
+So here the agent is asked (by a skill, or a rules file) to maintain the outline as part of its job. That costs some tokens on every turn. In return you get something no transcript reader can produce: a curated, human-sized map of the work, a **comprehension layer** between an agent that has all the information and a person who needs to understand it.
+
+## Continuity of understanding
+
+The agent moves at machine speed. Your understanding has to update at human speed: one thing at a time, never in a sudden jump. Every part of the page follows from that one rule.
+
+- **The outline.** Detail is folded away and you open only what you are looking at. The relief does not come from seeing everything at once (no one can), but from not having to.
+- **The queue.** The outline is the map of what has happened; the queue is the pointer to what comes next. At the end of each turn the agent triages everything still open and lists, in order, what needs you: decide this, run that, approve this, read that.
+- **The approval loop.** Ticking a node or picking an option sends `Approved in the outline: …` or `Chosen in the outline: …` straight into the agent's session (or to the clipboard, when the session isn't running in tmux). Steering happens where you read.
+- **A view that holds still.** The agent rewrites the outline constantly, but your scroll position and what you have open never jump. Your sense of where things are stays valid.
+- **Change shown as motion.** When the agent rewrites a node you have already read, the page keeps showing what you read and marks it with a diff icon. Only when you click does it animate the old text into the new, word by word. People cannot diff two states in their heads; they can follow a change as it happens.
+
+## How it works
+
+It is agent-agnostic. The server only watches a folder of markdown files; any agent that can write a file (Cursor, Codex, Gemini CLI, Aider, …) can feed it. It is built and used day to day with Claude Code, which gets the most out of it (the Terminal and Transcript tabs, the input box). A ready-made `/live-discussion-outline` skill is included for agents that support skills; for the others you give the agent the same instructions as a rule.
+
+There are three parts:
 
 1. **A skill you invoke.** `/live-discussion-outline` in a skills-capable agent. Other agents get the same instructions as a rules file.
 2. **Instructions that make the agent write a markdown mirror of the discussion.** The agent keeps one file per conversation, with numbered points, status emoji and nested details, and edits it as the discussion moves.
@@ -14,7 +38,7 @@ The solution has three parts:
 
 The example in [`examples/demo/rate-limiting.md`](examples/demo/rate-limiting.md) is the markdown behind this screenshot.
 
-Features:
+## Features
 
 - Every point and sub-point is numbered with its full path (`1`, `1.1`, `2.3.1`), in the chat and in the page, so "2.1" means the same thing in both places.
 - Every point is a **node**: a numbered heading (`# 2. Topic`, `## 2.1 Title`, down to six levels) plus its text, which is ordinary markdown, plain bullets included. Status and other tags sit on the heading line after the number. The node under discussion carries an `@current` tag; the page draws an orange line on it and on every ancestor on its path. Approved topics start collapsed.
