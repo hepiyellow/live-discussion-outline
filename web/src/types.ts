@@ -96,7 +96,12 @@ export interface ViewerState {
     draft: string
     /** References waiting in the input box, sent as `Re: outline …` lines before its text. */
     chips: Chip[]
+    /** The tab shown. */
+    tab: TabName
 }
+
+/** The page's tabs: Outline, Markdown, Transcript and Terminal. */
+export type TabName = 'outline' | 'md' | 'transcript' | 'term'
 
 /** A reference in the input box: its label (the node's number and title) and the line it sends. */
 export interface Chip {
@@ -126,3 +131,15 @@ export interface SlashCommand {
 export type StatePatch = {
     [K in keyof ViewerState]?: ViewerState[K] extends Record<string, infer V> ? Record<string, V | null> : ViewerState[K]
 }
+
+/** An entry of the Transcript tab, from GET /api/transcript (transcript.js). */
+export type TranscriptEntry =
+    | { type: 'assistant-text'; html: string }
+    /** A prompt (or a system line, such as a local command's output); `note` says how it arrived. */
+    | { type: 'user-text'; text: string; note?: string; system?: boolean }
+    /** A tool call: its input as JSON, clipped. */
+    | { type: 'tool-use'; id: string; name: string; summary: string; input: string }
+    /** The result of the tool call `toolUseId`. */
+    | { type: 'tool-result'; toolUseId: string; text: string; error: boolean }
+    /** The session's name: one set with /rename is custom and wins over the generated one. */
+    | { type: 'title'; title: string; custom: boolean }

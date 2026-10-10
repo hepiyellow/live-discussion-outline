@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { Check, Copy, Crosshair, FileText, Folder, ListCollapse, ListTree, Undo2 } from 'lucide-react'
+import { Check, Copy, Crosshair, FileText, Folder, ListCollapse, ListTree, MessagesSquare, SquareTerminal, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TabsList, TabsTrigger } from '@/components/ui/tabs'
-import type { Outline } from '@/types'
+import type { Outline, TabName } from '@/types'
 import { ModelPicker } from './ModelPicker'
 
-export type TabName = 'outline' | 'md'
 
 interface Props {
     outline: Outline
@@ -50,6 +49,12 @@ export function TopBar({ outline, tab, onExpandAll, onCollapseAll, onJump, undoS
                 </TabsTrigger>
                 <TabsTrigger value="md" title="The plain rendered markdown">
                     <FileText /> Markdown
+                </TabsTrigger>
+                <TabsTrigger value="transcript" title={outline.session ? "The session's messages, rendered" : 'Not linked to a session yet'}>
+                    <MessagesSquare /> Transcript
+                </TabsTrigger>
+                <TabsTrigger value="term" title={outline.terminalTab ? `The session's live terminal (tmux ${outline.terminal})` : 'Not running in tmux'}>
+                    <SquareTerminal /> Terminal
                 </TabsTrigger>
             </TabsList>
             {tab === 'outline' && (

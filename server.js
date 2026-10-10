@@ -6,7 +6,7 @@ import { renderMarkdown, renderPage, escapeHtml } from './render.js'
 import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload, renderPlain } from './outline.js'
 import { loadConfig } from './config.js'
 import { attachTerminals, fromLocalPage, hasSession, isSessionName, sendToTerminal } from './terminal.js'
-import { isSessionId, streamActivity, streamMessages, streamTranscript } from './transcript.js'
+import { isSessionId, streamActivity, streamMessages, streamTranscript, streamTranscriptEntries } from './transcript.js'
 import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolder, startSession } from './start.js'
 import { startDialogHtml } from './start-dialog.js'
 import { slashCommands } from './commands.js'
@@ -383,6 +383,13 @@ const server = http.createServer((req, res) => {
     if (pathname.startsWith('/api/state/')) {
         if (!fromLocalPage(req, PORT, { write: false })) return send(res, 403, 'text/plain', 'forbidden')
         return stateApi(req, res, pathname.slice('/api/state/'.length).split('/'))
+    }
+
+    // The Transcript tab: the session's transcript as typed entries.
+    if (pathname === '/api/transcript') {
+        const id = url.searchParams.get('id') || ''
+        if (!fromLocalPage(req, PORT, { write: false }) || !isSessionId(id)) return send(res, 403, 'text/plain', 'forbidden')
+        return streamTranscriptEntries(req, res, id)
     }
 
     if (pathname.startsWith('/api/')) return startApi(req, res, pathname, url)

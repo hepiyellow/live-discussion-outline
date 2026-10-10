@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, before, describe, test } from 'node:test'
-import { SESSION, eventStream, startServer } from './helpers.js'
+import { SESSION, eventStream, rawGet, startServer } from './helpers.js'
 
 describe('what the page reads of the transcript', () => {
     let server
@@ -46,5 +46,31 @@ describe('what the page reads of the transcript', () => {
         const commands = await (await fetch(`${server.url}/api/commands?session=${SESSION}`)).json()
         assert.ok(commands.some(c => c.name === 'model'))
         assert.ok(commands.every(c => typeof c.name === 'string' && typeof c.source === 'string'))
+    })
+
+    test('/api/transcript sends typed entries', async () => {
+        const stream = await eventStream(`${server.url}/api/transcript?id=${SESSION}`)
+        try {
+            const entries = JSON.parse((await stream.take()).data)
+            assert.deepEqual(
+                entries.map(e => e.type),
+                ['user-text', 'assistant-text', 'title', 'tool-use', 'tool-result', 'tool-use', 'tool-result', 'assistant-text', 'user-text', 'assistant-text'],
+            )
+            assert.deepEqual(entries[0], { type: 'user-text', text: 'How should we cache the search results?' })
+            assert.match(entries[1].html, /<strong>2\.1\.1<\/strong>/)
+            assert.deepEqual(entries[2], { type: 'title', title: 'Caching search results', custom: false })
+            assert.equal(entries[3].name, 'Bash')
+            assert.equal(entries[3].summary, 'Replay queries on staging')
+            assert.match(entries[3].input, /npm run replay -- --staging/)
+            assert.deepEqual(entries[4], { type: 'tool-result', toolUseId: 'toolu_01', text: 'replayed 1000 queries\nhit rate 82%', error: false })
+            assert.equal(entries[6].error, true)
+        } finally {
+            stream.close()
+        }
+    })
+
+    test('/api/transcript answers only this machine’s own page, for a session id', async () => {
+        assert.equal((await rawGet(server.url, `/api/transcript?id=${SESSION}`, { host: 'evil.example' })).status, 403)
+        assert.equal((await fetch(`${server.url}/api/transcript?id=nope`)).status, 403)
     })
 })
