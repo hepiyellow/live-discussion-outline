@@ -18,7 +18,7 @@ export function StatusBar({ outline, viewer, pending, onDrop, onCopy }: Props) {
     const st = new Statuses(outline.nodes, viewer.overrides)
     const byNum = new Map(allNodes(outline.nodes).map(n => [n.num, n]))
     return (
-        <div role="region" aria-label="Approvals to copy" className="fixed right-0 bottom-0 left-[76px] z-[15] flex flex-wrap items-center gap-1.5 border-t bg-background px-5 py-2">
+        <div role="region" aria-label="Approvals to copy" className="fixed right-0 bottom-0 left-(--pane-w) z-[15] flex flex-wrap items-center gap-1.5 border-t bg-background px-5 py-2">
             {pending.map(num => {
                 const node = byNum.get(num)
                 if (!node) return null

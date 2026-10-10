@@ -81,5 +81,5 @@ export function TerminalTab({ outline, active, opened }: { outline: Outline; act
                 )}
             </p>
         )
-    return <div ref={box} data-terminal className="fixed top-[var(--barh)] right-0 bottom-0 left-[76px] bg-[#0d1117] pt-1.5 pl-2" />
+    return <div ref={box} data-terminal className="fixed top-[var(--barh)] right-0 bottom-0 left-(--pane-w) bg-[#0d1117] pt-1.5 pl-2" />
 }

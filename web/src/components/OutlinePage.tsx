@@ -16,7 +16,7 @@ import { InputBox } from './InputBox'
 import { useNotify } from './Notice'
 import { OutlineTab, type NodeActions } from './OutlineTab'
 import { QueueColumn } from './QueueColumn'
-import { Rail } from './Rail'
+import { OutlinesPane } from './OutlinesPane'
 import { StatusBar } from './StatusBar'
 import { TopBar } from './TopBar'
 import { TerminalTab } from './TerminalTab'
@@ -24,7 +24,7 @@ import { TranscriptTab } from './TranscriptTab'
 
 /** One outline: its tabs, kept up to date as the agent edits the file, without reloading. */
 export function OutlinePage({ project, file }: { project: string; file: string }) {
-    const { state, viewer, stateLoaded, patch, session, transcript, followTranscript } = useOutline(project, file)
+    const { state, viewer, stateLoaded, patch, session, transcript, followTranscript, outlines } = useOutline(project, file)
     const outline = state.status === 'ready' || state.status === 'gone' ? state.outline : null
 
     useEffect(() => {
@@ -43,7 +43,12 @@ export function OutlinePage({ project, file }: { project: string; file: string }
                 )}
             </main>
         )
-    return <Loaded outline={outline} gone={state.status === 'gone'} viewer={viewer} stateLoaded={stateLoaded} patch={patch} session={session} transcript={transcript} followTranscript={followTranscript} />
+    return (
+        <>
+            <OutlinesPane list={outlines} current={{ project, file }} />
+            <Loaded outline={outline} gone={state.status === 'gone'} viewer={viewer} stateLoaded={stateLoaded} patch={patch} session={session} transcript={transcript} followTranscript={followTranscript} />
+        </>
+    )
 }
 
 interface LoadedProps {
@@ -171,10 +176,9 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
         <Tabs
             value={tab}
             onValueChange={v => setTab(v as TabName)}
-            className="block pl-[76px]"
+            className="block pl-(--pane-w)"
             style={{ '--qbottom': linked && tab !== 'term' ? 'var(--composer-h, 60px)' : '0px' } as React.CSSProperties}
         >
-            <Rail />
             <TopBar
                 outline={outline}
                 tab={tab}

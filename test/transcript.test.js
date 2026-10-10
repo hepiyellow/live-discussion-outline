@@ -55,6 +55,8 @@ describe('what the page reads of the transcript', () => {
         try {
             assert.equal((await stream.take()).event, 'message')
             assert.equal((await stream.take()).event, 'state')
+            // The outline list, for the pane beside the outline.
+            assert.equal((await stream.take()).event, 'outlines')
             // The session is named before anything about it.
             assert.deepEqual(await stream.take(), { event: 'session', data: JSON.stringify(SESSION) })
             const messages = await stream.take()

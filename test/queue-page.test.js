@@ -48,22 +48,22 @@ describe('the queue column', () => {
         await open({ width: 1200, height: 900 })
         const col = await rect('.queue-col')
         const topic = await rect('.outline-tab .topic-head')
-        const rail = await rect('nav')
+        const rail = await rect('nav[aria-label="Outlines"]')
         assert.ok(col.left >= rail.right, `the column (${col.left}) starts right of the rail (${rail.right})`)
         // The topics' queue icons hang 18px left of their heads.
         assert.ok(col.right <= topic.left - 18, `the column (${col.right}) ends left of the topics' icons (${topic.left - 18})`)
         await page.mouse.wheel(0, 600)
         await until(async () => (await page.evaluate(() => scrollY)) > 0, { what: 'the page to scroll' })
         assert.equal((await rect('.queue-col')).top, col.top)
-        // The rail keeps only the way back to all outlines.
-        assert.equal(await page.locator('nav [aria-label="Your queue"]').count(), 0)
+        // The pane on the left holds no queue.
+        assert.equal(await page.locator('nav[aria-label="Outlines"] [aria-label="Your queue"]').count(), 0)
     })
 
     test('on a narrow window the outline gives way, not the queue', async () => {
         await open({ width: 760, height: 900 })
         const col = await rect('.queue-col')
         const topic = await rect('.outline-tab .topic-head')
-        const rail = await rect('nav')
+        const rail = await rect('nav[aria-label="Outlines"]')
         assert.ok(col.left >= rail.right + 12, `the column (${col.left}) keeps its gap from the rail (${rail.right})`)
         assert.ok(col.right <= topic.left - 18, `the column (${col.right}) ends left of the topics' icons (${topic.left - 18})`)
         assert.equal(Math.round(col.width), 64)
