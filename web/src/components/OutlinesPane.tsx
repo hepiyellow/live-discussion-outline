@@ -271,7 +271,7 @@ export function OutlinesPane({ list, current, starting, home }: Props) {
                     }
                 />
                 <a
-                    href="/app/"
+                    href="/"
                     aria-current={home ? 'page' : undefined}
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] font-medium hover:bg-sidebar-accent aria-[current=page]:bg-sidebar-accent"
                 >

@@ -69,7 +69,7 @@ describe('the outlines pane', () => {
         // The fixtures (sample.md and sample-edited.md): changed half an hour ago.
         const t = new Date(Date.now() - 1800 * 1000)
         for (const f of ['sample', 'sample-edited']) fs.utimesSync(path.join(server.dir, 'demo', `${f}.md`), t, t)
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="other/new"]').waitFor()
         assert.deepEqual(await groups(), [
             { project: 'other', titles: ['A newer outline', 'An older outline'] },
@@ -83,7 +83,7 @@ describe('the outlines pane', () => {
     })
 
     test('follows outlines as they are written, without a reload', async () => {
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="demo/sample"]').waitFor()
         await page.evaluate(() => (window.notReloaded = true))
         write('newer', 'topic', 'Just written')
@@ -94,24 +94,24 @@ describe('the outlines pane', () => {
 
     test('a row opens its outline', async () => {
         write('other', 'new', 'A newer outline')
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="other/new"]').click()
-        await page.waitForURL('**/app/other/new')
+        await page.waitForURL('**/other/new')
         await pane().locator('[aria-current="page"][data-pane-outline="other/new"]').waitFor()
     })
 
     test('shows on the list of all outlines and on a starting session, with "All outlines" marked on the list', async () => {
-        page = await openPage(browser, `${server.url}/app/`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="demo/sample"]').waitFor()
         assert.equal(await pane().locator('[aria-current="page"]').textContent(), 'All outlines')
         await page.close()
-        page = await openPage(browser, `${server.url}/app/live?t=no-such-session`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/live?t=no-such-session`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="demo/sample"]').waitFor()
         assert.equal(await pane().locator('[aria-current="page"]').count(), 0)
     })
 
     test('dragging its edge resizes it, the page follows, and the width is kept', async () => {
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="demo/sample"]').waitFor()
         const handle = page.getByRole('separator', { name: 'Resize the outlines pane' })
         const h = await handle.boundingBox()
@@ -131,7 +131,7 @@ describe('the outlines pane', () => {
     test('the search hides outlines that do not match, and groups left empty, and survives opening one', async () => {
         write('other', 'old', 'An older outline', 3600)
         write('other', 'new', 'A newer outline', 60)
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="other/new"]').waitFor()
         const search = page.getByRole('searchbox', { name: 'Search outlines' })
         // Every word must match, in the title or the project, in any case.
@@ -147,13 +147,13 @@ describe('the outlines pane', () => {
         assert.equal((await groups()).length, 2)
         await search.fill('older')
         await pane().locator('[data-pane-outline="other/old"]').click()
-        await page.waitForURL('**/app/other/old')
+        await page.waitForURL('**/other/old')
         assert.equal(await page.getByRole('searchbox', { name: 'Search outlines' }).inputValue(), 'older')
         assert.deepEqual(await groups(), [{ project: 'other', titles: ['An older outline'] }])
     })
 
     test('New opens the new-session dialog from any page', async () => {
-        for (const url of ['/app/demo/sample', '/app/', '/app/live?t=no-such-session']) {
+        for (const url of ['/demo/sample', '/', '/live?t=no-such-session']) {
             page = await openPage(browser, `${server.url}${url}`, { viewport: { width: 1280, height: 800 } })
             await pane().getByRole('button', { name: 'New', exact: true }).click()
             await page.getByRole('dialog', { name: 'New session' }).waitFor()
@@ -169,7 +169,7 @@ describe('the outlines pane', () => {
         const t = new Date(Date.now() - 1800 * 1000)
         for (const f of ['sample', 'sample-edited']) fs.utimesSync(path.join(server.dir, 'demo', `${f}.md`), t, t)
         assert.deepEqual((await (await fetch(`${server.url}/api/outlines`)).json()).workspaces, ['ws'])
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="ws/plan"]').waitFor()
         assert.deepEqual((await groups()).map(g => g.project), ['ws', 'other', 'demo'])
         assert.equal(await pane().locator('section[data-project="ws"]').getAttribute('data-workspace'), 'true')

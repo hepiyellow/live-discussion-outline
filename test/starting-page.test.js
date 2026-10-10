@@ -53,14 +53,14 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         )
 
     test('shows at once, under its project, and turns into its outline when the outline names its terminal', async () => {
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="demo/sample"]').waitFor()
         const terminal = await start('Brand new topic')
         assert.ok(terminal, 'the server started a tmux session')
         const row = pane().locator(`[data-pane-starting="${terminal}"]`)
         await row.waitFor()
         assert.equal(await row.textContent(), 'Brand new topic')
-        assert.equal(await row.getAttribute('href'), `/app/live?t=${encodeURIComponent(terminal)}`)
+        assert.equal(await row.getAttribute('href'), `/live?t=${encodeURIComponent(terminal)}`)
         assert.equal(await pane().locator('section').first().getAttribute('data-project'), 'proj')
         // The agent writes the outline, naming its terminal: the outline takes the row's place.
         fs.mkdirSync(path.join(server.dir, 'proj'), { recursive: true })
@@ -70,7 +70,7 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
     })
 
     test('leaves the pane when its session ends without an outline', async () => {
-        page = await openPage(browser, `${server.url}/app/`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="demo/sample"]').waitFor()
         const terminal = await start('Ends early')
         await pane().locator(`[data-pane-starting="${terminal}"]`).waitFor()
@@ -79,14 +79,14 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
     })
 
     test("its own page marks its row, and the server's list carries it", async () => {
-        page = await openPage(browser, `${server.url}/app/`, { viewport: { width: 1280, height: 800 } })
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
         const terminal = await start('Marked here')
         const list = await (await fetch(`${server.url}/api/outlines`)).json()
         assert.deepEqual(
             list.starting.filter(s => s.terminal === terminal).map(({ project, title }) => ({ project, title })),
             [{ project: 'proj', title: 'Marked here' }],
         )
-        await page.goto(`${server.url}/app/live?t=${encodeURIComponent(terminal)}`)
+        await page.goto(`${server.url}/live?t=${encodeURIComponent(terminal)}`)
         await pane().locator(`[aria-current="page"][data-pane-starting="${terminal}"]`).waitFor()
     })
 })

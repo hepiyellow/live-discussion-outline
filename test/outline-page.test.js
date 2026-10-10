@@ -21,7 +21,7 @@ describe('the Outline tab', () => {
     beforeEach(async () => {
         server.swap('demo/sample', 'demo/sample')
         server.resetState()
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1200, height: 900 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1200, height: 900 } })
         await page.locator('.outline-tab h1').waitFor()
     })
     afterEach(async () => {
@@ -179,7 +179,7 @@ describe('the Outline tab', () => {
     test('a question that lost @options is still a pick of one', async () => {
         const file = path.join(server.dir, 'demo', 'lost.md')
         fs.writeFileSync(file, 'Title: Lost\n\n# 1. Topic\n\n## 1.1 @user-approved Where?\n\nPick one of the options below.\n\n### 1.1.1 @user-approved @option_A Here\n\n### 1.1.2 @option_B There\n')
-        const other = await openPage(browser, `${server.url}/app/demo/lost`)
+        const other = await openPage(browser, `${server.url}/demo/lost`)
         try {
             assert.match(await other.locator('.outline-tab [data-num="1.1"] .node-title').textContent(), /Pick one/)
             assert.equal(await other.locator('.outline-tab [data-num="1.1.2"] > .ck').getAttribute('role'), 'radio')
@@ -195,7 +195,7 @@ describe('the Outline tab', () => {
         assert.equal(await page.locator('[data-duplicates]').count(), 0)
         const file = path.join(server.dir, 'demo', 'twice.md')
         fs.writeFileSync(file, 'Title: Twice\n\n# 1. First\n\n## 1.1 @agent-claim One\n\n# 2. Second\n\n## 2.1 @agent-claim Two\n\n# 2. Second again\n\n## 2.1 Three\n')
-        const other = await openPage(browser, `${server.url}/app/demo/twice`)
+        const other = await openPage(browser, `${server.url}/demo/twice`)
         try {
             assert.match(await other.locator('[data-duplicates]').textContent(), /More than one node is numbered 2, 2\.1\./)
         } finally {
@@ -205,7 +205,7 @@ describe('the Outline tab', () => {
     })
 
     test('a missing outline says so', async () => {
-        const other = await openPage(browser, `${server.url}/app/demo/nope`)
+        const other = await openPage(browser, `${server.url}/demo/nope`)
         await other.getByText('There is no outline demo/nope').waitFor()
         await other.close()
     })
@@ -225,8 +225,8 @@ describe('the viewer state', () => {
     const hidden = (page, num) => page.locator(`.outline-tab [data-num="${num}"]`).isHidden()
 
     test('a node collapsed stays collapsed after a reload, and a second window follows', async () => {
-        const one = await openPage(browser, `${server.url}/app/demo/sample`)
-        const two = await openPage(browser, `${server.url}/app/demo/sample`)
+        const one = await openPage(browser, `${server.url}/demo/sample`)
+        const two = await openPage(browser, `${server.url}/demo/sample`)
         await one.locator('.outline-tab [data-num="3.1"]').click()
         assert.equal(await hidden(one, '3.1.1'), true)
         await two.waitForFunction(() => document.querySelector('.outline-tab [data-num="3.1.1"]').offsetParent === null)

@@ -16,7 +16,7 @@ describe('the outline list', () => {
     })
     beforeEach(async () => {
         server.swap('demo/sample', 'demo/sample')
-        page = await openPage(browser, `${server.url}/app/`, { viewport: { width: 1200, height: 800 } })
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1200, height: 800 } })
         await page.locator('[data-pane-outline="demo/sample"]').waitFor()
     })
     afterEach(async () => {
@@ -49,7 +49,7 @@ describe('the outline list', () => {
         assert.equal((await page.locator('[data-empty-state]').textContent()).trim(), 'Pick an outline on the left, or start one with New.')
         assert.equal(await link('sample').textContent(), 'Caching for the search service')
         await link('sample').click()
-        await page.waitForURL(/\/app\/demo\/sample$/)
+        await page.waitForURL(/\/demo\/sample$/)
         await page.locator('.outline-tab h1').waitFor()
     })
 
@@ -82,7 +82,7 @@ describe('the outline list', () => {
     })
 
     test('the page title has the same pencil', async () => {
-        await page.goto(`${server.url}/app/demo/sample`)
+        await page.goto(`${server.url}/demo/sample`)
         await page.locator('.outline-tab h1').getByRole('button', { name: 'Rename' }).click()
         await page.getByRole('textbox', { name: 'Outline name' }).fill('Caching, renamed')
         await page.getByRole('textbox', { name: 'Outline name' }).press('Enter')

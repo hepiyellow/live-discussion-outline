@@ -38,7 +38,7 @@ describe('approvals, picks, runs and undo', () => {
         page.checkErrors = () => {
             if (errors.length) throw errors[0]
         }
-        await page.goto(`${server.url}/app/demo/sample`)
+        await page.goto(`${server.url}/demo/sample`)
         await page.locator('.outline-tab h1').waitFor()
     })
     afterEach(async () => {
@@ -255,7 +255,7 @@ describe('approvals without a linked session', () => {
         const context = await browser.newContext()
         await context.grantPermissions(['clipboard-read', 'clipboard-write'])
         page = await context.newPage()
-        await page.goto(`${server.url}/app/demo/unlinked`)
+        await page.goto(`${server.url}/demo/unlinked`)
         await page.locator('.outline-tab h1').waitFor()
     })
     after(async () => {

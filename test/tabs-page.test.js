@@ -14,7 +14,7 @@ describe('the Transcript and Terminal tabs', () => {
     })
     beforeEach(async () => {
         server.resetState()
-        page = await openPage(browser, `${server.url}/app/demo/sample`, { viewport: { width: 1200, height: 800 } })
+        page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1200, height: 800 } })
         await page.locator('.outline-tab h1').waitFor()
     })
     afterEach(async () => {
@@ -58,7 +58,7 @@ describe('the Transcript and Terminal tabs', () => {
             const windows = []
             for (let i = 0; i < 4; i++) {
                 const w = await context.newPage()
-                await w.goto(`${server.url}/app/demo/sample`)
+                await w.goto(`${server.url}/demo/sample`)
                 await w.locator('.outline-tab h1').waitFor()
                 windows.push(w)
             }
