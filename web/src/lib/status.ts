@@ -82,6 +82,8 @@ export class Statuses {
         if (!node.children.length) kinds = [this.ownKind(node)]
         else {
             const seen = new Set(node.children.flatMap(c => this.kindsOf(c)))
+            // A parent the agent carried out as an action shows its own done tick among its descendants' kinds.
+            if (this.ownKind(node) === 'done' && !this.isGroup(node)) seen.add('done')
             kinds = this.isGroup(node) ? [(['approved', 'pending', 'claim', 'done'] as Kind[]).find(k => seen.has(k)) ?? 'open'] : KIND_ORDER.filter(k => seen.has(k))
         }
         this.kinds.set(node.num, kinds)
