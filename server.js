@@ -13,7 +13,22 @@ import { installLogging } from './log.js'
 
 installLogging()
 const config = loadConfig()
-const { dir: ROOT, port: PORT, host: HOST } = config
+const { dir: ROOT, host: HOST } = config
+
+/** `--port <n>`: the port a parent (the Outline app) asks for, where 0 is any free one. Without it, undefined. */
+function portArgument() {
+    const at = process.argv.indexOf('--port')
+    if (at < 0) return undefined
+    const value = process.argv[at + 1]
+    if (!/^\d+$/.test(value ?? '') || Number(value) > 65535) {
+        console.error(`--port takes a port number, not ${value ?? 'nothing'}`)
+        process.exit(1)
+    }
+    return Number(value)
+}
+const ASKED_PORT = portArgument()
+// The port listened on: the settings file's, or the one asked for; from `listening` on, the one actually taken.
+let PORT = ASKED_PORT ?? config.port
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
@@ -488,7 +503,7 @@ const server = http.createServer((req, res) => {
     serveApp(res, pathname)
 })
 
-const terminalEnabled = await attachTerminals(server, PORT)
+const terminalEnabled = await attachTerminals(server)
 
 /** With --dev, Vite serves the app from web/src as middleware and hot-reloads it over its own WebSocket on this server. */
 const vite = process.argv.includes('--dev')
@@ -507,7 +522,21 @@ server.on('upgrade', (req, socket) => {
     if (!terminal && !hotReload) socket.destroy()
 })
 
-server.listen(PORT, HOST, () => {
+// A port the parent asked for may be taken (the app keeps its port between launches, and another program can take it
+// meanwhile): listen on a free one instead. The settings file's port is the user's choice, so that one fails loudly.
+server.on('error', e => {
+    if (e.code !== 'EADDRINUSE' || !ASKED_PORT || server.listening) throw e
+    console.error(`port ${ASKED_PORT} is taken; listening on a free one`)
+    server.listen(0, HOST)
+})
+
+server.on('listening', () => {
+    PORT = server.address().port
     console.log(`live-discussion-outline on http://localhost:${PORT} watching ${ROOT}`)
+    // The parent learns the port from us: as a message in the Outline app's utility process, as a line otherwise.
+    if (process.parentPort) process.parentPort.postMessage({ port: PORT })
+    else console.log(`port=${PORT}`)
     setTimeout(refreshWorkspaces, 0)
 })
+
+server.listen(PORT, HOST)

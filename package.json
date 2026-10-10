@@ -1,5 +1,6 @@
 {
   "name": "live-discussion-outline",
+  "productName": "Outline Only",
   "version": "0.1.0",
   "license": "MIT",
   "engines": {
@@ -7,15 +8,19 @@
   },
   "description": "Watches markdown outlines of an AI-agent conversation and serves them as a collapsible, live-updating page.",
   "type": "module",
+  "main": "app/main.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js --dev",
+    "app": "node bin/build-app.js",
+    "app:dev": "npm run build && env -u ELECTRON_RUN_AS_NODE electron .",
     "build": "vite build --config web/vite.config.ts",
     "prepare": "npm run build",
     "typecheck": "tsc -p web",
     "test": "npm run typecheck && node --test test/*.test.js",
     "ensure": "node bin/ensure.js",
-    "install-skill": "node bin/install-skill.js"
+    "install-skill": "node bin/install-skill.js",
+    "icon": "node bin/make-icon.js"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
@@ -25,6 +30,7 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@electron/packager": "^18.4.4",
     "@radix-ui/react-dialog": "^1.2.0",
     "@radix-ui/react-popover": "^1.2.0",
     "@radix-ui/react-slot": "^1.4.0",
@@ -37,6 +43,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "electron": "^41.7.1",
     "lucide-react": "^1.54.0",
     "playwright": "^1.64.0",
     "react": "^19.3.0",

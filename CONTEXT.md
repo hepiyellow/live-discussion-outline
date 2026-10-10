@@ -41,7 +41,7 @@ The one folder outlines are written to and read from, with one subfolder per pro
 _Avoid_: Dir, output folder
 
 **Outline app**:
-The Mac application that runs the server while it is open and shows outline sessions in its own windows.
+The Mac application that runs the server while it is open and shows outline sessions in one window of its own. Its name in the Dock and the Finder is **Outline Only**.
 _Avoid_: Electron app, desktop app (that is Claude's own app)
 
 **Settings file**:

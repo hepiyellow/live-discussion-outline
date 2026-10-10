@@ -95,7 +95,7 @@ function bridge(pty, ws, name, url) {
 }
 
 /** Adds the /term WebSocket to the server. Without node-pty or ws installed the Terminal tab is just unavailable. */
-export async function attachTerminals(server, port) {
+export async function attachTerminals(server) {
     let pty, WebSocketServer
     try {
         pty = (await import('node-pty')).default
@@ -111,7 +111,8 @@ export async function attachTerminals(server, port) {
         const name = url.searchParams.get('s') || ''
         // Other upgrades (Vite's hot reload with --dev) are left to their own listeners; server.js closes the rest.
         if (url.pathname !== '/term') return
-        if (!fromLocalPage(req, port, { write: true }) || !isSessionName(name) || !hasSession(name)) return socket.destroy()
+        // The port is read here, not when attaching: the server may end up listening on another one than it asked for.
+        if (!fromLocalPage(req, server.address().port, { write: true }) || !isSessionName(name) || !hasSession(name)) return socket.destroy()
         wss.handleUpgrade(req, socket, head, ws => bridge(pty, ws, name, url))
     })
     return true

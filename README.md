@@ -98,6 +98,14 @@ Then, in any conversation, type `/live-discussion-outline` (optionally `/live-di
 
 The format is plain markdown: a `Title:` line, then numbered headings as nodes with `@` tags for status, and ordinary markdown as each node's text; see the skill for the exact rules.
 
+### The Mac app
+
+```bash
+npm run app    # builds "Outline Only.app", installs it in /Applications, and links the skill
+```
+
+The Outline app, named **Outline Only** in the Dock, runs the server while it is open and shows the page in one window; closing the window quits it and stops the server. It listens on a port of its own (`appPort` in the settings file, picked on the first launch and kept), so it and `npm start` do not compete for one. It is built for this Mac only: signed ad hoc, not notarized, with no updater, so run `npm run app` again after a `git pull` (quit the app first). `npm run app -- --build-only` leaves the app in `dist/` without installing it, and `npm run icon` rebuilds its icon from `app/icon/icon.svg`.
+
 ### Viewing
 
 Open the URL in a browser, or in an editor tab (in Cursor/VS Code: command palette → **Simple Browser: Show**, paste the URL).
@@ -114,26 +122,27 @@ What the page remembers for you (open and closed nodes, unsent approvals, what y
 npm run build    # rebuilds web/dist after a change to web/ (npm install does this too)
 npm run dev      # or `npm start -- --dev`: serves web/src through Vite instead, reloading edits in place
 npm test         # type-checks web/ and runs the tests in test/
+npm run app:dev  # the Outline app from this checkout: builds the page, then runs the server and one window in Electron
 ```
 
 The browser tests run headless Chromium through Playwright: install it once with `npx playwright install chromium`, or point `PLAYWRIGHT_CHROMIUM` at a Chromium binary you already have.
 
 ## Configuration
 
-Settings come from environment variables, then the config file, then defaults.
-
-| Setting | Env var | Config file key | Default |
-| ------- | ------- | --------------- | ------- |
-| Folder for the markdown outlines | `OUTLINE_DIR` | `dir` | `~/live-discussion-outlines` |
-| Server port | `OUTLINE_PORT` | `port` | `4577` |
-| Bind address | `OUTLINE_HOST` | `host` | `127.0.0.1` |
-| Template for the resume link or command the agent writes into each outline; `{session}` is replaced by the chat's session id | `OUTLINE_RESUME_TEMPLATE` | `resumeTemplate` | none |
-
-The config file is `~/.config/live-discussion-outline/config.json` (override the path with `OUTLINE_CONFIG`):
+Settings come from one settings file, `~/.config/live-discussion-outline/config.json`, then defaults:
 
 ```json
 { "dir": "~/Documents/outlines", "port": 4577, "resumeTemplate": "myagent --resume {session}" }
 ```
+
+| Setting | Key | Default |
+| ------- | --- | ------- |
+| Outlines folder | `dir` | `~/live-discussion-outlines` |
+| Server port | `port` | `4577` |
+| Bind address | `host` (or the `OUTLINE_HOST` environment variable) | `127.0.0.1` |
+| Template for the resume link or command the agent writes into each outline; `{session}` is replaced by the chat's session id | `resumeTemplate` | none |
+
+The file is at a fixed path, and no environment variable overrides the outlines folder, the port or the resume template: the agent and the server both read the file, so they cannot disagree about where outlines go ([ADR 0002](docs/adr/0002-the-outline-app-owns-the-server.md)). `OUTLINE_DIR`, `OUTLINE_PORT`, `OUTLINE_CONFIG` and `OUTLINE_RESUME_TEMPLATE` are no longer read; put those values in the file.
 
 Outlines are stored as `<dir>/<project>/<date>-<topic>.md`, one folder per project, outside your repos. The page for a file is `http://localhost:<port>/<project>/<date>-<topic>`; `/` lists them all.
 

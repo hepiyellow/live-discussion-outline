@@ -28,7 +28,7 @@ From the outline, by node number:
 - **The server runs in a utility process** (1.11.2), so its blocking `ps` and `tmux` calls never freeze the window, and a crash does not take the app down.
 - **PATH from the login shell** (1.12.1), so the server finds Homebrew's `tmux` and the `claude` command.
 - **First run asks for the folder** (1.12.2), proposing the default.
-- **Closing the window quits the app** (1.12.4). The Dock entry keeps Electron's default icon, with no badge or menu (1.12.4.1).
+- **Closing the window quits the app** (1.12.4). The Dock entry is named **Outline Only** and has the app's own icon (`app/icon/`, rebuilt by `npm run icon`), with no badge or menu (1.12.4.1; the name and icon were decided later, on 2026-10-10).
 - **A free port, kept** (1.12.5.2, 1.12.5.2.1): the app picks a free port on its first launch, saves it in the settings file, and reuses it; only if it is taken does it pick another. Per-viewer state is on the server since ADR 0001, so a new port loses only the page's `localStorage` conveniences (pane width and visibility), but keeping one costs nothing.
 - **The input box** is fixed at the bottom of the window, disabled in the Terminal tab (1.10.4.3). For an outline whose session is not running, its button reads "Resume and send" (1.10.4.3.1).
 
@@ -86,7 +86,7 @@ From the outline, by node number:
 
 ### 4. npm run app
 
-- `@electron/packager` builds `Live Discussion Outline.app` from the repo: page built first (`npm run build`), dev dependencies left out, no asar archive, so `node-pty`'s binary and `spawn-helper`, `web/dist` and the server's files load as they do from the repo.
+- `@electron/packager` builds `Outline Only.app` from the repo, with `app/icon/icon.icns` as its icon: page built first (`npm run build`), dev dependencies left out, no asar archive, so `node-pty`'s binary and `spawn-helper`, `web/dist` and the server's files load as they do from the repo.
 - `spawn-helper` gets its execute bit before packaging (the fix in `terminal.js` would otherwise modify the signed bundle).
 - Signed ad hoc (`codesign --force --deep --sign -`), copied to `/Applications` (replacing an older copy), then `node bin/install-skill.js`. The skill stays a symlink into the repo, so a `git pull` updates it before any rebuild.
 

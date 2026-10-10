@@ -11,7 +11,8 @@ export const FIXTURES = path.join(ROOT, 'test', 'fixtures')
 /** The session id of the fixture transcript, which sample.md links to. */
 export const SESSION = '3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f'
 
-const freePort = () =>
+/** A port nothing listens on right now. */
+export const freePort = () =>
     new Promise((resolve, reject) => {
         const probe = net.createServer().listen(0, '127.0.0.1', () => {
             const { port } = probe.address()
@@ -22,7 +23,8 @@ const freePort = () =>
 
 /**
  * Starts the server on a free port, with `HOME` and the outlines folder in a new temporary folder, so it reads neither
- * the user's settings file nor their outlines. The folder gets a copy of the fixtures: test/fixtures/outlines as the
+ * the user's settings file nor their outlines: it reads a settings file written into that `HOME`, whose `port` is the
+ * free one (`settingsPort`). `url` is where the server answers, which `--port` in `args` makes another port. The folder gets a copy of the fixtures: test/fixtures/outlines as the
  * outlines folder, and the transcripts where Claude Code keeps them (~/.claude/projects/<folder>/<session id>.jsonl).
  * `env` adds to the server's environment. Call `stop()` when done.
  */
@@ -32,9 +34,13 @@ export async function startServer({ args = [], env = {} } = {}) {
     fs.cpSync(path.join(FIXTURES, 'outlines'), dir, { recursive: true })
     fs.cpSync(path.join(FIXTURES, 'transcripts'), path.join(home, '.claude', 'projects', '-home-dev-search'), { recursive: true })
     const port = await freePort()
+    // The settings file is at a fixed path under HOME, so the temporary HOME gets one of its own.
+    const settings = path.join(home, '.config', 'live-discussion-outline', 'config.json')
+    fs.mkdirSync(path.dirname(settings), { recursive: true })
+    fs.writeFileSync(settings, JSON.stringify({ dir, port }))
     const child = spawn(process.execPath, [path.join(ROOT, 'server.js'), ...args], {
         cwd: ROOT,
-        env: { ...process.env, HOME: home, OUTLINE_DIR: dir, OUTLINE_PORT: String(port), OUTLINE_HOST: '127.0.0.1', OUTLINE_CONFIG: path.join(home, 'none.json'), ...env },
+        env: { ...process.env, HOME: home, OUTLINE_HOST: '127.0.0.1', ...env },
         stdio: ['ignore', 'pipe', 'pipe'],
     })
     let log = ''
@@ -45,7 +51,6 @@ export async function startServer({ args = [], env = {} } = {}) {
     child.on('exit', code => {
         if (!stopping) console.error(`the test server exited (${code}):\n${log}`)
     })
-    const url = `http://127.0.0.1:${port}`
     const stop = async () => {
         stopping = true
         if (child.exitCode === null) {
@@ -54,25 +59,25 @@ export async function startServer({ args = [], env = {} } = {}) {
         }
         fs.rmSync(home, { recursive: true, force: true })
     }
-    for (const deadline = Date.now() + 20000; ; ) {
+    // The server says which port it listens on once it does: the settings file's, or with `--port` the one it took.
+    let listening
+    for (const deadline = Date.now() + 20000; !(listening = /^port=(\d+)$/m.exec(log)); ) {
         if (child.exitCode !== null) {
             await stop()
             throw new Error(`server exited:\n${log}`)
         }
-        try {
-            if ((await fetch(`${url}/health`)).ok) break
-        } catch {}
         if (Date.now() > deadline) {
             await stop()
             throw new Error(`server did not start:\n${log}`)
         }
-        await new Promise(r => setTimeout(r, 100))
+        await new Promise(r => setTimeout(r, 50))
     }
+    const url = `http://127.0.0.1:${listening[1]}`
     /** Replaces outline <project>/<file> with a fixture outline, the way the agent rewrites it. */
     const swap = (target, fixture) => fs.copyFileSync(path.join(FIXTURES, 'outlines', `${fixture}.md`), path.join(dir, `${target}.md`))
     /** Forgets the viewer state of every outline. */
     const resetState = () => fs.rmSync(path.join(dir, '.state'), { recursive: true, force: true })
-    return { url, dir, home, stop, swap, resetState }
+    return { url, dir, home, settingsPort: port, stop, swap, resetState }
 }
 
 /**
