@@ -3,14 +3,14 @@ import { allNodes } from '@/lib/outline'
 import type { Statuses } from '@/lib/status'
 import type { QueueItem } from '@/types'
 
-/** The icon of a node changed since the viewer read it, in the left pane and on the node's diff button: a plus over a minus. */
+/** The icon of a node changed since the viewer read it, in the queue column and on the node's diff button: a plus over a minus. */
 export const DIFF_ICON = (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
         <path d="M8 2.5v6M5 5.5h6M5 12.5h6" />
     </svg>
 )
 
-/** How each kind of queue item is drawn: in the left pane, and beside the node it is about. */
+/** How each kind of queue item is drawn: in the queue column, and beside the node it is about. */
 export const KINDS: Record<QueueItem['kind'], { name: string; color: string; icon: React.ReactNode }> = {
     decide: { name: 'Decide', color: 'var(--danger)', icon: <CircleHelp aria-hidden="true" /> },
     approve: { name: 'Approve', color: 'var(--claim)', icon: <CircleCheck aria-hidden="true" /> },

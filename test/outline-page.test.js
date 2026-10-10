@@ -43,12 +43,12 @@ describe('the Outline tab', () => {
         }
     })
 
-    test('the top bar shows the project, the model and the resume copy button', async () => {
+    test('the top bar shows the session name, the project and the resume copy button; the box holds the model', async () => {
         const bar = page.locator('[data-topbar]')
         assert.match(await bar.textContent(), /demo/)
-        // The Model line sets the model and effort pickers.
-        assert.equal(await bar.getByLabel('Model').inputValue(), 'claude-opus-5-5')
-        assert.equal(await bar.getByLabel('Effort').inputValue(), 'high')
+        // The Model line sets the model and effort pickers, in the input box.
+        assert.equal(await page.getByLabel('Model').inputValue(), 'claude-opus-5-5')
+        assert.equal(await page.getByLabel('Effort').inputValue(), 'high')
         assert.match(await bar.locator('[title^="Project: demo"]').getAttribute('title'), /Working folder: \/home\/dev\/search/)
         assert.equal(await bar.getByRole('button', { name: 'Copy the link that reopens this chat' }).count(), 1)
     })
@@ -153,11 +153,11 @@ describe('the Outline tab', () => {
     })
 
     test('the Markdown tab', async () => {
-        await page.getByRole('tab', { name: 'Markdown' }).click()
+        await page.getByLabel('View').selectOption({ label: 'Markdown' })
         assert.equal(await page.locator('.outline-tab').isVisible(), false)
         const md = page.locator('.markdown')
         assert.match(await md.locator('h1').first().textContent(), /1\. @user-approved Goals/)
-        await page.getByRole('tab', { name: 'Outline' }).click()
+        await page.getByLabel('View').selectOption({ label: 'Outline' })
         assert.equal(await md.isVisible(), false)
     })
 

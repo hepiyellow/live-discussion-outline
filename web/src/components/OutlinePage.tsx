@@ -15,6 +15,7 @@ import { InboxButton } from './Inbox'
 import { InputBox } from './InputBox'
 import { useNotify } from './Notice'
 import { OutlineTab, type NodeActions } from './OutlineTab'
+import { QueueColumn } from './QueueColumn'
 import { Rail } from './Rail'
 import { StatusBar } from './StatusBar'
 import { TopBar } from './TopBar'
@@ -167,19 +168,17 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
     }, [undo])
 
     return (
-        <Tabs value={tab} onValueChange={v => setTab(v as TabName)} className="block pl-[76px]">
-            <Rail
-                queue={outline.queue}
-                statuses={statuses}
-                runs={viewer.runs}
-                onOpen={openQueued}
-                unread={unreadNums}
-                onOpenUnread={openUnreadItem}
-                footer={<InboxButton messages={session.messages} seen={viewer.seen} onSeen={onSeen} onReveal={reveal} />}
-            />
+        <Tabs
+            value={tab}
+            onValueChange={v => setTab(v as TabName)}
+            className="block pl-[76px]"
+            style={{ '--qbottom': linked && tab !== 'term' ? 'var(--composer-h, 60px)' : '0px' } as React.CSSProperties}
+        >
+            <Rail />
             <TopBar
                 outline={outline}
                 tab={tab}
+                onTab={setTab}
                 onExpandAll={() => setAll(true)}
                 onCollapseAll={() => setAll(false)}
                 onJump={current ? () => reveal(current) : undefined}
@@ -197,7 +196,17 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                     title. Ask the agent to give every node its own number.
                 </p>
             )}
-            <TabsContent value="outline" forceMount hidden={tab !== 'outline'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
+            <TabsContent value="outline" forceMount hidden={tab !== 'outline'} className="outline-col pt-4 pb-20">
+                <QueueColumn
+                    queue={outline.queue}
+                    statuses={statuses}
+                    runs={viewer.runs}
+                    onOpen={openQueued}
+                    unread={unreadNums}
+                    onOpenUnread={openUnreadItem}
+                    ready={stateLoaded}
+                    footer={<InboxButton messages={session.messages} seen={viewer.seen} onSeen={onSeen} onReveal={reveal} />}
+                />
                 <OutlineTab outline={outline} viewer={viewer} actions={actions} onToggle={onToggle} />
             </TabsContent>
             <TabsContent value="md" forceMount hidden={tab !== 'md'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">

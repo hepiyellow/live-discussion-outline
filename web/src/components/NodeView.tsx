@@ -172,7 +172,7 @@ function Diff({ node }: { node: OutlineNode }) {
 }
 
 /**
- * The icon of the node's queue item, as the left pane shows it, so the item and its node are recognized as one: a red
+ * The icon of the node's queue item, as the queue column shows it, so the item and its node are recognized as one: a red
  * question mark on both, say. It shares the place of the diff button, which comes first (what the node shows is not
  * its text yet); an action's own icon is its play button.
  */

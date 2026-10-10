@@ -23,7 +23,7 @@ describe('the Transcript and Terminal tabs', () => {
     })
 
     test('the Transcript tab shows the session’s messages and tool calls', async () => {
-        await page.getByRole('tab', { name: 'Transcript' }).click()
+        await page.getByLabel('View').selectOption({ label: 'Transcript' })
         const tab = page.locator('.transcript')
         await page.locator('[data-transcript-title]').filter({ hasText: 'Caching search results' }).waitFor()
         assert.deepEqual(await tab.locator('[data-entry="user"]').allTextContents(), ['How should we cache the search results?', 'Thanks. Use Redis.'])
@@ -41,7 +41,7 @@ describe('the Transcript and Terminal tabs', () => {
     })
 
     test('the Terminal tab says when no tmux session is attached', async () => {
-        await page.getByRole('tab', { name: 'Terminal' }).click()
+        await page.getByLabel('View').selectOption({ label: 'Terminal' })
         const term = page.locator('[data-terminal]')
         await term.locator('.xterm').waitFor()
         await page.waitForFunction(() => /not attached to tmux session ldo-sample/.test(document.querySelector('[data-terminal] .xterm-rows')?.textContent ?? ''))
@@ -63,9 +63,9 @@ describe('the Transcript and Terminal tabs', () => {
                 windows.push(w)
             }
             // The tab is shared through the viewer state: every window now follows the transcript too.
-            await windows[0].getByRole('tab', { name: 'Transcript' }).click()
+            await windows[0].getByLabel('View').selectOption({ label: 'Transcript' })
             for (const w of windows) await w.locator('[data-transcript-title]').filter({ hasText: 'Caching search results' }).waitFor()
-            await windows[3].getByRole('tab', { name: 'Terminal' }).click()
+            await windows[3].getByLabel('View').selectOption({ label: 'Terminal' })
             // The terminal's script is loaded when the tab first opens.
             await windows[3].locator('[data-terminal] .xterm').waitFor({ timeout: 5000 })
         } finally {
@@ -74,16 +74,16 @@ describe('the Transcript and Terminal tabs', () => {
     })
 
     test('the tab shown is kept in the viewer state', async () => {
-        await page.getByRole('tab', { name: 'Transcript' }).click()
+        await page.getByLabel('View').selectOption({ label: 'Transcript' })
         await page.reload()
         await page.locator('[data-transcript-title]').filter({ hasText: 'Caching search results' }).waitFor()
-        assert.equal(await page.getByRole('tab', { name: 'Transcript' }).getAttribute('aria-selected'), 'true')
+        assert.equal(await page.getByLabel('View').inputValue(), 'transcript')
     })
 
     test('the outline still updates while another tab shows', async () => {
-        await page.getByRole('tab', { name: 'Transcript' }).click()
+        await page.getByLabel('View').selectOption({ label: 'Transcript' })
         server.swap('demo/sample', 'demo/sample-edited')
-        await page.getByRole('tab', { name: 'Outline' }).click()
+        await page.getByLabel('View').selectOption({ label: 'Outline' })
         await page.locator('.outline-tab [data-num="3.4"]').waitFor()
         server.swap('demo/sample', 'demo/sample')
     })

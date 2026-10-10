@@ -57,7 +57,6 @@
 }
 .topic-head.current {
     border-left: 3px solid var(--current);
-    background: color-mix(in srgb, var(--current) 10%, var(--background));
 }
 
 .tri {
@@ -334,7 +333,7 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
 
 /* The diff button of a node changed since the viewer read it. It sits in the indent left of the node, between two 3px
    lines it must not touch, even at the height of its pulse: the node's own on its left edge (the current node, or one
-   just opened from the left pane, which is when it pulses) and its parent's, one indent further left. At rest it is 4px
+   just opened from the queue column, which is when it pulses) and its parent's, one indent further left. At rest it is 4px
    from the node's line and 3px from the parent's. It shares the checkbox's cell, pulled left out of it, so it stays
    level with the checkbox in a stuck header too. */
 .row .env {
@@ -377,7 +376,7 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
     .work-dot[data-busy] { animation: none; }
 }
 
-/* The icon of the node's queue item, as the left pane draws it, where the diff button would be. */
+/* The icon of the node's queue item, as the queue column draws it, where the diff button would be. */
 .qicon {
     grid-area: ck;
     justify-self: start;
@@ -418,7 +417,7 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
 @keyframes txadd { from { background: color-mix(in srgb, var(--approved) 50%, transparent); } to { background: transparent; } }
 @keyframes txchg { from { background: color-mix(in srgb, var(--foreground) 35%, transparent); } to { background: transparent; } }
 
-/* A node's own envelope: muted (the left pane's is red). On a bubble it sits top right; on a parent row or topic it
+/* A node's own envelope: muted (the queue column's is red). On a bubble it sits top right; on a parent row or topic it
    takes its place in the row, before the rolled-up icons. */
 .msgs {
     display: inline-flex;
@@ -447,3 +446,38 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
 .topic-head > .msgs { margin-left: auto; }
 .topic-head > .msgs + .extras { margin-left: 0; }
 .message-html p { margin: 0.3em 0; }
+
+/* The queue column (QueueColumn) sits in the margin left of the Outline tab, fixed while the outline scrolls, so a
+   queue item scrolls its node up right beside it. The tab is centered, but always leaves the column its room: on a
+   narrow window the outline gets narrower instead. The column's right edge keeps --qgap clear of the tab's padding,
+   where the topics' queue icons are drawn. */
+:root {
+    --qw: 64px;
+    --qgap: 12px;
+    --colpad: 20px;
+}
+.outline-col {
+    box-sizing: border-box;
+    max-width: 900px;
+    margin-left: max(calc(var(--qw) + 2 * var(--qgap)), calc((100% - 900px) / 2));
+    margin-right: auto;
+    padding-inline: var(--colpad);
+}
+/* Sticks below the top bar; its column hangs from it. --qbottom is what the page keeps fixed at the bottom (the input box). */
+.queue-anchor {
+    position: sticky;
+    top: calc(var(--barh) + 16px);
+    height: 0;
+    z-index: 20;
+}
+.queue-col {
+    position: absolute;
+    top: 0;
+    right: calc(100% + var(--colpad) + var(--qgap));
+    width: var(--qw);
+    height: calc(100vh - var(--barh) - 16px - var(--qbottom, 0px) - 12px);
+    display: flex;
+    flex-direction: column;
+}
+.queue-col [data-queue-more][data-pulse] { animation: qpulse 0.5s ease-in-out 3; }
+@keyframes qpulse { 50% { transform: scale(1.15); color: var(--claim); border-color: var(--claim); } }
