@@ -237,8 +237,8 @@ export function OutlinesPane({ list, current, starting, home }: Props) {
         marked.current.scrollIntoView({ block: 'nearest' })
     })
     return (
-        <nav aria-label="Outlines" className="fixed inset-y-0 left-0 z-30 flex w-(--pane-w) flex-col border-r bg-sidebar text-sidebar-foreground">
-            <div className="flex h-11 shrink-0 items-center px-2">
+        <nav aria-label="Outlines" className="fixed top-11 bottom-0 left-0 z-30 flex w-(--pane-w) flex-col border-r bg-sidebar text-sidebar-foreground">
+            <div className="flex shrink-0 items-center p-2">
                 <label className="flex w-full items-center gap-2 rounded-md border bg-background px-2 py-1 text-[13px] focus-within:border-sidebar-ring">
                     <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <input

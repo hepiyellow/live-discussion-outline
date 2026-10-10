@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, ChevronDown, Copy, Crosshair, Folder, ListCollapse, ListTree, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Outline, TabName } from '@/types'
+import { PaneToggle } from './PaneToggle'
 
 
 interface Props {
@@ -41,7 +42,8 @@ function ResumeCopy({ resume }: { resume: string }) {
 /** The bar over every tab: the session's name, the Outline tab's tools, then the project, resume link and the tab dropdown. */
 export function TopBar({ outline, tab, onTab, onExpandAll, onCollapseAll, onJump, undoSteps, onUndo }: Props) {
     return (
-        <header data-topbar className="sticky top-0 z-20 flex h-11 items-center gap-1 border-b bg-background px-4 whitespace-nowrap">
+        <header data-topbar className="sticky top-0 z-40 -ml-(--pane-w) flex h-11 items-center gap-1 border-b bg-background px-2 whitespace-nowrap">
+            <PaneToggle />
             <span className="mr-2 min-w-0 max-w-[40%] truncate text-sm font-medium" title={outline.title || outline.file}>
                 {outline.title || outline.file}
             </span>
