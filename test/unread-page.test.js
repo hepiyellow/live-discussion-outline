@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
-import { launchBrowser, startServer, until } from './helpers.js'
+import { FIXTURES, launchBrowser, startServer, until } from './helpers.js'
 
 describe('unread changes', () => {
     let server, browser, page
@@ -82,6 +84,36 @@ describe('unread changes', () => {
         assert.doesNotMatch(html, /tx-/)
         assert.match(html, /Results differ by tenant as well as by locale/)
         assert.equal(await page.locator('[data-unread]').count(), 0)
+    })
+
+    test('the animation takes at most a second, however long the text', async () => {
+        // A node of two hundred words, then the same with every fifth word rewritten and a sentence added.
+        const file = path.join(server.dir, 'demo', 'sample.md')
+        const long = Array.from({ length: 200 }, (_, i) => `word${i}`)
+        const withText = words => fs.readFileSync(path.join(FIXTURES, 'outlines/demo/sample.md'), 'utf8').replace('## 3.3 Who can flush the cache by hand\n', `## 3.3 Who can flush the cache by hand\n\n${words.join(' ')}\n`)
+        fs.writeFileSync(file, withText(long))
+        await open()
+        await firstVisit()
+        await page.waitForFunction(() => /word199/.test(document.querySelector('.outline-tab [data-num="3.3"] .node-html').textContent))
+        fs.writeFileSync(file, withText([...long.map((w, i) => (i % 5 ? w : `changed${i}`)), 'and', 'a', 'new', 'closing', 'sentence.']))
+        const button = node('3.3').locator('> .env')
+        await button.waitFor()
+        await button.evaluate(e => e.scrollIntoView({ block: 'center' }))
+        // From the cursor showing up to its leaving.
+        await page.evaluate(() => {
+            const seen = (window.tx = {})
+            new MutationObserver(() => {
+                const cursor = document.querySelector('.tx-cur')
+                if (cursor) seen.from ??= performance.now()
+                else if (seen.from) seen.to ??= performance.now()
+            }).observe(document.body, { childList: true })
+        })
+        await button.click()
+        const took = await (await page.waitForFunction(() => window.tx.to && window.tx.to - window.tx.from, null, { timeout: 10000 })).jsonValue()
+        // A text this long uses the whole second, and no more (with some room for a busy machine).
+        assert.ok(took > 800 && took < 1250, `the animation took ${Math.round(took)} ms`)
+        assert.match(await text('3.3'), /changed195 word196.*a new closing sentence\./)
+        assert.doesNotMatch(await node('3.3').locator('.node-html').innerHTML(), /tx-/)
     })
 
     test('what was read survives a reload', async () => {

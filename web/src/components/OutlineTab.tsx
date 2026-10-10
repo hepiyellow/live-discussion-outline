@@ -4,6 +4,7 @@ import { Statuses } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
 import { OutlineCtx, Topic, type OutlineContext } from './NodeView'
+import { waiting } from './queue'
 import { RenameTitle } from './RenameTitle'
 
 /** Which topics and parents the viewer opened or closed; the rest follow `startsOpen`. */
@@ -26,9 +27,17 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     const root = useRef<HTMLDivElement>(null)
     const ctx = useMemo<OutlineContext>(() => {
         const isOpen = isOpenIn(viewer.open)
+        const statuses = new Statuses(outline.nodes, viewer.overrides)
         return {
             ...actions,
-            statuses: new Statuses(outline.nodes, viewer.overrides),
+            statuses,
+            // The first item about a node, as the left pane lists them.
+            queued: new Map(
+                waiting(outline.queue, statuses, viewer.runs)
+                    .filter(q => !q.missing)
+                    .reverse()
+                    .map(q => [q.item.num, q.item]),
+            ),
             isOpen,
             toggle: node => onToggle(node, !isOpen(node)),
             current: currentPath(outline.nodes),

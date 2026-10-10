@@ -2,14 +2,15 @@ import type { OutlineNode } from '@/types'
 
 /**
  * What a checkbox shows. A node's own kind is its status in the file, unless the user changed it on the page and the
- * agent has not recorded that yet: then it is pending.
+ * agent has not recorded that yet: then it is pending. An action the agent has carried out, and the user has not
+ * approved, is done.
  */
-export type Kind = 'open' | 'claim' | 'pending' | 'approved'
+export type Kind = 'open' | 'claim' | 'done' | 'pending' | 'approved'
 /** A parent whose descendants differ shows `mixed`, with each of their kinds beside it. */
 export type BoxState = Kind | 'mixed'
 
-export const KIND_ORDER: Kind[] = ['open', 'claim', 'pending', 'approved']
-export const KIND_TITLE: Record<Kind, string> = { open: 'Open', claim: 'Claim', pending: 'Pending human approval', approved: 'Approved' }
+export const KIND_ORDER: Kind[] = ['open', 'claim', 'done', 'pending', 'approved']
+export const KIND_TITLE: Record<Kind, string> = { open: 'Open', claim: 'Claim', done: 'Done by the agent', pending: 'Pending: you approved it, and the agent has not recorded that yet', approved: 'User-approved' }
 
 /** The user's changes the file does not show yet: node number → whether the user wants it approved (or chosen). */
 export type Overrides = Record<string, boolean>
@@ -49,6 +50,8 @@ export class Statuses {
 
     parent = (node: OutlineNode) => this.parents.get(node.num)
     fileDone = (node: OutlineNode) => node.status === 'approved'
+    /** An action the agent has carried out. */
+    ran = (node: OutlineNode) => node.tags.includes('ran')
     /** Whether the node counts as approved, the user's unrecorded change included. */
     effective = (node: OutlineNode) => (node.num in this.overrides ? this.overrides[node.num] : this.fileDone(node))
     isGroup = (node: OutlineNode) => node.tags.includes('options') && node.children.length > 0
@@ -62,6 +65,7 @@ export class Statuses {
         const on = this.effective(node)
         if (on && !file) return 'pending'
         if (on && file) return 'approved'
+        if (this.ran(node)) return 'done'
         return node.status === 'claim' ? 'claim' : 'open'
     }
 
@@ -73,7 +77,7 @@ export class Statuses {
         if (!node.children.length) kinds = [this.ownKind(node)]
         else {
             const seen = new Set(node.children.flatMap(c => this.kindsOf(c)))
-            kinds = this.isGroup(node) ? [(['approved', 'pending', 'claim'] as Kind[]).find(k => seen.has(k)) ?? 'open'] : KIND_ORDER.filter(k => seen.has(k))
+            kinds = this.isGroup(node) ? [(['approved', 'pending', 'claim', 'done'] as Kind[]).find(k => seen.has(k)) ?? 'open'] : KIND_ORDER.filter(k => seen.has(k))
         }
         this.kinds.set(node.num, kinds)
         return kinds
@@ -109,8 +113,13 @@ export class Statuses {
         const outvoted = option && !on && siblings.some(s => s !== node && this.effective(s))
         const agent = node.status === 'claim' && !outvoted
         const checked = on || (agent && !(node.num in this.overrides))
-        const state: Kind = !checked ? 'open' : pendingOn ? 'pending' : agent && !pendingOff ? 'claim' : 'approved'
-        const title = option
+        const fromFile: Kind = !checked ? 'open' : pendingOn ? 'pending' : agent && !pendingOff ? 'claim' : 'approved'
+        // Done until the user says otherwise: a filled yellow tick, which a click turns into their approval.
+        const ranHere = this.ran(node) && (fromFile === 'open' || fromFile === 'claim') && !(node.num in this.overrides)
+        const state: Kind = ranHere ? 'done' : fromFile
+        const title = ranHere
+            ? 'Done: the agent carried out this action — click to queue your approval'
+            : option
             ? pendingOn
                 ? 'Pending choice — filled once the agent records it'
                 : pendingOff
@@ -127,7 +136,7 @@ export class Statuses {
                 : agent
                   ? 'Claim — click to queue your approval'
                   : on
-                    ? 'Approved'
+                    ? 'User-approved'
                     : 'Approve this node'
         // An option's radio is its own pick; the kinds below it show as small marks beside it.
         const extras = node.children.length ? kinds.filter(k => k !== this.ownKind(node)) : []

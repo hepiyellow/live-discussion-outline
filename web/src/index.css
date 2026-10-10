@@ -87,6 +87,8 @@
     --danger: #d1242f;
     --current: #f0883e;
     --settled: #8c959f;
+    /* An action the agent has carried out. */
+    --done: #9a6700;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -124,6 +126,7 @@
         --sidebar-ring: oklch(0.556 0 0);
         --claim: #58a6ff;
         --settled: #6e7681;
+        --done: #e3b341;
     }
 }
 

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react'
-import { useTranscript, type TranscriptItem } from '@/hooks/useTranscript'
+import type { Transcript, TranscriptItem } from '@/hooks/useTranscript'
 import { cn } from '@/lib/utils'
 import type { Outline } from '@/types'
 
@@ -43,8 +43,7 @@ const atBottom = () => innerHeight + scrollY >= document.documentElement.scrollH
  * The Transcript tab: the linked session's messages and tool calls, followed live. It keeps to the bottom while the
  * viewer is there, and opens at the bottom.
  */
-export function TranscriptTab({ outline, active, opened }: { outline: Outline; active: boolean; opened: boolean }) {
-    const transcript = useTranscript(outline.session, opened)
+export function TranscriptTab({ outline, transcript, active }: { outline: Outline; transcript: Transcript; active: boolean }) {
     const stick = useRef(true)
     const shownBefore = useRef(false)
     useLayoutEffect(() => {

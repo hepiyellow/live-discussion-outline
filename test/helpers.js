@@ -111,7 +111,14 @@ export async function eventStream(url) {
     /** The next event, or a rejection after `ms`. */
     const take = (ms = 5000) =>
         Promise.race([next(), new Promise((_, reject) => setTimeout(() => reject(new Error(`no event from ${url} within ${ms} ms`)), ms))])
-    return { take, close: () => controller.abort() }
+    /** The next event named `name`, passing over the others, or a rejection after `ms`. */
+    const takeOf = async (name, ms = 5000) => {
+        for (const deadline = Date.now() + ms; ; ) {
+            const event = await take(Math.max(1, deadline - Date.now()))
+            if (!event || event.event === name) return event
+        }
+    }
+    return { take, takeOf, close: () => controller.abort() }
 }
 
 /** A GET sent as written, with the given headers: fetch() resolves `..` segments and will not send its own Host. */

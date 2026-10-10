@@ -41,7 +41,7 @@ describe('/api/outline', () => {
             assert.equal((await stream.take()).event, 'state')
             assert.equal(first.nodes.find(n => n.num === '4').children[0].status, 'claim')
             server.swap('demo/sample', 'demo/sample-edited')
-            const next = JSON.parse((await stream.take()).data)
+            const next = JSON.parse((await stream.takeOf('message')).data)
             assert.equal(next.nodes.find(n => n.num === '4').children[0].status, 'approved')
             assert.ok(next.nodes.find(n => n.num === '3').children.some(n => n.num === '3.4'))
         } finally {
@@ -53,8 +53,8 @@ describe('/api/outline', () => {
     test('the stream ignores changes to other outlines', async () => {
         const stream = await eventStream(`${server.url}/api/outline/demo/sample/events`)
         try {
-            await stream.take()
-            await stream.take()
+            // What the stream sends when it opens ends with the linked session's activity.
+            await stream.takeOf('activity')
             fs.writeFileSync(path.join(server.dir, 'demo', 'other.md'), 'Title: Other\n\n# 1. A\n')
             await assert.rejects(stream.take(600), /no event/)
         } finally {
@@ -67,8 +67,7 @@ describe('/api/outline', () => {
         fs.copyFileSync(path.join(server.dir, 'demo', 'sample.md'), path.join(server.dir, 'demo', 'doomed.md'))
         const stream = await eventStream(`${server.url}/api/outline/demo/doomed/events`)
         try {
-            await stream.take()
-            await stream.take()
+            await stream.takeOf('activity')
             fs.rmSync(path.join(server.dir, 'demo', 'doomed.md'))
             assert.equal((await stream.take()).event, 'gone')
         } finally {
@@ -86,6 +85,15 @@ describe('/api/outline', () => {
         assert.match(html, /💡 Recommended/)
         assert.match(html, /<div class="rec-line"><span class="pill sum"/)
         assert.match(html, /class="q q-decide" data-num="2\.1"/)
+    })
+
+    test('/stop takes only this machine’s own page, and says when there is no terminal to stop', async () => {
+        const post = (headers, body) => fetch(`${server.url}/stop`, { method: 'POST', headers, body: JSON.stringify(body) })
+        // No Origin of ours: another site's page may not stop the agent.
+        assert.equal((await post({ 'content-type': 'application/json' }, { terminal: 'ldo-sample' })).status, 403)
+        const res = await post({ 'content-type': 'application/json', origin: server.url }, { terminal: 'ldo-no-such-session' })
+        assert.equal(res.status, 409)
+        assert.match(await res.text(), /no tmux session ldo-no-such-session/)
     })
 
     test('the old outline list still reads the outline', async () => {

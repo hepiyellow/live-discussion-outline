@@ -29,7 +29,7 @@ describe('the outline list', () => {
         const list = await (await fetch(`${server.url}/api/outlines`)).json()
         const sample = list.outlines.find(o => o.file === 'sample')
         assert.equal(sample.title, 'Caching for the search service')
-        assert.deepEqual(sample.checkbox, { total: 20, done: 4, agent: 6, open: 10 })
+        assert.deepEqual(sample.checkbox, { total: 12, done: 3, agent: 5, open: 4 })
         assert.equal(typeof list.terminals, 'boolean')
         const stream = await eventStream(`${server.url}/api/outlines/events`)
         try {
@@ -45,7 +45,7 @@ describe('the outline list', () => {
     test('each outline shows its title, project and progress, and opens on click', async () => {
         assert.match(await row('sample').locator('[data-title]').textContent(), /Caching for the search service/)
         assert.match(await row('sample').textContent(), /demo/)
-        assert.match(await row('sample').locator('[data-progress]').textContent(), /✅ 4 · 6 agent · ☐ 10/)
+        assert.match(await row('sample').locator('[data-progress]').textContent(), /✅ 3 · 5 agent · ☐ 4/)
         assert.equal(await row('sample').getByRole('button', { name: 'Copy the link that reopens this chat' }).count(), 1)
         await row('sample').locator('td').nth(1).click()
         await page.waitForURL(/\/app\/demo\/sample$/)

@@ -66,6 +66,8 @@ describe('the Outline tab', () => {
             '2.2.2': 'open',
             '2.3': 'claim',
             '2.4': 'open',
+            // An action the agent has carried out: a filled yellow tick.
+            '2.5': 'done',
             3: 'mixed',
             '3.2': 'claim',
             4: 'claim',
@@ -73,7 +75,7 @@ describe('the Outline tab', () => {
         }
         for (const [num, state] of Object.entries(states)) assert.equal(await box(num).getAttribute('data-state'), state, num)
         // A mixed topic shows each kind below it once.
-        assert.deepEqual(await node('2').locator('.extras .ck').evaluateAll(els => els.map(e => e.dataset.state)), ['open', 'claim', 'approved'])
+        assert.deepEqual(await node('2').locator('.extras .ck').evaluateAll(els => els.map(e => e.dataset.state)), ['open', 'claim', 'done', 'approved'])
         // Options are radio buttons.
         assert.equal(await box('2.1.2').getAttribute('role'), 'radio')
         assert.equal(await box('2.3').getAttribute('role'), 'checkbox')
@@ -85,8 +87,10 @@ describe('the Outline tab', () => {
         assert.match(await text('2.2'), /◉ Pick one/)
         assert.match(await text('2.1.2'), /💡 Recommended/)
         assert.doesNotMatch(await text('2.1.1'), /Recommended/)
-        assert.match(await text('2.5'), /Ran/)
-        assert.doesNotMatch(await text('2.4'), /Ran/)
+        // An action the agent ran is Done, in yellow; one still to run is not.
+        assert.match(await text('2.5'), /Done/)
+        assert.equal(await node('2.5').locator('.node-title .pill-done').count(), 1)
+        assert.doesNotMatch(await text('2.4'), /Done/)
         const closing = async num => node(num).locator('.closing .pill').allTextContents()
         assert.deepEqual(await closing('2.3'), ['Summary', '💡 Recommendation'])
         assert.deepEqual((await closing('2.4')).map(t => t.trim()), ['Action'])
@@ -152,7 +156,7 @@ describe('the Outline tab', () => {
         await page.getByRole('tab', { name: 'Markdown' }).click()
         assert.equal(await page.locator('.outline-tab').isVisible(), false)
         const md = page.locator('.markdown')
-        assert.match(await md.locator('h1').first().textContent(), /1\. @approved Goals/)
+        assert.match(await md.locator('h1').first().textContent(), /1\. @user-approved Goals/)
         await page.getByRole('tab', { name: 'Outline' }).click()
         assert.equal(await md.isVisible(), false)
     })
@@ -170,6 +174,20 @@ describe('the Outline tab', () => {
         assert.match(await node('2.3').locator('.node-html').textContent(), /and the index version/)
         assert.equal(await visible('3.1.1'), false)
         assert.equal(await visible('1.1'), true)
+    })
+
+    test('nodes that share a number are pointed out', async () => {
+        // The page knows a node by its number: an approval of one would reach the others, under the wrong title.
+        assert.equal(await page.locator('[data-duplicates]').count(), 0)
+        const file = path.join(server.dir, 'demo', 'twice.md')
+        fs.writeFileSync(file, 'Title: Twice\n\n# 1. First\n\n## 1.1 @agent-claim One\n\n# 2. Second\n\n## 2.1 @agent-claim Two\n\n# 2. Second again\n\n## 2.1 Three\n')
+        const other = await openPage(browser, `${server.url}/app/demo/twice`)
+        try {
+            assert.match(await other.locator('[data-duplicates]').textContent(), /More than one node is numbered 2, 2\.1\./)
+        } finally {
+            await other.close()
+            fs.rmSync(file, { force: true })
+        }
     })
 
     test('a missing outline says so', async () => {

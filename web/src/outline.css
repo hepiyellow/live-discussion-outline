@@ -5,6 +5,8 @@
     /* The height of a stuck header row; --barh is the top bar's real height, set by the page. */
     --rh: 32px;
     --barh: 44px;
+    /* How far a node sits right of its parent. The diff button lives in this space (see `.row .env`). */
+    --indent: 24px;
 }
 
 /* Headers stick below the top bar and their ancestors' headers (--top, set by the page), until their block ends. */
@@ -17,7 +19,9 @@
 .sticky-head[data-stuck] {
     box-sizing: border-box;
     height: var(--rh);
-    overflow: hidden;
+    /* Only the height is clipped: the diff button sits left of the row, in its indent. */
+    overflow-x: visible;
+    overflow-y: clip;
     box-shadow: 0 1px 0 var(--border);
 }
 .sticky-head[data-stuck] .node-title {
@@ -70,7 +74,7 @@
 
 /* Nodes right under a topic are indented like nested ones (by their parent's .kids), leaving room on their left. */
 .topic-body > .nodes {
-    padding-left: 20px;
+    padding-left: var(--indent);
 }
 .topic-text {
     padding: 4px 8px 0 12px;
@@ -105,7 +109,7 @@
     box-shadow: inset 3px 0 0 var(--current), 0 1px 0 var(--border);
 }
 .group > .kids {
-    padding: 0 0 4px 20px;
+    padding: 0 0 4px var(--indent);
 }
 
 /* A node without children: a bubble. */
@@ -181,7 +185,8 @@
 .pill-pick, .pill-summary { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 12%, transparent); }
 .pill-options, .pill-action { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
 .pill-recommended, .pill-recommendation { color: var(--claim); background: color-mix(in srgb, var(--claim) 16%, transparent); }
-.pill-ran { color: var(--muted-foreground); background: color-mix(in srgb, var(--foreground) 10%, transparent); }
+.pill-done { color: var(--done); background: color-mix(in srgb, var(--done) 18%, transparent); }
+.pill-failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
 .closing { display: block; margin-top: 6px; }
 .closing .pill { margin: 0 6px 0 0; }
 
@@ -238,6 +243,8 @@
 .ck[data-state='approved'] { border-color: var(--approved); background: var(--approved); color: #fff; }
 .ck[data-state='claim'] { border-color: var(--claim); color: var(--claim); }
 .ck[data-state='pending'] { border-color: var(--approved); color: var(--approved); }
+/* An action the agent has carried out: filled, in the yellow of its Done tag. */
+.ck[data-state='done'] { border-color: var(--done); background: var(--done); color: var(--background); }
 .ck[data-state='mixed'] { color: var(--muted-foreground); }
 .ck.small { width: 12px; height: 12px; margin-left: 3px; }
 .ck.small svg { width: 9px; height: 9px; }
@@ -263,8 +270,24 @@
 .row.parent .play { top: 50%; transform: translateY(-50%); }
 .row .play svg { width: 12px; height: 12px; }
 .row .play:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); }
-.row .play.sent { color: var(--muted-foreground); cursor: default; animation: playwait 1.4s ease-in-out infinite; }
-@keyframes playwait { 50% { opacity: 0.35; } }
+/* Run, and waiting for the agent: the triangle stays red, inside a red ring that turns. */
+/* Moved left, so the ring keeps clear of the checkbox. */
+.row .play.sent { left: -12px; cursor: default; }
+.row .play.sent:hover { background: none; }
+.row .play.sent::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1.5px solid color-mix(in srgb, var(--danger) 25%, transparent);
+    border-top-color: var(--danger);
+    border-radius: 50%;
+    animation: playwait 0.9s linear infinite;
+}
+.row .play.sent svg { width: 9px; height: 9px; }
+@keyframes playwait { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .row .play.sent::after { animation-duration: 3s; }
+}
 
 /* The reference button, shown on hover. */
 .ask {
@@ -293,13 +316,18 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
 @keyframes qline { from { box-shadow: inset 3px 0 0 var(--qline); } to { box-shadow: inset 3px 0 0 transparent; } }
 .row.leaf[data-qmark]::before, .row.parent[data-qmark], .topic-head[data-qmark] { animation: qline 1.6s ease-in forwards; }
 
-/* The diff button of a node changed since the viewer read it: the checkbox's height, in the indent left of it. */
+/* The diff button of a node changed since the viewer read it. It sits in the indent left of the node, between two 3px
+   lines it must not touch, even at the height of its pulse: the node's own on its left edge (the current node, or one
+   just opened from the left pane, which is when it pulses) and its parent's, one indent further left. At rest it is 4px
+   from the node's line and 3px from the parent's. It shares the checkbox's cell, pulled left out of it, so it stays
+   level with the checkbox in a stuck header too. */
 .row .env {
-    position: absolute;
-    left: -8px;
-    top: 12px;
-    width: 16px;
-    height: 16px;
+    grid-area: ck;
+    justify-self: start;
+    /* The cell starts 12px into the row; the button ends 4px left of the row. */
+    margin-left: calc(-12px - 4px - 14px);
+    width: 14px;
+    height: 14px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -307,23 +335,55 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
     border: 0;
     border-radius: 50%;
     background: color-mix(in srgb, var(--claim) 22%, transparent);
-    color: var(--claim);
+    color: var(--foreground);
     cursor: pointer;
 }
-.row .env svg { width: 11px; height: 11px; }
+.row .env svg { width: 10px; height: 10px; }
 .row .env:hover { background: color-mix(in srgb, var(--claim) 38%, transparent); }
-.row.parent .env { top: 50%; transform: translateY(-50%); }
-.row .play + .env { left: -28px; }
+.row.leaf > .env { align-self: start; margin-top: 13px; }
+/* Beside a diff button or a queue icon, an action's play button moves right to leave a gap. */
+.row .play:has(+ .env), .row .play:has(+ .qicon) { left: -5px; }
 .row .env[data-pulse] { animation: envpulse 0.5s ease-in-out 3; }
-.row.parent .env[data-pulse] { animation: envpulse-p 0.5s ease-in-out 3; }
-@keyframes envpulse { 50% { transform: scale(1.5); background: color-mix(in srgb, var(--claim) 25%, transparent); } }
-@keyframes envpulse-p { 50% { transform: translateY(-50%) scale(1.5); background: color-mix(in srgb, var(--claim) 25%, transparent); } }
+/* Grown, it is 18.2px wide in the 21px between the lines. */
+@keyframes envpulse { 50% { transform: scale(1.3); background: color-mix(in srgb, var(--claim) 25%, transparent); } }
+
+/* A reference just added to the input box: its chip grows and shrinks once, which is how the click shows. */
+[data-chip][data-added] { animation: chipin 0.45s ease-in-out; }
+@keyframes chipin { 40% { transform: scale(1.18); background: color-mix(in srgb, var(--claim) 30%, var(--muted)); } }
+@media (prefers-reduced-motion: reduce) {
+    [data-chip][data-added] { animation: none; }
+}
+
+/* The working indicator on the input box's button: it blinks slowly while the agent is in a turn. */
+.work-dot[data-busy] { animation: workdot 1.8s ease-in-out infinite; }
+@keyframes workdot { 50% { opacity: 0.15; } }
+@media (prefers-reduced-motion: reduce) {
+    .work-dot[data-busy] { animation: none; }
+}
+
+/* The icon of the node's queue item, as the left pane draws it, where the diff button would be. */
+.qicon {
+    grid-area: ck;
+    justify-self: start;
+    margin-left: calc(-12px - 4px - 14px);
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.qicon svg { width: 14px; height: 14px; }
+.row.leaf > .qicon { align-self: start; margin-top: 13px; }
+/* A topic has no indent: its icon sits in the page's margin, as far left of the topic as a node's is of the node. */
+.topic-head > .qicon { position: absolute; left: -18px; top: 50%; margin: 0; transform: translateY(-50%); }
+/* The current topic's line is a border, which moves what `left` is measured from. */
+.topic-head.current > .qicon { left: -21px; }
 
 /* The diff animation: words are units (a word and the space after it) that grow in or collapse one by one while a cursor passes. */
 .tx-u { display: inline-block; white-space: pre; overflow: clip; vertical-align: baseline; }
 .tx-n .tx-u:not(.on) { display: none; }
-.tx-n .tx-u.on { animation: txadd 1s ease-out forwards; }
-.tx-n.c .tx-u.on { animation: txchg 1s ease-out forwards; }
+.tx-n .tx-u.on { animation: txadd var(--tx-fade, 1s) ease-out forwards; }
+.tx-n.c .tx-u.on { animation: txchg var(--tx-fade, 1s) ease-out forwards; }
 .tx-o .tx-u { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
 .tx-hide { display: none !important; }
 .tx-cur {
@@ -337,7 +397,7 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
     box-shadow: 0 0 6px var(--claim);
     pointer-events: none;
     z-index: 60;
-    transition: transform 0.07s linear, height 0.07s linear, opacity 0.15s;
+    transition: transform 0.07s linear, height 0.07s linear, opacity 0.1s;
 }
 @keyframes txadd { from { background: color-mix(in srgb, var(--approved) 50%, transparent); } to { background: transparent; } }
 @keyframes txchg { from { background: color-mix(in srgb, var(--foreground) 35%, transparent); } to { background: transparent; } }

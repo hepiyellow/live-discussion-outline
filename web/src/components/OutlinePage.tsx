@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useApprovals } from '@/hooks/useApprovals'
-import { messagesAbout, useSession } from '@/hooks/useSession'
+import { messagesAbout, type SessionFeed } from '@/hooks/useSession'
+import type { Transcript } from '@/hooks/useTranscript'
 import { referenceTo } from '@/lib/approvals'
 import { useUnread } from '@/hooks/useUnread'
 import { useOutline } from '@/hooks/useOutline'
-import { allNodes, currentPath, isParent, nodeLabel, pathNums } from '@/lib/outline'
+import { allNodes, currentPath, duplicateNums, isParent, nodeLabel, pathNums } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import { scrollToNode } from '@/lib/sticky'
 import type { Outline, OutlineNode, QueueItem, StatePatch, TabName, ViewerState } from '@/types'
@@ -22,7 +23,7 @@ import { TranscriptTab } from './TranscriptTab'
 
 /** One outline: its tabs, kept up to date as the agent edits the file, without reloading. */
 export function OutlinePage({ project, file }: { project: string; file: string }) {
-    const { state, viewer, stateLoaded, patch } = useOutline(project, file)
+    const { state, viewer, stateLoaded, patch, session, transcript, followTranscript } = useOutline(project, file)
     const outline = state.status === 'ready' || state.status === 'gone' ? state.outline : null
 
     useEffect(() => {
@@ -41,7 +42,7 @@ export function OutlinePage({ project, file }: { project: string; file: string }
                 )}
             </main>
         )
-    return <Loaded outline={outline} gone={state.status === 'gone'} viewer={viewer} stateLoaded={stateLoaded} patch={patch} />
+    return <Loaded outline={outline} gone={state.status === 'gone'} viewer={viewer} stateLoaded={stateLoaded} patch={patch} session={session} transcript={transcript} followTranscript={followTranscript} />
 }
 
 interface LoadedProps {
@@ -50,9 +51,12 @@ interface LoadedProps {
     viewer: ViewerState
     stateLoaded: boolean
     patch: (p: StatePatch) => Promise<void>
+    session: SessionFeed
+    transcript: Transcript
+    followTranscript: () => void
 }
 
-function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
+function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript, followTranscript }: LoadedProps) {
     // The tab lives in the viewer state; until it arrives, the Outline tab shows.
     const tab: TabName = stateLoaded ? viewer.tab : 'outline'
     const setTab = useCallback((t: TabName) => patch({ tab: t }), [patch])
@@ -61,11 +65,14 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
     useEffect(() => {
         if (!opened.has(tab)) setOpened(o => new Set(o).add(tab))
     }, [tab, opened])
+    useEffect(() => {
+        if (opened.has('transcript')) followTranscript()
+    }, [opened, followTranscript])
     const notify = useNotify()
-    const session = useSession(outline.session)
     const approvals = useApprovals(outline, viewer, patch, session.working)
     const { clickNode, clickTopic, run, reference, undo, linked } = approvals
-    const [focusKey, setFocusKey] = useState(0)
+    // The reference last added to the input box, and how many were: the box takes the focus and its chip pulses once.
+    const [added, setAdded] = useState({ ref: '', n: 0 })
     /** Linked to a session, a reference waits in the input box as a chip; otherwise it is copied. */
     const onReference = useCallback(
         (node: OutlineNode) => {
@@ -73,10 +80,9 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
             const label = node.level === 1 ? `${node.num}. ${node.title}` : nodeLabel(node)
             const ref = referenceTo(outline, node)
             if (!viewer.chips.some(c => c.ref === ref)) patch({ chips: [...viewer.chips, { label, ref }] })
-            setFocusKey(k => k + 1)
-            notify('Added to the message box')
+            setAdded(a => ({ ref, n: a.n + 1 }))
         },
-        [linked, reference, outline, viewer.chips, patch, notify],
+        [linked, reference, outline, viewer.chips, patch],
     )
     const messagesFor = useCallback((num: string) => messagesAbout(num, session.messages), [session.messages])
     const onSeen = useCallback((ids: string[]) => patch({ seen: Object.fromEntries(ids.map(id => [id, 1])) }), [patch])
@@ -99,15 +105,20 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
         [linked, clickNode, clickTopic, run, onReference, unread, opening, openUnread, messagesFor, viewer.seen, onSeen],
     )
     const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
+    const duplicates = useMemo(() => duplicateNums(outline.nodes), [outline])
 
     const onToggle = useCallback((node: OutlineNode, value: boolean) => patch({ open: { [node.num]: value } }), [patch])
     const setAll = (value: boolean) => patch({ open: Object.fromEntries(allNodes(outline.nodes).filter(n => isParent(n) || n.level === 1).map(n => [n.num, value])) })
 
-    /** Opens the way to a node (and a topic itself), then scrolls it to the top, below the headers above it. */
-    const reveal = (num: string, then?: (el: HTMLElement) => void) => {
+    /**
+     * Opens the way to a node (and a topic itself), then scrolls it to the top, below the headers above it. With
+     * `inside`, a node that has nodes under it is opened too: what there is to do is in them (a question's options).
+     */
+    const reveal = (num: string, then?: (el: HTMLElement) => void, inside = false) => {
+        const parent = inside && allNodes(outline.nodes).some(n => n.num === num && n.children.length > 0)
         flushSync(() => {
             if (tab !== 'outline') setTab('outline')
-            patch({ open: Object.fromEntries(pathNums(num).slice(0, num.includes('.') ? -1 : undefined).map(n => [n, true])) })
+            patch({ open: Object.fromEntries(pathNums(num).slice(0, parent || !num.includes('.') ? undefined : -1).map(n => [n, true])) })
         })
         const el = document.querySelector<HTMLElement>(`.outline-tab [data-num="${CSS.escape(num)}"]`)
         if (el) setTimeout(() => scrollToNode(el, () => then?.(el)), 0)
@@ -121,7 +132,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
             void el.offsetWidth
             el.setAttribute('data-qmark', '')
             setTimeout(() => el.removeAttribute('data-qmark'), 1700)
-        })
+        }, true)
         if (!found) notify('Not in the outline', true)
     }
     /** An unread item shows its node, and points at its diff button: the change opens from there. */
@@ -178,6 +189,12 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
                     This outline was moved or deleted. What you see is its last version.
                 </p>
             )}
+            {duplicates.length > 0 && (
+                <p role="alert" data-duplicates className="mx-auto mt-4 max-w-[860px] rounded-md border border-danger/40 px-4 py-2 text-sm text-danger">
+                    More than one node is numbered {duplicates.join(', ')}. Approving, picking or running one of them acts on the others too, and the agent is told the wrong
+                    title. Ask the agent to give every node its own number.
+                </p>
+            )}
             <TabsContent value="outline" forceMount hidden={tab !== 'outline'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
                 <OutlineTab outline={outline} viewer={viewer} actions={actions} onToggle={onToggle} />
             </TabsContent>
@@ -185,7 +202,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
                 <div className="markdown" dangerouslySetInnerHTML={{ __html: outline.markdown }} />
             </TabsContent>
             <TabsContent value="transcript" forceMount hidden={tab !== 'transcript'} className="mx-auto max-w-[900px] px-5 pb-20">
-                <TranscriptTab outline={outline} active={tab === 'transcript'} opened={opened.has('transcript')} />
+                <TranscriptTab outline={outline} transcript={transcript} active={tab === 'transcript'} />
             </TabsContent>
             <TabsContent value="term" forceMount hidden={tab !== 'term'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
                 <TerminalTab outline={outline} active={tab === 'term'} opened={opened.has('term')} />
@@ -195,7 +212,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
                 <>
                     {/* Room under the content for the input box. */}
                     <div aria-hidden="true" style={{ height: 'var(--composer-h, 60px)' }} />
-                    <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} onSent={session.working} onReveal={reveal} focusKey={focusKey} />
+                    <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} onSent={session.working} onReveal={reveal} added={added} />
                 </>
             )}
             {tab === 'outline' && <StatusBar outline={outline} viewer={viewer} pending={approvals.pending} onDrop={approvals.drop} onCopy={() => approvals.copyPending()} />}

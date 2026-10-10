@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { ArrowUp, X } from 'lucide-react'
+import { ArrowUp, Square, X } from 'lucide-react'
 import { Command, CommandItem, CommandList } from '@/components/ui/command'
-import { sendToSession } from '@/lib/send'
+import { sendToSession, stopSession } from '@/lib/send'
 import { cn } from '@/lib/utils'
 import type { Chip, Outline, SlashCommand, StatePatch, ViewerState } from '@/types'
 import { useNotify } from './Notice'
@@ -14,8 +14,8 @@ interface Props {
     /** Something was sent: the agent is in a turn. */
     onSent: () => void
     onReveal: (num: string) => void
-    /** Focuses the box when this changes (a chip was just added). */
-    focusKey: number
+    /** The reference the user just added from the outline (`n` counts them): the box takes the focus, and that chip pulses once. */
+    added: { ref: string; n: number }
 }
 
 /** How long typing pauses before the draft is saved. */
@@ -28,13 +28,17 @@ const chipNum = (c: Chip) => /^(\d+(?:\.\d+)*)\.?\s/.exec(c.label)?.[1]
  * The input box at the bottom: types a message into the linked session's terminal. References added from the outline
  * wait in it as chips, sent as `Re: outline …` lines before the text. Its draft and chips live in the viewer state, so
  * every window on the outline shares them. `/` at the start lists the session's commands.
+ *
+ * While the agent works, a dot blinks at the corner of the round button, and with nothing typed the button stops the
+ * agent instead of sending; typing a new message makes it the send button again, the dot still blinking.
  */
-export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, focusKey }: Props) {
+export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added }: Props) {
     const notify = useNotify()
     const root = useRef<HTMLFormElement>(null)
     const box = useRef<HTMLTextAreaElement>(null)
     const [text, setText] = useState(viewer.draft)
     const [sending, setSending] = useState(false)
+    const [stopping, setStopping] = useState(false)
     const saved = useRef(viewer.draft)
     const timer = useRef<number>(undefined)
     const chips = viewer.chips
@@ -54,8 +58,8 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, focus
     }
 
     useEffect(() => {
-        if (focusKey) box.current?.focus()
-    }, [focusKey])
+        if (added.n) box.current?.focus()
+    }, [added.n])
 
     // The box grows with its text; the page keeps its height in --composer-h so content clears it.
     useLayoutEffect(() => {
@@ -129,6 +133,17 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, focus
         }
     }
 
+    const stop = async () => {
+        setStopping(true)
+        try {
+            await stopSession(outline.terminal)
+        } catch (e) {
+            notify(`Not stopped: ${(e as Error).message}`, true)
+        } finally {
+            setStopping(false)
+        }
+    }
+
     const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
         if (shown.length) {
             const i = Math.max(0, shown.findIndex(c => c.name === selected))
@@ -157,6 +172,8 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, focus
     }
 
     const empty = !text.trim() && !chips.length
+    // Nothing to send while the agent works: the button stops it.
+    const stops = busy && empty
     return (
         <form
             id="composer"
@@ -186,12 +203,6 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, focus
                     </CommandList>
                 </Command>
             )}
-            <span
-                role="status"
-                aria-label={busy ? 'The agent is working' : 'The agent is idle'}
-                data-busy={busy || undefined}
-                className={cn('size-4 shrink-0 self-center rounded-full border-2 border-border border-t-claim', busy ? 'visible animate-spin' : 'invisible')}
-            />
             <div className="flex min-w-0 flex-1 flex-col rounded-[18px] border px-1.5 py-1 focus-within:border-muted-foreground">
                 {chips.length > 0 && (
                     <div className="flex flex-wrap gap-1 px-0.5 pt-0.5" aria-label="References">
@@ -199,8 +210,10 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, focus
                             const num = chipNum(c)
                             return (
                                 <span
-                                    key={c.ref}
+                                    // A new key each time it is added again, so the pulse plays again.
+                                    key={c.ref === added.ref ? `${c.ref}\u0001${added.n}` : c.ref}
                                     data-chip={c.label}
+                                    data-added={c.ref === added.ref || undefined}
                                     title={c.ref}
                                     onClick={e => num && !(e.target as Element).closest('button') && onReveal(num)}
                                     className={cn('inline-flex max-w-full items-center gap-0.5 rounded-[10px] bg-muted py-px pr-0.5 pl-2.5 text-xs', num && 'cursor-pointer hover:bg-accent')}
@@ -242,15 +255,25 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, focus
                     onKeyDown={onKeyDown}
                 />
             </div>
-            <button
-                type="submit"
-                title="Send"
-                aria-label="Send"
-                disabled={empty || sending}
-                className="inline-flex size-[34px] shrink-0 items-center justify-center rounded-full bg-claim text-white disabled:cursor-default disabled:opacity-40"
-            >
-                <ArrowUp className="size-4" />
-            </button>
+            <span className="relative shrink-0">
+                <button
+                    type={stops ? 'button' : 'submit'}
+                    title={stops ? 'Stop the agent' : 'Send'}
+                    aria-label={stops ? 'Stop' : 'Send'}
+                    disabled={stops ? stopping : empty || sending}
+                    onClick={stops ? stop : undefined}
+                    className="inline-flex size-[34px] items-center justify-center rounded-full bg-claim text-white disabled:cursor-default disabled:opacity-40"
+                >
+                    {stops ? <Square className="size-3" fill="currentColor" /> : <ArrowUp className="size-4" />}
+                </button>
+                {/* The working indicator: a dot on the button's corner, blinking until the agent's turn ends. */}
+                <span
+                    role="status"
+                    aria-label={busy ? 'The agent is working' : 'The agent is idle'}
+                    data-busy={busy || undefined}
+                    className={cn('work-dot pointer-events-none absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-background bg-foreground', !busy && 'invisible')}
+                />
+            </span>
         </form>
     )
 }

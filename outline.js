@@ -67,12 +67,20 @@ function extractQueue(source) {
 }
 
 /**
- * The outline's nodes are its headings: `# 2. @approved Title` is a topic, `## 2.1 @claim @options Title` a node under
+ * The outline's nodes are its headings: `# 2. @user-approved Title` is a topic, `## 2.1 @agent-claim @options Title` a node under
  * it, down to `######`. A node's text is everything up to the next heading, rendered as ordinary markdown (bullets
  * included). Status and the other tags sit on the heading line, right after the number.
  */
 const HEAD_RE = /^(\d+(?:\.\d+)*)\.?(?:\s+|$)([\s\S]*)$/
-const TAG_RE = /^@(approved|claim|options|recommended|current|action|ran)\b\s*/i
+// A longer name comes before the name it starts with (`action-done` before `action`), or the shorter one would match.
+const TAG_RE = /^@(user-approved|approved|agent-claim|claim|option[_-][a-z]|options|recommended|current|action-done|action-failed|action|ran)\b\s*/i
+/** `@option_A`: the node is option A of the question above it. The letter is in the tag, where it cannot be mistyped into the title. */
+const OPTION_RE = /^option[_-]([a-z])$/i
+/**
+ * The tags as outlines write them say who or what: `@user-approved`, `@agent-claim`, `@action-done`, `@action-failed`.
+ * Outlines written before those names say `@approved`, `@claim` and `@action @ran`. Both read as the same tags here.
+ */
+const TAG_NAMES = { 'user-approved': ['approved'], 'agent-claim': ['claim'], 'action-done': ['action', 'ran'], 'action-failed': ['action', 'failed'] }
 const REC_MARK = /@recommendation\./i
 /** Tags that open a node's closing lines, after its prose: `@Summary.`, `@Recommendation.`, `@Action.` (in any order). */
 const TRAIL_MARK = /@(summary|recommendation|action)\.\s*/gi
@@ -84,8 +92,16 @@ function headNode(text, level) {
     const m = text.trim().match(HEAD_RE)
     let rest = m ? m[2] : text.trim()
     const tags = new Set()
-    for (let t; (t = rest.match(TAG_RE)); rest = rest.slice(t[0].length)) tags.add(t[1].toLowerCase())
-    return { level, num: m ? m[1] : '', title: rest.trim(), tags, body: [], children: [] }
+    let option = ''
+    for (let t; (t = rest.match(TAG_RE)); rest = rest.slice(t[0].length)) {
+        const letter = t[1].match(OPTION_RE)
+        if (letter) {
+            option = letter[1].toUpperCase()
+            tags.add('option')
+        } else for (const name of TAG_NAMES[t[1].toLowerCase()] ?? [t[1].toLowerCase()]) tags.add(name)
+    }
+    // The title reads as outlines wrote it before the tag, `(A) Title`, so the page and the messages it sends name the option the same way.
+    return { level, num: m ? m[1] : '', title: option ? `(${option}) ${rest.trim()}` : rest.trim(), option, tags, body: [], children: [] }
 }
 
 /** The outline as a tree of markdown tokens: the root holds any text before the first topic, and the topics. */
@@ -129,16 +145,41 @@ export function splitTrail(text) {
 
 export const plainTitle = title => title.replace(/[*_`]/g, '')
 
-/** Status counts over the nodes below the topics, for the outline list's progress bar. */
+/** An `@options` question with its options under it: the page shows it as one choice. */
+const isQuestion = node => node.tags.has('options') && node.children.length > 0
+
+/** The statuses under a node, of the nodes that hold one of their own: its leaves, and each question as one. */
+function statusesUnder(node, seen = new Set()) {
+    for (const n of node.children) {
+        if (isQuestion(n)) seen.add(questionStatus(n))
+        else if (n.children.length) statusesUnder(n, seen)
+        else seen.add(statusOf(n))
+    }
+    return seen
+}
+
+/** A question is settled once an option is picked, whatever the other options show; until then its recommended option speaks for it. */
+function questionStatus(node) {
+    const seen = statusesUnder(node)
+    return ['done', 'agent'].find(s => seen.has(s)) ?? 'open'
+}
+
+/**
+ * Status counts for the outline list's progress bar, counted the way the page rolls statuses up (web/src/lib/status.ts):
+ * over the nodes that hold a status of their own. A parent only shows its descendants' statuses, and a question counts
+ * once, so the options that were not picked (the recommended one among them) do not stay behind as open or claimed.
+ */
 export function countCheckboxProgress(source) {
     const counts = { total: 0, done: 0, agent: 0, open: 0 }
+    const count = status => {
+        counts.total++
+        counts[status]++
+    }
     const walk = node =>
         node.children.forEach(n => {
-            if (n.level > 1) {
-                counts.total++
-                counts[statusOf(n)]++
-            }
-            walk(n)
+            if (isQuestion(n)) count(questionStatus(n))
+            else if (n.children.length) walk(n)
+            else count(statusOf(n))
         })
     walk(parseOutline(source))
     return counts
@@ -185,6 +226,7 @@ function nodeJson(node) {
         level: node.level,
         tags: [...node.tags],
         status: STATUS[statusOf(node)],
+        ...(node.option ? { option: node.option } : {}),
         title: plainTitle(node.title),
         titleHtml: md.renderInline(node.title),
         html,

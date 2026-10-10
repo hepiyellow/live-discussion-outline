@@ -49,6 +49,30 @@ describe('the Transcript and Terminal tabs', () => {
         assert.equal(await page.getByRole('textbox', { name: 'Message the session' }).count(), 0)
     })
 
+    test('several windows on outlines leave room for requests', async () => {
+        // A browser allows six connections to one server, across its windows, and each open stream holds one: a
+        // window may hold only one, or a few windows use them all and every other request waits without end.
+        // One context: its windows share the connections, as the windows of one browser do.
+        const context = await browser.newContext({ viewport: { width: 1200, height: 800 } })
+        try {
+            const windows = []
+            for (let i = 0; i < 4; i++) {
+                const w = await context.newPage()
+                await w.goto(`${server.url}/app/demo/sample`)
+                await w.locator('.outline-tab h1').waitFor()
+                windows.push(w)
+            }
+            // The tab is shared through the viewer state: every window now follows the transcript too.
+            await windows[0].getByRole('tab', { name: 'Transcript' }).click()
+            for (const w of windows) await w.locator('[data-transcript-title]').filter({ hasText: 'Caching search results' }).waitFor()
+            await windows[3].getByRole('tab', { name: 'Terminal' }).click()
+            // The terminal's script is loaded when the tab first opens.
+            await windows[3].locator('[data-terminal] .xterm').waitFor({ timeout: 5000 })
+        } finally {
+            await context.close()
+        }
+    })
+
     test('the tab shown is kept in the viewer state', async () => {
         await page.getByRole('tab', { name: 'Transcript' }).click()
         await page.reload()

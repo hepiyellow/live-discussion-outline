@@ -29,8 +29,8 @@ A plain list item inside a node's text; it has no number and no status.
 _Avoid_: Node, item
 
 **Status**:
-Where a node stands: **open** (no tag), a **claim** (the agent states it as settled or certain), or **approved** (the user approved it). A node whose descendants all share a status takes that status too.
-_Avoid_: Checkbox, resolved, agent-approved, done
+Where a node stands: **open** (no tag), an **agent claim**, or claim for short (the agent states it as settled or certain), or **user-approved** (the user approved it; only the user can make it so). The agent's wording of an answer the user gave is a claim until the user approves it: answering a question is not approving what the agent wrote down. A node the user approved on the page is **pending** until the agent records the approval in the outline. A node whose descendants all share a status takes that status too.
+_Avoid_: Checkbox, resolved, agent-approved, done, and a bare "approved" (it does not say who approved), pending human approval (the human has approved; the agent has not recorded it)
 
 **Summary**:
 One sentence closing a long node that sums up that node's own text. It never answers a question; an answer changes the node's text or adds child nodes.
@@ -76,11 +76,11 @@ The agent's stored log of a session's messages and tool calls.
 _Avoid_: History, log
 
 **Queue**:
-The agent's ordered list of outline items it asks the user to handle next: decisions first, then actions to run, then items to approve, then items to read. Each item is a **decide**, **action**, **approve** or **read** item.
+The agent's ordered list of outline items it asks the user to handle next: decisions first, then actions to run, then items to approve, then items to read. Each item is a **decide**, **action**, **approve** or **read** item. A **decide** item is a question the agent has not answered and has no recommendation for; a question with an option the agent recommends is an **approve** item, like any other claim.
 _Avoid_: Tasks, to-do, cue
 
 **Action**:
-An outline item proposing something to do in the session itself (run tests, change code), which the agent carries out only when the user runs it; once done it is a **ran** action.
+An outline item proposing something to do in the session itself (run tests, change code), which the agent carries out only when the user runs it; once the agent has carried it out it is a **done** action, or a **failed** one when the agent tried and could not; a failed action can be run again.
 _Avoid_: Play task, step, job
 
 **Message**:

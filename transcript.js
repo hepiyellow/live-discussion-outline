@@ -132,16 +132,13 @@ export function transcriptEntries(e) {
 }
 
 /**
- * Follows a session's transcript over server-sent events: `onEntries(entries)` gets everything so far, then each batch
- * the session appends; `onReset()` runs if the file shrinks (rewritten). Returns false when there is no transcript.
+ * Follows a session's transcript: `onEntries(entries)` gets everything so far, then each batch the session appends;
+ * `onReset()` runs if the file shrinks (rewritten). Returns a function that stops following, or null when there is no
+ * transcript.
  */
-function follow(req, res, id, onEntries, onReset) {
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
+function followFile(id, onEntries, onReset) {
     const file = findTranscriptFile(id)
-    if (!file) {
-        res.end('event: missing\ndata: \n\n')
-        return false
-    }
+    if (!file) return null
     let offset = 0
     let rest = ''
     let decoder = new StringDecoder('utf8')
@@ -181,10 +178,21 @@ function follow(req, res, id, onEntries, onReset) {
         clearTimeout(timer)
         timer = setTimeout(pump, 100)
     })
-    req.on('close', () => {
+    return () => {
         watcher.close()
         clearTimeout(timer)
-    })
+    }
+}
+
+/** Follows a session's transcript over a server-sent event stream of its own. Returns false when there is no transcript. */
+function follow(req, res, id, onEntries, onReset) {
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
+    const stop = followFile(id, onEntries, onReset)
+    if (!stop) {
+        res.end('event: missing\ndata: \n\n')
+        return false
+    }
+    req.on('close', stop)
     return true
 }
 
@@ -258,16 +266,38 @@ export function streamMessages(req, res, id) {
     }, () => res.write('event: reset\ndata: \n\n'))
 }
 
-/** GET /api/transcript?id=<session id>: the typed entries so far, then each batch the session appends. */
-export function streamTranscriptEntries(req, res, id) {
-    follow(
-        req,
-        res,
+/**
+ * Everything an outline's stream carries about its linked session, from one pass over the transcript, so the page needs
+ * one connection, not one per kind: `send('messages', [...])` (the agent's @message notes: the last 100 so far, then
+ * each new one), `send('activity', 'busy' | 'idle')` and, when `transcript` is asked for, `send('transcript', [...])`
+ * (typed entries). `send('session', id)` comes first, and again if the transcript is rewritten: what was sent before it
+ * no longer holds. Returns a function that stops following, or null when there is no transcript.
+ */
+export function followSession(id, send, { transcript = false } = {}) {
+    if (!findTranscriptFile(id)) return null
+    let first = true
+    let state
+    send('session', id)
+    return followFile(
         id,
         entries => {
+            let found = entries.flatMap(messagesIn)
+            if (first) found = found.slice(-100)
+            first = false
+            if (found.length) send('messages', found)
+            let busy = state
+            for (const e of entries) busy = busyAfter(e) ?? busy
+            const next = busy ? 'busy' : 'idle'
+            if (next !== state) send('activity', next)
+            state = next
+            if (!transcript) return
             const items = entries.flatMap(transcriptEntries)
-            if (items.length) res.write(`data: ${JSON.stringify(items)}\n\n`)
+            if (items.length) send('transcript', items)
         },
-        () => res.write('event: reset\ndata: \n\n'),
+        () => {
+            first = true
+            state = undefined
+            send('session', id)
+        },
     )
 }

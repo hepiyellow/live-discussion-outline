@@ -25,7 +25,7 @@ function Progress({ o }: { o: OutlineSummary }) {
     if (cb.total) {
         const pct = (n: number) => `${Math.round((n / cb.total) * 100)}%`
         return (
-            <div className="flex items-center gap-2.5 whitespace-nowrap" title={`${cb.done} human-approved · ${cb.agent} agent-approved · ${cb.open} open (of ${cb.total} checkboxes)`}>
+            <div className="flex items-center gap-2.5 whitespace-nowrap" title={`${cb.done} user-approved · ${cb.agent} claimed by the agent · ${cb.open} open (of ${cb.total} checkboxes)`}>
                 <div className="flex h-2 w-[120px] shrink-0 overflow-hidden bg-border">
                     <span className="h-full shrink-0 bg-approved" style={{ width: pct(cb.done) }} />
                     <span className="h-full shrink-0 bg-claim" style={{ width: pct(cb.agent) }} />

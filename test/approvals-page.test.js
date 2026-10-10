@@ -106,11 +106,21 @@ describe('approvals, picks, runs and undo', () => {
         // A node already run has no play button.
         assert.equal(await node('2.5').locator('.play').count(), 0)
         // Once the agent marks it @ran, the run request is forgotten.
+        await until(async () => '2.4' in (await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read, { what: 'the first visit to be recorded' })
         fs.writeFileSync(
             path.join(server.dir, 'demo', 'sample.md'),
-            fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8').replace('## 2.4 @action Measure', '## 2.4 @action @ran Measure'),
+            fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8').replace('## 2.4 @action Measure', '## 2.4 @action-done Measure'),
         )
-        await node('2.4').locator('.pill-ran').waitFor()
+        // The node has changed: its play button goes, and opening the change turns its Action tag into Done.
+        await node('2.4').locator('> .env').waitFor()
+        assert.equal(await node('2.4').locator('.play').count(), 0)
+        assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Action'])
+        await node('2.4').locator('> .env').click()
+        await node('2.4').locator('.closing .pill-done').waitFor()
+        await page.locator('.tx-cur').waitFor({ state: 'detached' })
+        assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Done'])
+        // The Action line says it: no second tag on the title.
+        assert.equal(await node('2.4').locator('.node-title .pill-done').count(), 0)
         await until(async () => !(await (await fetch(`${server.url}/api/state/demo/sample`)).json()).runs['2.4'], { what: 'the run request to end' })
     })
 
@@ -165,12 +175,66 @@ describe('approvals, picks, runs and undo', () => {
         await until(async () => Object.keys((await (await fetch(`${server.url}/api/state/demo/sample`)).json()).overrides).length === 0, { what: 'overrides to clear' })
     })
 
+    test('a decide item stays one only while the agent recommends nothing for it', async () => {
+        const file = path.join(server.dir, 'demo', 'sample.md')
+        // 3.3 is open with no recommendation; 3.2 holds a recommendation; 2.2 is a question already answered.
+        fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('# @queue\n', '# @queue\n- 3.3 @decide Who may flush.\n- 3.2 @decide How long entries live.\n'))
+        const kind = num => page.locator(`[data-queue="${num}"]`).getAttribute('data-kind')
+        await page.locator('[data-queue="3.3"]').waitFor()
+        assert.deepEqual([await kind('3.3'), await kind('3.2'), await kind('2.1')], ['decide', 'approve', 'approve'])
+        assert.deepEqual(await node('3.3').locator('> .qicon').evaluateAll(els => els.map(e => e.dataset.queueKind)), ['decide'])
+    })
+
+    test('a failed action says so, and can be run again', async () => {
+        const file = path.join(server.dir, 'demo', 'sample.md')
+        await until(async () => '2.4' in (await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read, { what: 'the first visit to be recorded' })
+        await click(node('2.4').locator('.play'))
+        await nextSent()
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.4"] .play').classList.contains('sent'))
+        fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('## 2.4 @action Measure', '## 2.4 @action-failed Measure'))
+        // The request has ended: the play button is back, and the change waits to be opened.
+        await page.waitForFunction(() => !document.querySelector('.outline-tab [data-num="2.4"] .play').classList.contains('sent'))
+        await node('2.4').locator('> .env').click()
+        await node('2.4').locator('.closing .pill-failed').waitFor()
+        await page.locator('.tx-cur').waitFor({ state: 'detached' })
+        assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Failed'])
+        // Still in the queue, and it can be run again.
+        assert.equal(await page.locator('[data-queue="2.4"]').count(), 1)
+        await click(node('2.4').locator('.play'))
+        assert.equal(await nextSent(), 'Run in the outline: 2.4 Measure the hit rate on staging.')
+    })
+
+    test('a queue item opens its node when the node has nodes under it', async () => {
+        await page.getByRole('button', { name: 'Collapse all' }).click()
+        assert.equal(await node('2.1').isVisible(), false)
+        await page.locator('[data-queue="2.1"]').click()
+        // The question is shown, and so are its options: they are what there is to pick from.
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.1"]').hasAttribute('data-qmark'))
+        assert.equal(await node('2.1.1').isVisible(), true)
+        assert.equal(await node('2.1.2').isVisible(), true)
+    })
+
+    test('a done action shows a filled yellow tick, which a click turns into an approval', async () => {
+        assert.equal(await state('2.5'), 'done')
+        await box('2.5').click()
+        assert.equal(await state('2.5'), 'pending')
+        assert.equal(await nextSent(), 'Approved in the outline: 2.5 Add cache metrics to the dashboard.')
+    })
+
     test('queue items hide once handled here, and open their node', async () => {
         const queued = () => page.locator('[aria-label="Your queue"] [data-queue]').evaluateAll(els => els.map(e => e.dataset.queue))
         assert.deepEqual(await queued(), ['2.1', '2.4', '2.3', '3.1.1.1.1.1'])
+        // Each node shows its item's icon left of its checkbox, as the left pane does; an action's is its play button.
+        const icon = num => node(num).locator('> .qicon').evaluateAll(els => els.map(e => e.dataset.queueKind))
+        // The agent queued 2.1 to decide, but it recommends one of its options: that is something to approve.
+        assert.deepEqual([await icon('2.1'), await icon('2.3'), await icon('3.1.1.1.1.1'), await icon('2.4')], [['approve'], ['approve'], ['read'], []])
+        assert.equal(await page.locator('[data-queue="2.1"]').getAttribute('data-kind'), 'approve')
+        assert.equal(await node('2.4').locator('> .play').count(), 1)
         await box('2.3').click()
         await box('2.1.2').click()
         assert.deepEqual(await queued(), ['2.4', '3.1.1.1.1.1'])
+        // Handled here: the icon goes with the item.
+        assert.deepEqual([await icon('2.1'), await icon('2.3')], [[], []])
         await click(node('2.4').locator('.play'))
         await nextSent()
         await page.waitForFunction(() => !document.querySelector('[data-queue="2.4"]'))

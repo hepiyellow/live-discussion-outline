@@ -2,9 +2,10 @@ import { createContext, useContext, type KeyboardEvent, type MouseEvent } from '
 import { ChevronDown, Copy, MessageSquarePlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Statuses } from '@/lib/status'
-import { contentHtml, type NodeContent } from '@/lib/content'
-import type { Message, OutlineNode } from '@/types'
+import { DONE_PILL, FAILED_PILL, contentHtml, type NodeContent } from '@/lib/content'
+import type { Message, OutlineNode, QueueItem } from '@/types'
 import { NodeMessages } from './Inbox'
+import { DIFF_ICON, KINDS } from './queue'
 import { Extras, StatusBox } from './StatusBox'
 
 /** What every node of the Outline tab needs: statuses, which nodes are open, the current path, and the user's actions. */
@@ -17,6 +18,8 @@ export interface OutlineContext {
     linked: boolean
     /** Actions the user asked the agent to run, waiting for it to mark them @ran. */
     runs: Record<string, number>
+    /** The queue items still waiting for the user, by the node they are about. */
+    queued: Map<string, QueueItem>
     onCheck: (node: OutlineNode) => void
     onTopicCheck: (topic: OutlineNode) => void
     onRun: (node: OutlineNode) => void
@@ -68,16 +71,15 @@ function Title({ node, titleHtml }: { node: OutlineNode; titleHtml: string }) {
                     💡 Recommended
                 </span>
             )}
-            {node.tags.includes('ran') && (
-                <span className="pill pill-ran" title="The agent carried out this action">
-                    Ran
-                </span>
+            {/* An action the agent ran says so on its Action line; without that line, here. */}
+            {(node.tags.includes('ran') || node.tags.includes('failed')) && !node.closing.some(c => c.kind === 'action') && (
+                <span dangerouslySetInnerHTML={{ __html: node.tags.includes('ran') ? DONE_PILL : FAILED_PILL }} />
             )}
         </span>
     )
 }
 
-/** The red play button of an @action node: runs it, then waits, dimmed, until the agent marks it @ran. */
+/** The red play button of an action: runs it, then waits until the agent marks it done or failed. A failed one can be run again. */
 function Play({ node }: { node: OutlineNode }) {
     const { runs, onRun } = useOutlineCtx()
     if (!node.tags.includes('action') || node.tags.includes('ran')) return null
@@ -120,12 +122,6 @@ function Ask({ node }: { node: OutlineNode }) {
     )
 }
 
-const DIFF_ICON = (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-        <path d="M8 2.5v6M5 5.5h6M5 12.5h6" />
-    </svg>
-)
-
 /** The diff button of a node changed since the viewer read it: opening it animates the node to its new text. */
 function Diff({ node }: { node: OutlineNode }) {
     const { unread, opening, onOpenUnread } = useOutlineCtx()
@@ -143,6 +139,24 @@ function Diff({ node }: { node: OutlineNode }) {
         >
             {DIFF_ICON}
         </button>
+    )
+}
+
+/**
+ * The icon of the node's queue item, as the left pane shows it, so the item and its node are recognized as one: a red
+ * question mark on both, say. It shares the place of the diff button, which comes first (what the node shows is not
+ * its text yet); an action's own icon is its play button.
+ */
+function QueueMark({ node }: { node: OutlineNode }) {
+    const { queued, unread, opening } = useOutlineCtx()
+    const item = queued.get(node.num)
+    if (!item || item.kind === 'action') return null
+    if (unread.has(node.num) && !opening.has(node.num)) return null
+    const kind = KINDS[item.kind]
+    return (
+        <span className="qicon" data-queue-kind={item.kind} title={`${kind.name}: ${item.label}`} style={{ color: kind.color }}>
+            {kind.icon}
+        </span>
     )
 }
 
@@ -189,6 +203,7 @@ function Group({ node }: { node: OutlineNode }) {
             >
                 <Play node={node} />
                 <Diff node={node} />
+                <QueueMark node={node} />
                 <StatusBox box={box} onToggle={() => onCheck(node)} />
                 <ChevronDown className="tri size-4" aria-hidden="true" />
                 <span className="num">{node.num}</span>
@@ -218,6 +233,7 @@ function Leaf({ node }: { node: OutlineNode }) {
         <div className={cn('row leaf', box.done && 'done', current.has(node.num) && 'current')} data-num={node.num}>
             <Play node={node} />
             <Diff node={node} />
+            <QueueMark node={node} />
             <StatusBox box={box} onToggle={() => onCheck(node)} />
             <span className="num">{node.num}</span>
             <Title node={node} titleHtml={shown.titleHtml} />
@@ -243,6 +259,7 @@ export function Topic({ node }: { node: OutlineNode }) {
                 aria-expanded={open}
                 onClick={e => isRowClick(e) && toggle(node)}
             >
+                <QueueMark node={node} />
                 <StatusBox box={box} onToggle={() => onTopicCheck(node)} />
                 <ChevronDown className="tri size-4" aria-hidden="true" />
                 <span className="node-title" dangerouslySetInnerHTML={{ __html: `${node.num}. ${node.titleHtml}` }} />

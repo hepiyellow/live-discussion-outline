@@ -92,6 +92,7 @@ describe('/api/state', () => {
             assert.equal((await stream.take()).event, 'message')
             const first = await stream.take()
             assert.equal(first.event, 'state')
+            await stream.takeOf('activity')
             await patch({ open: { 2: false } })
             const next = await stream.take()
             assert.equal(next.event, 'state')
