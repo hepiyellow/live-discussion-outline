@@ -292,3 +292,52 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
 /* The item just opened from the queue: a line in its kind's color on its left, fading out. */
 @keyframes qline { from { box-shadow: inset 3px 0 0 var(--qline); } to { box-shadow: inset 3px 0 0 transparent; } }
 .row.leaf[data-qmark]::before, .row.parent[data-qmark], .topic-head[data-qmark] { animation: qline 1.6s ease-in forwards; }
+
+/* The diff button of a node changed since the viewer read it: the checkbox's height, in the indent left of it. */
+.row .env {
+    position: absolute;
+    left: -8px;
+    top: 12px;
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--claim) 22%, transparent);
+    color: var(--claim);
+    cursor: pointer;
+}
+.row .env svg { width: 11px; height: 11px; }
+.row .env:hover { background: color-mix(in srgb, var(--claim) 38%, transparent); }
+.row.parent .env { top: 50%; transform: translateY(-50%); }
+.row .play + .env { left: -28px; }
+.row .env[data-pulse] { animation: envpulse 0.5s ease-in-out 3; }
+.row.parent .env[data-pulse] { animation: envpulse-p 0.5s ease-in-out 3; }
+@keyframes envpulse { 50% { transform: scale(1.5); background: color-mix(in srgb, var(--claim) 25%, transparent); } }
+@keyframes envpulse-p { 50% { transform: translateY(-50%) scale(1.5); background: color-mix(in srgb, var(--claim) 25%, transparent); } }
+
+/* The diff animation: words are units (a word and the space after it) that grow in or collapse one by one while a cursor passes. */
+.tx-u { display: inline-block; white-space: pre; overflow: clip; vertical-align: baseline; }
+.tx-n .tx-u:not(.on) { display: none; }
+.tx-n .tx-u.on { animation: txadd 1s ease-out forwards; }
+.tx-n.c .tx-u.on { animation: txchg 1s ease-out forwards; }
+.tx-o .tx-u { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.tx-hide { display: none !important; }
+.tx-cur {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 2px;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: var(--claim);
+    box-shadow: 0 0 6px var(--claim);
+    pointer-events: none;
+    z-index: 60;
+    transition: transform 0.07s linear, height 0.07s linear, opacity 0.15s;
+}
+@keyframes txadd { from { background: color-mix(in srgb, var(--approved) 50%, transparent); } to { background: transparent; } }
+@keyframes txchg { from { background: color-mix(in srgb, var(--foreground) 35%, transparent); } to { background: transparent; } }

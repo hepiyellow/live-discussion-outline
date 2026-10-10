@@ -33,14 +33,30 @@ let debounce
 const viewerState = createStateStore(ROOT)
 // Writes to the viewer state and the trash are not outline changes.
 const IGNORED = new Set([STATE_DIR, TRASH])
-fs.watch(ROOT, { recursive: true }, (_, name) => {
-    if (name && IGNORED.has(name.split(/[/\\]/)[0])) return
+const changed = () => {
     clearTimeout(debounce)
     debounce = setTimeout(() => {
         for (const res of clients) res.write('data: change\n\n')
         pushOutlines()
     }, 120)
-})
+}
+function watchOutlines() {
+    const watcher = fs.watch(ROOT, { recursive: true }, (_, name) => {
+        if (name && IGNORED.has(name.split(/[/\\]/)[0])) return
+        changed()
+    })
+    // On Linux the recursive watcher fails when a folder it watches is removed (a project folder, .state/): start a
+    // new one, and look again for changes the old one may have missed.
+    watcher.on('error', e => {
+        console.error(`outlines folder watcher: ${e.message}`)
+        watcher.close()
+        setTimeout(() => {
+            watchOutlines()
+            changed()
+        }, 100)
+    })
+}
+watchOutlines()
 
 /** Open outline streams, by outline: each stream with the payload it last sent. */
 const outlineStreams = new Map()

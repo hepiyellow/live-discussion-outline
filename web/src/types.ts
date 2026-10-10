@@ -85,7 +85,7 @@ export interface ViewerState {
     sent: Record<string, boolean>
     /** Node number → 1 when an undo reopens a former claim, sent as "Back to claim". */
     backTo: Record<string, number>
-    /** Node number → the version of the node the viewer last read. */
+    /** Node number → the node as the viewer last read it (`readVersion`), shown until they open the change. */
     read: Record<string, string>
     /** Node number → 1 once the viewer asked the agent to run that action. */
     runs: Record<string, number>

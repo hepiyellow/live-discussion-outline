@@ -36,10 +36,19 @@ interface Props {
     statuses?: Statuses
     runs?: Record<string, number>
     onOpen?: (item: QueueItem, color: string) => void
+    /** Nodes changed since the viewer read them, in outline order: listed first. */
+    unread?: string[]
+    onOpenUnread?: (num: string) => void
 }
 
+const DIFF_ICON = (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+        <path d="M8 2.5v6M5 5.5h6M5 12.5h6" />
+    </svg>
+)
+
 /** The left pane: the way back to all outlines, then the queue, in the agent's order. */
-export function Rail({ queue = [], statuses, runs = {}, onOpen }: Props) {
+export function Rail({ queue = [], statuses, runs = {}, onOpen, unread = [], onOpenUnread }: Props) {
     const items = statuses ? queue.map(item => ({ item, ...handled(item, statuses, runs) })).filter(q => !q.done) : []
     return (
         <nav className="fixed inset-y-0 left-0 z-30 flex w-[76px] flex-col items-center overflow-y-auto border-r bg-background pt-2">
@@ -47,10 +56,24 @@ export function Rail({ queue = [], statuses, runs = {}, onOpen }: Props) {
                 <List className="size-7" aria-hidden="true" />
                 Outlines
             </a>
-            {items.length > 0 && (
+            {items.length + unread.length > 0 && (
                 <>
                     <hr className="mt-2.5 mb-2 w-10 border-border" />
                     <ol aria-label="Your queue" className="flex w-16 flex-col gap-1 pb-3">
+                        {unread.map(num => (
+                            <li key={`unread:${num}`}>
+                                <button
+                                    type="button"
+                                    data-unread={num}
+                                    title={`Changed since you read it: ${num} (shows the node; click its diff button to see the change)`}
+                                    onClick={() => onOpenUnread?.(num)}
+                                    className="flex w-16 items-center gap-1 rounded-md border px-[5px] py-[3px] text-[11px] leading-tight tabular-nums hover:bg-accent [&_svg]:size-3 [&_svg]:shrink-0"
+                                >
+                                    <span className="inline-flex text-claim">{DIFF_ICON}</span>
+                                    <span className="truncate">{num}</span>
+                                </button>
+                            </li>
+                        ))}
                         {items.map(({ item, missing }) => {
                             const kind = KINDS[item.kind]
                             return (

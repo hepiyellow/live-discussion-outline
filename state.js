@@ -14,7 +14,7 @@ export const STATE_DIR = '.state'
  * - overrides: node number → the approval the viewer wants and the file does not show yet
  * - sent: node number → the override already sent to the session
  * - backTo: node number → 1 when undoing reopens a former claim ("Back to claim")
- * - read: node number → the version of the node the viewer last read
+ * - read: node number → the node as the viewer last read it (its title and text as HTML), shown until they open the change
  * - runs: node number → 1 once the viewer asked the agent to run that action
  * - seen: message id → 1 once the viewer saw it in an inbox
  * - undo: the viewer's undo steps, newest last
@@ -30,7 +30,9 @@ const empty = () => ({ open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, 
 const KEY = /^[\w.:-]{1,200}$/
 /** Most entries a map keeps; past this the oldest go. */
 const MAX_KEYS = 5000
-const MAX_FILE = 2_000_000
+const MAX_FILE = 4_000_000
+/** Longest node a read version keeps. */
+const MAX_READ = 50_000
 
 export function createStateStore(root) {
     const fileOf = (project, file) => path.join(root, STATE_DIR, project, `${file}.json`)
@@ -94,7 +96,7 @@ function validate(change) {
         for (const [key, v] of Object.entries(value)) {
             if (!KEY.test(key)) throw new Error(`bad key ${key}`)
             if (v !== null && !['boolean', 'number', 'string'].includes(typeof v)) throw new Error(`bad value for ${section}.${key}`)
-            if (typeof v === 'string' && v.length > 200) throw new Error(`value too long for ${section}.${key}`)
+            if (typeof v === 'string' && v.length > (section === 'read' ? MAX_READ : 200)) throw new Error(`value too long for ${section}.${key}`)
         }
     }
 }

@@ -2,7 +2,8 @@ import { createContext, useContext, type KeyboardEvent, type MouseEvent } from '
 import { ChevronDown, Copy, MessageSquarePlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Statuses } from '@/lib/status'
-import type { ClosingLine, OutlineNode } from '@/types'
+import { contentHtml, type NodeContent } from '@/lib/content'
+import type { OutlineNode } from '@/types'
 import { Extras, StatusBox } from './StatusBox'
 
 /** What every node of the Outline tab needs: statuses, which nodes are open, the current path, and the user's actions. */
@@ -19,6 +20,11 @@ export interface OutlineContext {
     onTopicCheck: (topic: OutlineNode) => void
     onRun: (node: OutlineNode) => void
     onReference: (node: OutlineNode) => void
+    /** Nodes changed since the viewer read them: what they read, shown until they open the change. */
+    unread: Map<string, NodeContent>
+    /** Unread nodes being opened: their diff button is gone, their text animating. */
+    opening: Set<string>
+    onOpenUnread: (node: OutlineNode) => void
 }
 
 export const OutlineCtx = createContext<OutlineContext | null>(null)
@@ -29,28 +35,18 @@ const useOutlineCtx = () => {
     return ctx
 }
 
-const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>'
-const CLOSING_PILL: Record<ClosingLine['kind'], string> = {
-    summary: '<span class="pill pill-summary" title="A summary of this node\'s text">Summary</span>',
-    recommendation: '<span class="pill pill-recommendation" title="A recommendation for this node">💡 Recommendation</span>',
-    action: `<span class="pill pill-action" title="What running this action will do">${PLAY_ICON} Action</span>`,
-}
-
-/** A node's text and its closing lines, each after its tag, as one piece of HTML. */
-export const contentHtml = (node: OutlineNode) => node.html + node.closing.map(c => `<div class="closing">${CLOSING_PILL[c.kind]} ${c.html}</div>`).join('')
-
 /** Server HTML: React sets it, and leaves its children alone. */
-export function Html({ html, className }: { html: string; className?: string }) {
-    return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />
+export function Html({ html, className, hidden }: { html: string; className?: string; hidden?: boolean }) {
+    return <div className={className} hidden={hidden} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
 /** The node's title, then the tags the page draws for it. */
-function Title({ node }: { node: OutlineNode }) {
+function Title({ node, titleHtml }: { node: OutlineNode; titleHtml: string }) {
     const { statuses } = useOutlineCtx()
     const group = statuses.isGroup(node)
     return (
         <span className="node-title">
-            <span dangerouslySetInnerHTML={{ __html: node.titleHtml }} />
+            <span className="title-html" dangerouslySetInnerHTML={{ __html: titleHtml }} />
             {group && (
                 <span className="pill pill-pick" title="Choose exactly one of the options below">
                     ◉ Pick one
@@ -118,6 +114,38 @@ function Ask({ node }: { node: OutlineNode }) {
     )
 }
 
+const DIFF_ICON = (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+        <path d="M8 2.5v6M5 5.5h6M5 12.5h6" />
+    </svg>
+)
+
+/** The diff button of a node changed since the viewer read it: opening it animates the node to its new text. */
+function Diff({ node }: { node: OutlineNode }) {
+    const { unread, opening, onOpenUnread } = useOutlineCtx()
+    if (!unread.has(node.num) || opening.has(node.num)) return null
+    return (
+        <button
+            type="button"
+            className="env"
+            title="Changed since you read it: click to see what changed"
+            aria-label={`See what changed in ${node.num}`}
+            onClick={e => {
+                e.stopPropagation()
+                onOpenUnread(node)
+            }}
+        >
+            {DIFF_ICON}
+        </button>
+    )
+}
+
+/** What a node shows: what the viewer read, while the change is unread. */
+const useShown = (node: OutlineNode): NodeContent => {
+    const { unread } = useOutlineCtx()
+    return unread.get(node.num) ?? { titleHtml: node.titleHtml, html: contentHtml(node) }
+}
+
 /** Clicks on controls, and text being selected, do not toggle a row. */
 const isRowClick = (e: MouseEvent) => !(e.target as Element).closest('input,button,a,.extras') && !String(getSelection()).trim()
 
@@ -130,7 +158,7 @@ function Group({ node }: { node: OutlineNode }) {
     const { statuses, isOpen, toggle, current, onCheck } = useOutlineCtx()
     const open = isOpen(node)
     const box = statuses.box(node)
-    const html = contentHtml(node)
+    const shown = useShown(node)
     const count = node.children.length
     const onKey = (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -148,10 +176,11 @@ function Group({ node }: { node: OutlineNode }) {
                 onClick={e => isRowClick(e) && toggle(node)}
             >
                 <Play node={node} />
+                <Diff node={node} />
                 <StatusBox box={box} onToggle={() => onCheck(node)} />
                 <ChevronDown className="tri size-4" aria-hidden="true" />
                 <span className="num">{node.num}</span>
-                <Title node={node} />
+                <Title node={node} titleHtml={shown.titleHtml} />
                 <Ask node={node} />
                 <span className="kc" role="button" tabIndex={0} title={`${count} direct child${count === 1 ? '' : 'ren'} — click the row to collapse or expand`} onKeyDown={onKey}>
                     <span>{count}</span>
@@ -159,7 +188,8 @@ function Group({ node }: { node: OutlineNode }) {
                 <Extras kinds={box.extras} below={statuses.isOption(node)} />
             </div>
             <div className="kids" hidden={!open}>
-                {html && <Html className="group-text node-html" html={html} />}
+                {/* Kept when empty: the diff animation may fill it. */}
+                <Html className="group-text node-html" html={shown.html} hidden={!shown.html} />
                 <NodeList nodes={node.children} />
             </div>
         </div>
@@ -170,14 +200,16 @@ function Group({ node }: { node: OutlineNode }) {
 function Leaf({ node }: { node: OutlineNode }) {
     const { statuses, current, onCheck } = useOutlineCtx()
     const box = statuses.box(node)
+    const shown = useShown(node)
     return (
         <div className={cn('row leaf', box.done && 'done', current.has(node.num) && 'current')} data-num={node.num}>
             <Play node={node} />
+            <Diff node={node} />
             <StatusBox box={box} onToggle={() => onCheck(node)} />
             <span className="num">{node.num}</span>
-            <Title node={node} />
+            <Title node={node} titleHtml={shown.titleHtml} />
             <Ask node={node} />
-            <Html className="node-html" html={contentHtml(node)} />
+            <Html className="node-html" html={shown.html} />
         </div>
     )
 }

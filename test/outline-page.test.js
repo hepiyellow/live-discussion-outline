@@ -164,7 +164,8 @@ describe('the Outline tab', () => {
         await node('3.4').waitFor()
         assert.equal(await page.evaluate(() => window.notReloaded), true)
         assert.equal(await box('4.1').getAttribute('data-state'), 'approved')
-        assert.match(await node('2.3').locator('.node-html').textContent(), /and the tenant/)
+        // A rewritten node keeps what the viewer read until they open the change (unread-page.test.js).
+        assert.match(await node('2.3').locator('.node-html').textContent(), /and the index version/)
         assert.equal(await visible('3.1.1'), false)
         assert.equal(await visible('1.1'), true)
     })
