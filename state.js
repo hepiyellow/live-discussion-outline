@@ -19,12 +19,18 @@ export const STATE_DIR = '.state'
  * - seen: message id → 1 once the viewer saw it in an inbox
  * - undo: the viewer's undo steps, newest last
  * - draft: the input box's text
+ * - chips: the references waiting in the input box, `{ label, ref }`
  */
 const MAPS = ['open', 'overrides', 'sent', 'backTo', 'read', 'runs', 'seen']
-const OTHERS = { undo: Array.isArray, draft: v => typeof v === 'string' }
+const isChip = c => c && typeof c.label === 'string' && typeof c.ref === 'string' && c.label.length <= 500 && c.ref.length <= 2000
+const OTHERS = {
+    undo: Array.isArray,
+    draft: v => typeof v === 'string' && v.length <= 20000,
+    chips: v => Array.isArray(v) && v.length <= 50 && v.every(isChip),
+}
 export const SECTIONS = [...MAPS, ...Object.keys(OTHERS)]
 
-const empty = () => ({ open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '' })
+const empty = () => ({ open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [] })
 
 /** Keys are node numbers or message ids: short, and never anything an object treats specially. */
 const KEY = /^[\w.:-]{1,200}$/

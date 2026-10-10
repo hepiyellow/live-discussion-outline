@@ -16,7 +16,7 @@ const UNDO_STEPS = 50
  * The user's approvals, picks, runs and undos. Linked to a session (the outline names a terminal), each change goes to
  * it by itself; otherwise approvals are copied, and the status bar lists those not copied yet.
  */
-export function useApprovals(outline: Outline, viewer: ViewerState, patch: (p: StatePatch) => Promise<void>) {
+export function useApprovals(outline: Outline, viewer: ViewerState, patch: (p: StatePatch) => Promise<void>, onSent: () => void = () => {}) {
     const notify = useNotify()
     const retracted = useRef<Retracted>(new Set())
     const latest = useRef({ outline, viewer })
@@ -42,11 +42,12 @@ export function useApprovals(outline: Outline, viewer: ViewerState, patch: (p: S
             const byNum = new Map(allNodes(outline.nodes).map(n => [n.num, n]))
             patch({ sent: Object.fromEntries(nums.flatMap(n => (byNum.has(n) ? [[n, st.effective(byNum.get(n)!)]] : []))) })
             nums.forEach(n => retracted.current.delete(n))
+            onSent()
             notify(`Sent: ${text.split('\n').join(' · ')}`)
         } catch (e) {
             notify(`Not sent: ${(e as Error).message}`, true)
         }
-    }, [patch, notify])
+    }, [patch, notify, onSent])
 
     /** After a change: linked, send it with the others of this burst; else copy what is pending. */
     const changed = useCallback(
@@ -132,12 +133,13 @@ export function useApprovals(outline: Outline, viewer: ViewerState, patch: (p: S
             try {
                 await sendToSession(outline.terminal, text)
                 patch({ runs: { [node.num]: 1 } })
+                onSent()
                 notify(`Sent: ${text}`)
             } catch (e) {
                 notify(`Not sent: ${(e as Error).message}`, true)
             }
         },
-        [patch, notify],
+        [patch, notify, onSent],
     )
 
     /** Copies what is pending (unlinked), and counts it as sent. */

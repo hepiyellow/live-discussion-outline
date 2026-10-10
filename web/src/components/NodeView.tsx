@@ -3,7 +3,8 @@ import { ChevronDown, Copy, MessageSquarePlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Statuses } from '@/lib/status'
 import { contentHtml, type NodeContent } from '@/lib/content'
-import type { OutlineNode } from '@/types'
+import type { Message, OutlineNode } from '@/types'
+import { NodeMessages } from './Inbox'
 import { Extras, StatusBox } from './StatusBox'
 
 /** What every node of the Outline tab needs: statuses, which nodes are open, the current path, and the user's actions. */
@@ -25,6 +26,11 @@ export interface OutlineContext {
     /** Unread nodes being opened: their diff button is gone, their text animating. */
     opening: Set<string>
     onOpenUnread: (node: OutlineNode) => void
+    /** The agent's messages about a node or any node under it. */
+    messagesFor: (num: string) => Message[]
+    seen: Record<string, number>
+    onSeen: (ids: string[]) => void
+    onReveal: (num: string) => void
 }
 
 export const OutlineCtx = createContext<OutlineContext | null>(null)
@@ -140,6 +146,12 @@ function Diff({ node }: { node: OutlineNode }) {
     )
 }
 
+/** A node's envelope, when the agent has messages about it. */
+function Messages({ node }: { node: OutlineNode }) {
+    const { messagesFor, seen, onSeen, onReveal } = useOutlineCtx()
+    return <NodeMessages num={node.num} messages={messagesFor(node.num)} seen={seen} onSeen={onSeen} onReveal={onReveal} />
+}
+
 /** What a node shows: what the viewer read, while the change is unread. */
 const useShown = (node: OutlineNode): NodeContent => {
     const { unread } = useOutlineCtx()
@@ -182,6 +194,7 @@ function Group({ node }: { node: OutlineNode }) {
                 <span className="num">{node.num}</span>
                 <Title node={node} titleHtml={shown.titleHtml} />
                 <Ask node={node} />
+                <Messages node={node} />
                 <span className="kc" role="button" tabIndex={0} title={`${count} direct child${count === 1 ? '' : 'ren'} — click the row to collapse or expand`} onKeyDown={onKey}>
                     <span>{count}</span>
                 </span>
@@ -209,6 +222,7 @@ function Leaf({ node }: { node: OutlineNode }) {
             <span className="num">{node.num}</span>
             <Title node={node} titleHtml={shown.titleHtml} />
             <Ask node={node} />
+            <Messages node={node} />
             <Html className="node-html" html={shown.html} />
         </div>
     )
@@ -232,6 +246,7 @@ export function Topic({ node }: { node: OutlineNode }) {
                 <StatusBox box={box} onToggle={() => onTopicCheck(node)} />
                 <ChevronDown className="tri size-4" aria-hidden="true" />
                 <span className="node-title" dangerouslySetInnerHTML={{ __html: `${node.num}. ${node.titleHtml}` }} />
+                <Messages node={node} />
                 <Extras kinds={box.extras} />
                 <Ask node={node} />
             </div>

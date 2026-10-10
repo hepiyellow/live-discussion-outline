@@ -12,7 +12,7 @@ export const isOpenIn = (open: OpenNodes) => (node: OutlineNode) => (node.num in
 
 /** The Outline tab: the title, any text before the first topic, then the topics with their nodes. */
 /** The user's actions on nodes, from useApprovals. */
-export type NodeActions = Pick<OutlineContext, 'linked' | 'onCheck' | 'onTopicCheck' | 'onRun' | 'onReference' | 'unread' | 'opening' | 'onOpenUnread'>
+export type NodeActions = Pick<OutlineContext, 'linked' | 'onCheck' | 'onTopicCheck' | 'onRun' | 'onReference' | 'unread' | 'opening' | 'onOpenUnread' | 'messagesFor' | 'seen' | 'onSeen' | 'onReveal'>
 
 interface Props {
     outline: Outline

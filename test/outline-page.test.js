@@ -46,7 +46,9 @@ describe('the Outline tab', () => {
     test('the top bar shows the project, the model and the resume copy button', async () => {
         const bar = page.locator('[data-topbar]')
         assert.match(await bar.textContent(), /demo/)
-        assert.match(await bar.textContent(), /Claude Opus 5\.5, high/)
+        // The Model line sets the model and effort pickers.
+        assert.equal(await bar.getByLabel('Model').inputValue(), 'claude-opus-5-5')
+        assert.equal(await bar.getByLabel('Effort').inputValue(), 'high')
         assert.match(await bar.locator('[title^="Project: demo"]').getAttribute('title'), /Working folder: \/home\/dev\/search/)
         assert.equal(await bar.getByRole('button', { name: 'Copy the link that reopens this chat' }).count(), 1)
     })

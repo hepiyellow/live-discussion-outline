@@ -147,3 +147,16 @@ export async function openPage(browser, url, options = {}) {
     await page.goto(url)
     return page
 }
+
+/**
+ * Waits until `check` (which may be async) returns something truthy, polling from the test. Unlike
+ * page.waitForFunction, it waits for a promise's value rather than taking the promise itself as truthy.
+ */
+export async function until(check, { timeout = 5000, what = 'condition' } = {}) {
+    for (const end = Date.now() + timeout; ; ) {
+        const value = await check()
+        if (value) return value
+        if (Date.now() > end) throw new Error(`timed out waiting for ${what}`)
+        await new Promise(r => setTimeout(r, 50))
+    }
+}

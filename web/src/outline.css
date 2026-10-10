@@ -341,3 +341,33 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
 }
 @keyframes txadd { from { background: color-mix(in srgb, var(--approved) 50%, transparent); } to { background: transparent; } }
 @keyframes txchg { from { background: color-mix(in srgb, var(--foreground) 35%, transparent); } to { background: transparent; } }
+
+/* A node's own envelope: muted (the left pane's is red). On a bubble it sits top right; on a parent row or topic it
+   takes its place in the row, before the rolled-up icons. */
+.msgs {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--muted-foreground);
+    cursor: pointer;
+}
+.msgs:hover { background: color-mix(in srgb, var(--foreground) 12%, transparent); }
+.msgs .n {
+    min-width: 14px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--muted-foreground);
+    color: var(--background);
+    font-size: 10px;
+    line-height: 14px;
+    text-align: center;
+}
+.row.leaf > .msgs { position: absolute; right: 40px; top: 8px; z-index: 2; }
+.row.parent > .msgs { grid-area: msg; margin-right: 8px; }
+.topic-head > .msgs { margin-left: auto; }
+.topic-head > .msgs + .extras { margin-left: 0; }
+.message-html p { margin: 0.3em 0; }

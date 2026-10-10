@@ -3,6 +3,7 @@ import { Check, Copy, Crosshair, FileText, Folder, ListCollapse, ListTree, Undo2
 import { Button } from '@/components/ui/button'
 import { TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Outline } from '@/types'
+import { ModelPicker } from './ModelPicker'
 
 export type TabName = 'outline' | 'md'
 
@@ -81,11 +82,7 @@ export function TopBar({ outline, tab, onExpandAll, onCollapseAll, onJump, undoS
                         <span className="truncate">{outline.project}</span>
                     </span>
                 )}
-                {outline.model && (
-                    <span className="truncate" title="The model the agent says it runs as">
-                        {outline.model}
-                    </span>
-                )}
+                <ModelPicker outline={outline} />
                 {outline.resume && <ResumeCopy resume={outline.resume} />}
             </div>
         </header>
