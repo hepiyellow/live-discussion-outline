@@ -1,6 +1,6 @@
 import type { StatePatch, ViewerState } from '@/types'
 
-export const emptyState = (): ViewerState => ({ open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '' })
+export const emptyState = (): ViewerState => ({ open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [] })
 
 const MAPS = new Set(['open', 'overrides', 'sent', 'backTo', 'read', 'runs', 'seen'])
 

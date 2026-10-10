@@ -39,6 +39,8 @@ interface Props {
     /** Nodes changed since the viewer read them, in outline order: listed first. */
     unread?: string[]
     onOpenUnread?: (num: string) => void
+    /** At the bottom of the pane: the inbox. */
+    footer?: React.ReactNode
 }
 
 const DIFF_ICON = (
@@ -48,7 +50,7 @@ const DIFF_ICON = (
 )
 
 /** The left pane: the way back to all outlines, then the queue, in the agent's order. */
-export function Rail({ queue = [], statuses, runs = {}, onOpen, unread = [], onOpenUnread }: Props) {
+export function Rail({ queue = [], statuses, runs = {}, onOpen, unread = [], onOpenUnread, footer }: Props) {
     const items = statuses ? queue.map(item => ({ item, ...handled(item, statuses, runs) })).filter(q => !q.done) : []
     return (
         <nav className="fixed inset-y-0 left-0 z-30 flex w-[76px] flex-col items-center overflow-y-auto border-r bg-background pt-2">
@@ -100,6 +102,7 @@ export function Rail({ queue = [], statuses, runs = {}, onOpen, unread = [], onO
                     </ol>
                 </>
             )}
+            {footer}
         </nav>
     )
 }

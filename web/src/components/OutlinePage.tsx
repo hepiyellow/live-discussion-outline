@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useApprovals } from '@/hooks/useApprovals'
+import { messagesAbout, useSession } from '@/hooks/useSession'
+import { referenceTo } from '@/lib/approvals'
 import { useUnread } from '@/hooks/useUnread'
 import { useOutline } from '@/hooks/useOutline'
-import { allNodes, currentPath, isParent, pathNums } from '@/lib/outline'
+import { allNodes, currentPath, isParent, nodeLabel, pathNums } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import { scrollToNode } from '@/lib/sticky'
 import type { Outline, OutlineNode, QueueItem, StatePatch, ViewerState } from '@/types'
+import { InboxButton } from './Inbox'
+import { InputBox } from './InputBox'
 import { useNotify } from './Notice'
 import { OutlineTab, type NodeActions } from './OutlineTab'
 import { Rail } from './Rail'
@@ -49,12 +53,41 @@ interface LoadedProps {
 function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
     const [tab, setTab] = useState<TabName>('outline')
     const notify = useNotify()
-    const approvals = useApprovals(outline, viewer, patch)
+    const session = useSession(outline.session)
+    const approvals = useApprovals(outline, viewer, patch, session.working)
     const { clickNode, clickTopic, run, reference, undo, linked } = approvals
+    const [focusKey, setFocusKey] = useState(0)
+    /** Linked to a session, a reference waits in the input box as a chip; otherwise it is copied. */
+    const onReference = useCallback(
+        (node: OutlineNode) => {
+            if (!linked) return reference(node)
+            const label = node.level === 1 ? `${node.num}. ${node.title}` : nodeLabel(node)
+            const ref = referenceTo(outline, node)
+            if (!viewer.chips.some(c => c.ref === ref)) patch({ chips: [...viewer.chips, { label, ref }] })
+            setFocusKey(k => k + 1)
+            notify('Added to the message box')
+        },
+        [linked, reference, outline, viewer.chips, patch, notify],
+    )
+    const messagesFor = useCallback((num: string) => messagesAbout(num, session.messages), [session.messages])
+    const onSeen = useCallback((ids: string[]) => patch({ seen: Object.fromEntries(ids.map(id => [id, 1])) }), [patch])
     const { unread, opening, openUnread, unreadNums } = useUnread(outline, viewer, stateLoaded, patch)
     const actions = useMemo<NodeActions>(
-        () => ({ linked, onCheck: clickNode, onTopicCheck: clickTopic, onRun: run, onReference: reference, unread, opening, onOpenUnread: openUnread }),
-        [linked, clickNode, clickTopic, run, reference, unread, opening, openUnread],
+        () => ({
+            linked,
+            onCheck: clickNode,
+            onTopicCheck: clickTopic,
+            onRun: run,
+            onReference,
+            unread,
+            opening,
+            onOpenUnread: openUnread,
+            messagesFor,
+            seen: viewer.seen,
+            onSeen,
+            onReveal: (num: string) => revealRef.current(num),
+        }),
+        [linked, clickNode, clickTopic, run, onReference, unread, opening, openUnread, messagesFor, viewer.seen, onSeen],
     )
     const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
 
@@ -95,6 +128,8 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
             void (env as HTMLElement | null)?.offsetWidth
             env?.setAttribute('data-pulse', '')
         })
+    const revealRef = useRef(reveal)
+    revealRef.current = reveal
     const current = [...currentPath(outline.nodes)].pop()
 
     // ⌘Z (Ctrl+Z) outside text fields takes back the last approval.
@@ -111,7 +146,15 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
 
     return (
         <Tabs value={tab} onValueChange={v => setTab(v as TabName)} className="block pl-[76px]">
-            <Rail queue={outline.queue} statuses={statuses} runs={viewer.runs} onOpen={openQueued} unread={unreadNums} onOpenUnread={openUnreadItem} />
+            <Rail
+                queue={outline.queue}
+                statuses={statuses}
+                runs={viewer.runs}
+                onOpen={openQueued}
+                unread={unreadNums}
+                onOpenUnread={openUnreadItem}
+                footer={<InboxButton messages={session.messages} seen={viewer.seen} onSeen={onSeen} onReveal={reveal} />}
+            />
             <TopBar
                 outline={outline}
                 tab={tab}
@@ -132,6 +175,13 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
             <TabsContent value="md" forceMount hidden={tab !== 'md'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
                 <div className="markdown" dangerouslySetInnerHTML={{ __html: outline.markdown }} />
             </TabsContent>
+            {linked && (
+                <>
+                    {/* Room under the content for the input box. */}
+                    <div aria-hidden="true" style={{ height: 'var(--composer-h, 60px)' }} />
+                    <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} onSent={session.working} onReveal={reveal} focusKey={focusKey} />
+                </>
+            )}
             {tab !== 'md' && <StatusBar outline={outline} viewer={viewer} pending={approvals.pending} onDrop={approvals.drop} onCopy={() => approvals.copyPending()} />}
         </Tabs>
     )

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
-import { launchBrowser, openPage, startServer } from './helpers.js'
+import { launchBrowser, openPage, startServer, until } from './helpers.js'
 
 // sample.md names a terminal, so the page sends its messages through /send. The tests answer /send themselves and
 // record what the page sent: no tmux needed.
@@ -111,7 +111,7 @@ describe('approvals, picks, runs and undo', () => {
             fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8').replace('## 2.4 @action Measure', '## 2.4 @action @ran Measure'),
         )
         await node('2.4').locator('.pill-ran').waitFor()
-        await page.waitForFunction(async () => !(await (await fetch('/api/state/demo/sample')).json()).runs['2.4'])
+        await until(async () => !(await (await fetch(`${server.url}/api/state/demo/sample`)).json()).runs['2.4'], { what: 'the run request to end' })
     })
 
     test('undo sends the approval back', async () => {
@@ -162,7 +162,7 @@ describe('approvals, picks, runs and undo', () => {
         server.swap('demo/sample', 'demo/sample-edited')
         await node('3.4').waitFor()
         assert.equal(await state('4.1'), 'approved')
-        await page.waitForFunction(async () => Object.keys((await (await fetch('/api/state/demo/sample')).json()).overrides).length === 0)
+        await until(async () => Object.keys((await (await fetch(`${server.url}/api/state/demo/sample`)).json()).overrides).length === 0, { what: 'overrides to clear' })
     })
 
     test('queue items hide once handled here, and open their node', async () => {
@@ -178,15 +178,6 @@ describe('approvals, picks, runs and undo', () => {
         await page.locator('[data-queue="3.1.1.1.1.1"]').click()
         await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="3.1.1.1.1.1"]').hasAttribute('data-qmark'))
         assert.equal(await node('3.1.1.1.1.1').isVisible(), true)
-    })
-
-    test('the reference button copies a reference to the node', async () => {
-        await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
-        await node('3.2').evaluate(e => e.scrollIntoView({ block: 'center' }))
-        await node('3.2').hover()
-        await node('3.2').locator('.ask').click()
-        await page.waitForFunction(async () => (await navigator.clipboard.readText()).length > 0)
-        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Re: outline "Caching for the search service" › 3. Invalidation › 3.2 Time to live — ')
     })
 })
 
@@ -210,14 +201,27 @@ describe('approvals without a linked session', () => {
 
     test('ticks are copied, and listed until copied', async () => {
         await click(page.locator('.outline-tab [data-num="2.4"] > .ck'))
-        await page.waitForFunction(async () => (await navigator.clipboard.readText()).startsWith('Approved'))
+        await until(async () => (await page.evaluate(() => navigator.clipboard.readText())).startsWith('Approved'), { what: 'the clipboard' })
         assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Approved in the outline: 2.4 Measure the hit rate on staging.')
         const bar = page.getByRole('region', { name: 'Approvals to copy' })
         assert.match(await bar.textContent(), /✓ 2\.4 Measure the hit rate on staging/)
         await click(page.locator('.outline-tab [data-num="3.3"] > .ck'))
         await bar.getByRole('button', { name: 'Copy to clipboard' }).click()
-        await page.waitForFunction(async () => (await navigator.clipboard.readText()).includes('3.3'))
+        await until(async () => (await page.evaluate(() => navigator.clipboard.readText())).includes('3.3'), { what: 'the clipboard' })
         assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Approved in the outline: 2.4 Measure the hit rate on staging; 3.3 Who can flush the cache by hand.')
         await bar.waitFor({ state: 'detached' })
+    })
+
+    test('the reference button copies a reference, after any approvals not copied yet', async () => {
+        server.resetState()
+        await page.reload()
+        await page.locator('.outline-tab h1').waitFor()
+        await click(page.locator('.outline-tab [data-num="2.4"] > .ck'))
+        const ref = page.locator('.outline-tab [data-num="3.2"]')
+        await ref.evaluate(e => e.scrollIntoView({ block: 'center' }))
+        await ref.hover()
+        await ref.locator('.ask').click()
+        const expected = 'Approved in the outline: 2.4 Measure the hit rate on staging.\nRe: outline "Caching for the search service" › 3. Invalidation › 3.2 Time to live — '
+        await until(async () => (await page.evaluate(() => navigator.clipboard.readText())) === expected, { what: 'the reference on the clipboard' })
     })
 })

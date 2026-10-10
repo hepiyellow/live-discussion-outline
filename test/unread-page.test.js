@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
-import { launchBrowser, startServer } from './helpers.js'
+import { launchBrowser, startServer, until } from './helpers.js'
 
 describe('unread changes', () => {
     let server, browser, page
@@ -34,8 +34,8 @@ describe('unread changes', () => {
     const node = num => page.locator(`.outline-tab [data-num="${num}"]`)
     const text = num => node(num).locator('.node-html').textContent()
     const readState = async () => (await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read
-    /** On a first visit everything counts as read; this waits until the page has recorded it. */
-    const firstVisit = () => page.waitForFunction(async () => Object.keys((await (await fetch('/api/state/demo/sample')).json()).read).length > 20)
+    /** On a first visit every node below the topics (20 in sample.md) counts as read; this waits until the page has recorded it. */
+    const firstVisit = () => until(async () => Object.keys((await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read).length >= 20, { what: 'the first visit to be recorded' })
 
     test('a rewritten node keeps what was read, with a diff button; a new node shows at once', async () => {
         await open()

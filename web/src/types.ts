@@ -94,6 +94,32 @@ export interface ViewerState {
     undo: UndoStep[]
     /** The input box's text. */
     draft: string
+    /** References waiting in the input box, sent as `Re: outline …` lines before its text. */
+    chips: Chip[]
+}
+
+/** A reference in the input box: its label (the node's number and title) and the line it sends. */
+export interface Chip {
+    label: string
+    ref: string
+}
+
+/** An `@message` paragraph of the agent's chat reply, from GET /messages (transcript.js). */
+export interface Message {
+    id: string
+    /** ISO time. */
+    at: string
+    /** The node it names, or ''. */
+    num: string
+    html: string
+}
+
+/** A command the session can run, from GET /api/commands (commands.js). */
+export interface SlashCommand {
+    name: string
+    hint?: string
+    description?: string
+    source: string
 }
 
 /** A change to the viewer state: map sections change single entries (null deletes one), the others are replaced. */
