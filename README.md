@@ -1,6 +1,6 @@
 # Live Discussion Outline
 
-**Keep a long agent conversation inside human attention.**
+**A working interface that keeps the whole conversation inside human attention — and it's already replaced my chat.**
 
 An agent can hold a million tokens and attend to all of them at once. You can hold a handful of things. So in a long session with a coding agent, the bottleneck is not the model, it is you: you lose the thread, forget what was decided three topics ago, and scroll back up to find the one answer you need while the chat keeps growing below you.
 
