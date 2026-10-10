@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { Folder, Layers, List, LoaderCircle, Plus, Search, Trash2, X } from 'lucide-react'
+import { ChevronRight, Folder, Layers, List, LoaderCircle, Plus, Search, Trash2, X } from 'lucide-react'
 import { api, liveHref, outlineHref } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { OutlineList } from '@/types'
@@ -186,6 +186,29 @@ export const matches = (o: { title: string; project: string }, query: string) =>
         .every(word => text.includes(word))
 }
 
+const COLLAPSED_KEY = 'outlines-pane-collapsed'
+
+/** The projects whose groups the viewer collapsed, kept in this browser; a failure leaves every group open. */
+function useCollapsed() {
+    const [collapsed, setCollapsed] = useState<string[]>(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]')
+            return Array.isArray(saved) ? saved.filter((p): p is string => typeof p === 'string') : []
+        } catch {
+            return []
+        }
+    })
+    const toggle = (project: string) =>
+        setCollapsed(prev => {
+            const next = prev.includes(project) ? prev.filter(p => p !== project) : [...prev, project]
+            try {
+                localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next))
+            } catch {}
+            return next
+        })
+    return [collapsed, toggle] as const
+}
+
 const QUERY_KEY = 'outlines-pane-search'
 
 /** The search, kept for this tab while the viewer opens outlines from the filtered list (each opens a new page). */
@@ -225,6 +248,7 @@ interface Props {
  */
 export function OutlinesPane({ list, current, starting, home }: Props) {
     const [query, setQuery] = useQuery()
+    const [collapsed, toggleCollapsed] = useCollapsed()
     const all = rowsOf(list)
     const groups = byProject(query.trim() ? all.filter(o => matches(o, query.trim())) : all, list?.workspaces)
     const currentKey = current ? `${current.project}/${current.file}` : starting ? `starting:${starting}` : ''
@@ -282,19 +306,34 @@ export function OutlinesPane({ list, current, starting, home }: Props) {
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
                 {!list && <p className="px-2 py-1 text-[13px] text-muted-foreground">Loading…</p>}
                 {list && !groups.length && <p className="mt-3 px-2 py-1 text-[13px] text-muted-foreground">{all.length ? 'No outlines match.' : 'No outlines yet.'}</p>}
-                {groups.map(g => (
-                    <section key={g.project} data-project={g.project} data-workspace={g.workspace || undefined} className="mt-3">
-                        <h2 className="flex items-center gap-1.5 px-2 pb-1 text-xs font-medium text-muted-foreground" title={`${g.project} (${g.workspace ? 'workspace' : 'folder'})`}>
-                            {g.workspace ? <Layers className="size-3 shrink-0" aria-hidden="true" /> : <Folder className="size-3 shrink-0" aria-hidden="true" />}
-                            <span className="truncate">{g.project}</span>
-                        </h2>
-                        <ul>
-                            {g.rows.map(o => (
-                                <PaneRow key={o.key} row={o} on={o.key === currentKey} marked={marked} />
-                            ))}
-                        </ul>
-                    </section>
-                ))}
+                {groups.map(g => {
+                    // A group holding the shown outline opens anyway, so its row stays in view.
+                    const isCollapsed = collapsed.includes(g.project) && !g.rows.some(o => o.key === currentKey)
+                    return (
+                        <section key={g.project} data-project={g.project} data-workspace={g.workspace || undefined} data-collapsed={isCollapsed || undefined} className="mt-3">
+                            <h2 className="flex items-center gap-1.5 px-2 pb-1 text-xs font-medium text-muted-foreground">
+                                <button
+                                    type="button"
+                                    aria-expanded={!isCollapsed}
+                                    onClick={() => toggleCollapsed(g.project)}
+                                    title={`${g.project} (${g.workspace ? 'workspace' : 'folder'}): click to ${isCollapsed ? 'expand' : 'collapse'}`}
+                                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-0.5 text-left hover:text-foreground"
+                                >
+                                    <ChevronRight className={cn('size-3 shrink-0 transition-transform', !isCollapsed && 'rotate-90')} aria-hidden="true" />
+                                    {g.workspace ? <Layers className="size-3 shrink-0" aria-hidden="true" /> : <Folder className="size-3 shrink-0" aria-hidden="true" />}
+                                    <span className="truncate">{g.project}</span>
+                                </button>
+                            </h2>
+                            {!isCollapsed && (
+                                <ul>
+                                    {g.rows.map(o => (
+                                        <PaneRow key={o.key} row={o} on={o.key === currentKey} marked={marked} />
+                                    ))}
+                                </ul>
+                            )}
+                        </section>
+                    )
+                })}
             </div>
             <ResizeHandle />
         </nav>
