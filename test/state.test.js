@@ -42,7 +42,7 @@ describe('the state store', () => {
 
     test('bad patches are refused and change nothing', () => {
         const before = store.read('demo', 'sample')
-        for (const bad of [null, [], { nope: {} }, { open: [] }, { open: { __proto__x: { a: 1 } } }, { open: { 'a b': true } }, { undo: {} }, { draft: 3 }, { read: { 1: 'x'.repeat(201) } }])
+        for (const bad of [null, [], { nope: {} }, { open: [] }, { open: { __proto__x: { a: 1 } } }, { open: { 'a b': true } }, { undo: {} }, { draft: 3 }, { backTo: { 1: 'x'.repeat(201) } }, { read: { 1: 'x'.repeat(50001) } }])
             assert.throws(() => store.patch('demo', 'sample', bad), undefined, JSON.stringify(bad))
         assert.deepEqual(store.read('demo', 'sample'), before)
     })

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useApprovals } from '@/hooks/useApprovals'
+import { useUnread } from '@/hooks/useUnread'
 import { useOutline } from '@/hooks/useOutline'
 import { allNodes, currentPath, isParent, pathNums } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
@@ -15,7 +16,7 @@ import { TopBar, type TabName } from './TopBar'
 
 /** One outline: its tabs, kept up to date as the agent edits the file, without reloading. */
 export function OutlinePage({ project, file }: { project: string; file: string }) {
-    const { state, viewer, patch } = useOutline(project, file)
+    const { state, viewer, stateLoaded, patch } = useOutline(project, file)
     const outline = state.status === 'ready' || state.status === 'gone' ? state.outline : null
 
     useEffect(() => {
@@ -34,24 +35,26 @@ export function OutlinePage({ project, file }: { project: string; file: string }
                 )}
             </main>
         )
-    return <Loaded outline={outline} gone={state.status === 'gone'} viewer={viewer} patch={patch} />
+    return <Loaded outline={outline} gone={state.status === 'gone'} viewer={viewer} stateLoaded={stateLoaded} patch={patch} />
 }
 
 interface LoadedProps {
     outline: Outline
     gone: boolean
     viewer: ViewerState
+    stateLoaded: boolean
     patch: (p: StatePatch) => Promise<void>
 }
 
-function Loaded({ outline, gone, viewer, patch }: LoadedProps) {
+function Loaded({ outline, gone, viewer, stateLoaded, patch }: LoadedProps) {
     const [tab, setTab] = useState<TabName>('outline')
     const notify = useNotify()
     const approvals = useApprovals(outline, viewer, patch)
     const { clickNode, clickTopic, run, reference, undo, linked } = approvals
+    const { unread, opening, openUnread, unreadNums } = useUnread(outline, viewer, stateLoaded, patch)
     const actions = useMemo<NodeActions>(
-        () => ({ linked, onCheck: clickNode, onTopicCheck: clickTopic, onRun: run, onReference: reference }),
-        [linked, clickNode, clickTopic, run, reference],
+        () => ({ linked, onCheck: clickNode, onTopicCheck: clickTopic, onRun: run, onReference: reference, unread, opening, onOpenUnread: openUnread }),
+        [linked, clickNode, clickTopic, run, reference, unread, opening, openUnread],
     )
     const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
 
@@ -79,6 +82,19 @@ function Loaded({ outline, gone, viewer, patch }: LoadedProps) {
         })
         if (!found) notify('Not in the outline', true)
     }
+    /** An unread item shows its node, and points at its diff button: the change opens from there. */
+    const openUnreadItem = (num: string) =>
+        reveal(num, el => {
+            el.style.setProperty('--qline', 'var(--claim)')
+            el.removeAttribute('data-qmark')
+            void el.offsetWidth
+            el.setAttribute('data-qmark', '')
+            setTimeout(() => el.removeAttribute('data-qmark'), 1700)
+            const env = el.querySelector(':scope > .env')
+            env?.removeAttribute('data-pulse')
+            void (env as HTMLElement | null)?.offsetWidth
+            env?.setAttribute('data-pulse', '')
+        })
     const current = [...currentPath(outline.nodes)].pop()
 
     // ⌘Z (Ctrl+Z) outside text fields takes back the last approval.
@@ -95,7 +111,7 @@ function Loaded({ outline, gone, viewer, patch }: LoadedProps) {
 
     return (
         <Tabs value={tab} onValueChange={v => setTab(v as TabName)} className="block pl-[76px]">
-            <Rail queue={outline.queue} statuses={statuses} runs={viewer.runs} onOpen={openQueued} />
+            <Rail queue={outline.queue} statuses={statuses} runs={viewer.runs} onOpen={openQueued} unread={unreadNums} onOpenUnread={openUnreadItem} />
             <TopBar
                 outline={outline}
                 tab={tab}

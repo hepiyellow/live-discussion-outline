@@ -13,17 +13,21 @@ const apiPath = (project: string, file: string) => `${encodeURIComponent(project
 export function useOutline(project: string, file: string) {
     const [state, setState] = useState<OutlineState>({ status: 'loading' })
     const [viewer, setViewer] = useState<ViewerState>(emptyState)
+    // Until the server's state arrives, the empty one stands in; nothing may be decided from it (like what was read).
+    const [stateLoaded, setStateLoaded] = useState(false)
     // Patches sent but not yet answered: laid over each state the server sends, so a late event cannot undo them.
     const pending = useRef<StatePatch[]>([])
     const server = useRef<ViewerState>(emptyState())
 
     useEffect(() => {
         setState({ status: 'loading' })
+        setStateLoaded(false)
         const es = new EventSource(`/api/outline/${apiPath(project, file)}/events`)
         es.onmessage = e => setState({ status: 'ready', outline: JSON.parse(e.data) as Outline })
         es.addEventListener('state', e => {
             server.current = JSON.parse((e as MessageEvent).data) as ViewerState
             setViewer(pending.current.reduce(applyPatch, server.current))
+            setStateLoaded(true)
         })
         es.addEventListener('gone', () => setState(s => (s.status === 'ready' ? { status: 'gone', outline: s.outline } : { status: 'missing' })))
         // A stream that never opened (no such outline) is closed for good; a dropped one reconnects by itself.
@@ -56,5 +60,5 @@ export function useOutline(project: string, file: string) {
         [project, file],
     )
 
-    return { state, viewer, patch }
+    return { state, viewer, stateLoaded, patch }
 }
