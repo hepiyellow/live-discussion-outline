@@ -183,7 +183,7 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
                 e.preventDefault()
                 submit()
             }}
-            className="fixed right-0 bottom-0 left-[76px] z-[15] flex items-end gap-2 border-t bg-background px-5 py-2.5"
+            className="fixed right-0 bottom-0 left-(--pane-w) z-[15] flex items-end gap-2 border-t bg-background px-5 py-2.5"
         >
             {shown.length > 0 && (
                 <Command value={selected} onValueChange={setSelected} shouldFilter={false} className="absolute right-16 bottom-[calc(100%+6px)] left-5 h-auto w-auto border shadow-lg">

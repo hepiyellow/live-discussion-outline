@@ -50,12 +50,15 @@ describe('/api/outline', () => {
         }
     })
 
-    test('the stream ignores changes to other outlines', async () => {
+    test('a change to another outline sends only the new outline list', async () => {
         const stream = await eventStream(`${server.url}/api/outline/demo/sample/events`)
         try {
             // What the stream sends when it opens ends with the linked session's activity.
             await stream.takeOf('activity')
             fs.writeFileSync(path.join(server.dir, 'demo', 'other.md'), 'Title: Other\n\n# 1. A\n')
+            const list = await stream.take()
+            assert.equal(list.event, 'outlines')
+            assert.ok(JSON.parse(list.data).outlines.some(o => o.file === 'other'))
             await assert.rejects(stream.take(600), /no event/)
         } finally {
             stream.close()

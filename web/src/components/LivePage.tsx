@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useOutlineList } from '@/hooks/useOutlineList'
 import { api, outlineHref } from '@/lib/api'
-import type { Outline, OutlineList } from '@/types'
-import { Rail } from './Rail'
+import type { Outline } from '@/types'
+import { OutlinesPane } from './OutlinesPane'
 import { TerminalTab } from './TerminalTab'
 
 /**
@@ -9,12 +10,11 @@ import { TerminalTab } from './TerminalTab'
  * the outline, on its Terminal tab.
  */
 export function LivePage({ terminal }: { terminal: string }) {
-    const [terminals, setTerminals] = useState<boolean | null>(null)
+    // The list for the pane; it also says whether terminals can be shown.
+    const list = useOutlineList()
+    const terminals = list ? list.terminals : null
     useEffect(() => {
         document.title = `Starting ${terminal}`
-        api<OutlineList>('/api/outlines')
-            .then(l => setTerminals(l.terminals))
-            .catch(() => setTerminals(false))
     }, [terminal])
 
     useEffect(() => {
@@ -44,8 +44,8 @@ export function LivePage({ terminal }: { terminal: string }) {
     // The Terminal tab only needs to know the session and whether terminals can be shown.
     const outline = { terminal, terminalTab: !!terminals } as Outline
     return (
-        <div className="pl-[76px]">
-            <Rail />
+        <div className="pl-(--pane-w)">
+            <OutlinesPane list={list} />
             <header data-topbar className="sticky top-0 z-20 flex h-11 items-center gap-2 border-b bg-background px-4 text-[13px] text-muted-foreground">
                 <span className="font-medium text-foreground">Terminal</span>
                 <span role="status">Waiting for the agent to write the outline…</span>

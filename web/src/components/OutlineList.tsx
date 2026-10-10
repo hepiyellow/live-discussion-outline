@@ -1,23 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Copy, Trash2 } from 'lucide-react'
+import { useOutlineList } from '@/hooks/useOutlineList'
 import { api, outlineHref } from '@/lib/api'
 import { copyText } from '@/lib/send'
 import { cn } from '@/lib/utils'
-import type { OutlineList as List, OutlineSummary } from '@/types'
+import type { OutlineSummary } from '@/types'
 import { NewSession } from './NewSession'
 import { RenameTitle } from './RenameTitle'
-import { Rail } from './Rail'
+import { OutlinesPane } from './OutlinesPane'
 
-/** The outline list, kept up to date as outlines are written, renamed or moved. */
-function useOutlineList() {
-    const [list, setList] = useState<List | null>(null)
-    useEffect(() => {
-        const es = new EventSource('/api/outlines/events')
-        es.onmessage = e => setList(JSON.parse(e.data) as List)
-        return () => es.close()
-    }, [])
-    return list
-}
 
 /** Progress: approved (green) and the agent's claims (blue) as a stacked bar, with counts. */
 function Progress({ o }: { o: OutlineSummary }) {
@@ -174,8 +165,8 @@ export function OutlineList() {
         document.title = 'Outlines'
     }, [])
     return (
-        <div className="pl-[76px]">
-            <Rail />
+        <div className="pl-(--pane-w)">
+            <OutlinesPane list={list} home />
             <main className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
                 <div className="mb-4 flex items-center gap-4">
                     <h1 className="flex-1 text-[1.85em] leading-tight font-bold tracking-tight">Outlines</h1>

@@ -61,7 +61,10 @@ function watchOutlines() {
 }
 watchOutlines()
 
-/** Open streams of the outline list, each with the list it last sent. */
+/**
+ * Open streams the outline list goes out on, each with the list it last sent and its event name: the list's own stream
+ * sends it unnamed, an outline's stream as `outlines` events, for the pane beside the outline.
+ */
 const listStreams = new Map()
 
 /** The outline list's JSON: every outline, newest first, and whether this server can show terminals. */
@@ -78,10 +81,10 @@ function pushList() {
     } catch (e) {
         return console.error(`outline list: ${e.message}`)
     }
-    for (const [res, last] of listStreams) {
+    for (const [res, { last, event }] of listStreams) {
         if (data === last) continue
-        res.write(`data: ${data}\n\n`)
-        listStreams.set(res, data)
+        res.write(`${event ? `event: ${event}\n` : ''}data: ${data}\n\n`)
+        listStreams.set(res, { last: data, event })
     }
 }
 
@@ -91,7 +94,7 @@ function listApi(req, res, events) {
     if (!events) return send(res, 200, 'application/json', data)
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
     res.write(`retry: 1000\n\ndata: ${data}\n\n`)
-    listStreams.set(res, data)
+    listStreams.set(res, { last: data, event: '' })
     req.on('close', () => listStreams.delete(res))
 }
 
@@ -190,8 +193,9 @@ async function stateApi(req, res, parts) {
 
 /**
  * GET /api/outline/<project>/<file>[/events]: the outline's JSON, or a stream of it, sent again on each change of that
- * file. The stream is the one connection an outline's page holds: it also carries the viewer state and the linked
- * session (its messages and activity, and with `?transcript=1` its transcript).
+ * file. The stream is the one connection an outline's page holds: it also carries the viewer state, the outline list
+ * for the pane (`outlines` events), and the linked session (its messages and activity, and with `?transcript=1` its
+ * transcript).
  */
 function outlineApi(req, res, parts, url) {
     const [project, file, events] = parts
@@ -205,8 +209,12 @@ function outlineApi(req, res, parts, url) {
     const key = JSON.stringify([project, file])
     if (!outlineStreams.has(key)) outlineStreams.set(key, new Map())
     outlineStreams.get(key).set(res, data)
+    const list = outlineList()
+    res.write(`event: outlines\ndata: ${list}\n\n`)
+    listStreams.set(res, { last: list, event: 'outlines' })
     followLinked(res, outline.session, url.searchParams.get('transcript') === '1')
     req.on('close', () => {
+        listStreams.delete(res)
         const streams = outlineStreams.get(key)
         streams?.delete(res)
         if (!streams?.size) outlineStreams.delete(key)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyPatch, emptyState } from '@/lib/viewerState'
-import type { Message, Outline, StatePatch, TranscriptEntry, ViewerState } from '@/types'
+import type { Message, Outline, OutlineList, StatePatch, TranscriptEntry, ViewerState } from '@/types'
 import type { SessionFeed } from './useSession'
 import { addEntries, emptyTranscript, type Transcript } from './useTranscript'
 
@@ -9,9 +9,10 @@ export type OutlineState = { status: 'loading' } | { status: 'ready'; outline: O
 const apiPath = (project: string, file: string) => `${encodeURIComponent(project)}/${encodeURIComponent(file)}`
 
 /**
- * The outline, the viewer's state of it and its linked session, kept up to date from the outline's stream: each change
- * of the file arrives as a new outline, each change of the state (from this window or another) as a new state, and the
- * session's messages, activity and transcript as they are written.
+ * The outline, the viewer's state of it, the outline list for the pane, and its linked session, kept up to date from
+ * the outline's stream: each change of the file arrives as a new outline, each change of the state (from this window or
+ * another) as a new state, each change of any outline as a new list, and the session's messages, activity and
+ * transcript as they are written.
  *
  * It is the page's only stream. A browser allows six connections to one server, across all its windows, and a stream
  * holds one for as long as it is open: with a stream per kind of data, two windows used them all, and every other
@@ -28,6 +29,7 @@ export function useOutline(project: string, file: string) {
     const [messages, setMessages] = useState<Message[]>([])
     const [busy, setBusy] = useState(false)
     const [transcript, setTranscript] = useState<Transcript>(emptyTranscript)
+    const [outlines, setOutlines] = useState<OutlineList | null>(null)
     // The transcript is long, so the stream carries it only once the Transcript tab has been opened.
     const [withTranscript, setWithTranscript] = useState(false)
     const followTranscript = useCallback(() => setWithTranscript(true), [])
@@ -52,6 +54,7 @@ export function useOutline(project: string, file: string) {
             setViewer(pending.current.reduce(applyPatch, server.current))
             setStateLoaded(true)
         })
+        es.addEventListener('outlines', e => setOutlines(JSON.parse((e as MessageEvent).data) as OutlineList))
         es.addEventListener('gone', () => setState(s => (s.status === 'ready' ? { status: 'gone', outline: s.outline } : { status: 'missing' })))
         // The linked session: named first, and again whenever what was sent about it no longer holds (the stream
         // opened again, the outline links to another session, the transcript was rewritten).
@@ -103,5 +106,5 @@ export function useOutline(project: string, file: string) {
     }, [])
     const feed = useMemo<SessionFeed>(() => ({ messages, busy, working }), [messages, busy, working])
 
-    return { state, viewer, stateLoaded, patch, session: feed, transcript, followTranscript }
+    return { state, viewer, stateLoaded, patch, session: feed, transcript, followTranscript, outlines }
 }
