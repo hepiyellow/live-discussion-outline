@@ -15,7 +15,7 @@ export async function api<T>(url: string, body?: unknown): Promise<T> {
     return data as T
 }
 
-/** The page for a session just started: its terminal, until the agent writes the outline. */
+/** The page for a session just started: its terminal in the main area, until the outline's first version is written. */
 export const liveHref = (terminal: string) => `/live?t=${encodeURIComponent(terminal)}`
 
 /** The app's page for an outline. */

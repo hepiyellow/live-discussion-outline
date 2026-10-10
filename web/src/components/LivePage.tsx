@@ -6,8 +6,8 @@ import { OutlinesPane } from './OutlinesPane'
 import { TerminalTab } from './TerminalTab'
 
 /**
- * A session just started from "New session": its terminal, until the agent writes the outline; then the page moves to
- * the outline, on its Terminal tab.
+ * A session just started from "New session": its session terminal fills the main area while the agent works. Once the
+ * outline's first version is written (it has a node), the page opens that outline.
  */
 export function LivePage({ terminal }: { terminal: string }) {
     // The list for the pane; it also says whether terminals can be shown.
@@ -23,14 +23,17 @@ export function LivePage({ terminal }: { terminal: string }) {
             try {
                 const found = await api<{ project?: string; file?: string }>(`/api/outline-for?terminal=${encodeURIComponent(terminal)}`)
                 if (found.project && found.file) {
-                    // Open the outline where this page left off: on the Terminal tab.
-                    await fetch(`/api/state/${encodeURIComponent(found.project)}/${encodeURIComponent(found.file)}`, {
-                        method: 'PATCH',
-                        headers: { 'content-type': 'application/json' },
-                        body: JSON.stringify({ tab: 'term' }),
-                    })
-                    location.href = outlineHref(found.project, found.file)
-                    return
+                    const outline = await api<Outline>(`/api/outline/${encodeURIComponent(found.project)}/${encodeURIComponent(found.file)}`)
+                    // Headers alone are not the first version: stay on the terminal until a node is there.
+                    if (outline.nodes.length) {
+                        await fetch(`/api/state/${encodeURIComponent(found.project)}/${encodeURIComponent(found.file)}`, {
+                            method: 'PATCH',
+                            headers: { 'content-type': 'application/json' },
+                            body: JSON.stringify({ tab: 'outline' }),
+                        })
+                        location.href = outlineHref(found.project, found.file)
+                        return
+                    }
                 }
             } catch {}
             if (!stop) setTimeout(poll, 2000)

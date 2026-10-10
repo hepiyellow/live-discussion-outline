@@ -78,6 +78,26 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         await until(async () => (await pane().locator(`[data-pane-starting="${terminal}"]`).count()) === 0, { timeout: 8000, what: 'the row to go' })
     })
 
+    test('shows the terminal in the main area, then opens the outline once its first version has a node', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        const terminal = await start('Watch me')
+        await page.goto(`${server.url}/live?t=${encodeURIComponent(terminal)}`)
+        await page.getByRole('status').filter({ hasText: 'Waiting for the agent to write the outline' }).waitFor()
+        await page.locator('[data-terminal]').waitFor()
+        // Headers alone are not the first version: the terminal stays.
+        fs.mkdirSync(path.join(server.dir, 'proj'), { recursive: true })
+        const file = path.join(server.dir, 'proj', 'watch-me.md')
+        fs.writeFileSync(file, `Title: Watch me\nTerminal: ${terminal}\n`)
+        await new Promise(r => setTimeout(r, 2500))
+        assert.match(page.url(), /\/live\?/)
+        fs.writeFileSync(file, `Title: Watch me\nTerminal: ${terminal}\n\n# 1. First\nThe first version.\n`)
+        await page.locator('.outline-tab h1').waitFor({ timeout: 8000 })
+        assert.match(page.url(), /\/proj\/watch-me$/)
+        assert.equal(await page.getByLabel('View').inputValue(), 'outline')
+        assert.equal(await page.locator('.outline-tab').isVisible(), true)
+        assert.equal(await page.locator('[data-terminal]').isVisible(), false)
+    })
+
     test("its own page marks its row, and the server's list carries it", async () => {
         page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
         const terminal = await start('Marked here')

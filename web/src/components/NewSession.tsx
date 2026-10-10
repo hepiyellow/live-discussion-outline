@@ -19,8 +19,8 @@ const row = 'flex cursor-pointer items-baseline gap-2.5 rounded-md px-2 py-[7px]
 
 /**
  * "New session": starts an agent session in tmux from a Cursor workspace, a folder, or a past Claude Code session
- * (resumed), with the skill as its first message, and shows its terminal until the outline appears. `trigger` is the
- * button that opens it, when not the default one.
+ * (resumed), with the skill as its first message. The main area shows its terminal until the outline's first version is
+ * written, then opens the outline. `trigger` is the button that opens it, when not the default one.
  */
 export function NewSession({ trigger }: { trigger?: React.ReactNode } = {}) {
     const [open, setOpen] = useState(false)
