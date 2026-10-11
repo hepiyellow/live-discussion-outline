@@ -6,7 +6,7 @@ import path from 'node:path'
 import readline from 'node:readline'
 import { call, findServer, tmuxSession } from './lib.js'
 
-const VERSION = '0.2.0'
+const VERSION = '0.3.0'
 
 /** What the agent's tool gives its MCP servers: the session id (Claude Code; Codex's name is unverified) and the working folder. */
 const SESSION = process.env.CLAUDE_CODE_SESSION_ID || process.env.CODEX_THREAD_ID || ''

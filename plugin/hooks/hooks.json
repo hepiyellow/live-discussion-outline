@@ -1,5 +1,5 @@
 {
-    "description": "Hands the agent what the user did on the outline's page with each prompt, and the outline's map after compaction or resume.",
+    "description": "Hands the agent what the user did on the outline's page with each prompt, and the outline's map after compaction or resume; refuses a write to the file of an outline the server keeps.",
     "hooks": {
         "UserPromptSubmit": [
             {
@@ -10,6 +10,12 @@
             {
                 "matcher": "resume|compact",
                 "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/outline-hook.js\"", "timeout": 5 }]
+            }
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "Write|Edit|MultiEdit",
+                "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/outline-guard.js\"", "timeout": 5 }]
             }
         ]
     }

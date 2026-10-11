@@ -1,4 +1,4 @@
-// Shared by the MCP process and the hooks: finding the outline server and calling it. Node's own modules only, since
+// Shared by the MCP process, the hooks and the file-mode skill's start script: finding the outline server and calling it. Node's own modules only, since
 // an installed plugin is a copy of this folder without the checkout's node_modules.
 import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -7,8 +7,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** The settings file (config.js): where the server listens, and where its checkout is when this plugin is a copy. */
-function settings() {
+/** The settings file (config.js): where the server listens and keeps outlines, and where its checkout is when this plugin is a copy. */
+export function settings() {
     try {
         const value = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config', 'live-discussion-outline', 'config.json'), 'utf8'))
         return value && typeof value === 'object' ? value : {}
@@ -67,6 +67,27 @@ export async function findServer({ start = false } = {}) {
         await new Promise(r => setTimeout(r, 250))
     }
     return 0
+}
+
+/** The outlines folder, as config.js works it out: the settings file's `dir`, else the default. */
+export function outlinesDir() {
+    const dir = settings().dir || '~/live-discussion-outlines'
+    return path.resolve(dir === '~' || dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(1)) : dir)
+}
+
+/**
+ * Who writes an outline, from its text, as outline.js reads its header lines: `server` when a `Mode: server` line is
+ * among them, else `file`.
+ */
+export function modeOf(text) {
+    const lines = text.split('\n')
+    for (const label of ['Title', 'Resume', 'Model', 'Terminal', 'Session', 'Mode']) {
+        const i = lines.slice(0, 8).findIndex(line => line.startsWith(`${label}: `))
+        if (i < 0) continue
+        const [line] = lines.splice(i, 1)
+        if (label === 'Mode') return line.slice(6).trim().replace(/^`+|`+$/g, '') === 'server' ? 'server' : 'file'
+    }
+    return 'file'
 }
 
 /** Calls /api/agent/<name> and returns its `{ ok, text, … }`. */

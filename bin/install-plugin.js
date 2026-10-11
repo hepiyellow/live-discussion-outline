@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Installs the outline-only plugin (its skill, its MCP tools and its hooks) into Claude Code from this checkout, and
+// Installs the outline-only plugin (its two skills, its MCP tools and its hooks) into Claude Code from this checkout, and
 // writes the checkout's path into the settings file, so the installed copy of the plugin can start this server.
 // `--print` only prints the commands. Other agents: see README.md.
 import { execFileSync } from 'node:child_process'
@@ -31,7 +31,8 @@ for (const [command, ...args] of commands) {
     }
 }
 
-// The skill before the plugin was linked into the skills folder: its link would show a skill that writes the file itself.
+// The skill before the plugin was linked into the skills folder. File mode's skill now comes with the plugin, as
+// /outline-only:outline-file, so that link would show it a second time, and from a file this checkout no longer has.
 const skills = path.join(os.homedir(), '.claude', 'skills')
 for (const name of ['outline-only', 'live-discussion-outline']) {
     const link = path.join(skills, name, 'SKILL.md')
@@ -40,4 +41,4 @@ for (const name of ['outline-only', 'live-discussion-outline']) {
     if (fs.readdirSync(path.dirname(link)).length === 0) fs.rmdirSync(path.dirname(link))
     console.log(`removed ${link}`)
 }
-console.log('Installed. In a conversation, type /outline-only:outline (optionally with a topic).')
+console.log('Installed. In a conversation, type /outline-only:outline (the server keeps the outline) or /outline-only:outline-file (the agent writes its file), optionally with a topic.')
