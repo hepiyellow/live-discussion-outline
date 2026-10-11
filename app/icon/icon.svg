@@ -1,22 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- The Outline Only icon: Lucide's list-tree (the page's own outline glyph) with its sparkle, both ISC-licensed,
-       on the rounded square macOS icons use (824 px in a 1024 px canvas). Rebuild the .png and .icns with
-       `npm run icon` after changing this file. -->
+  <!-- The Outline Only icon: the name's two O's, linked like a chain, on the rounded square macOS icons use (824 px in
+       a 1024 px canvas). Each O passes under the other once: the left one at the top crossing, the right one at the
+       bottom, where a mask cuts a gap in it. Rebuild the .png and .icns with `npm run icon` after changing this file. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4f6bff"/>
-      <stop offset="1" stop-color="#2a2f8f"/>
+      <stop offset="0" stop-color="#6440DC"/>
+      <stop offset="1" stop-color="#3F2599"/>
     </linearGradient>
+    <mask id="under-top" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <ellipse cx="638" cy="512" rx="180" ry="228" fill="none" stroke="#000" stroke-width="120"/>
+      <rect y="512" width="1024" height="512" fill="#fff"/>
+    </mask>
+    <mask id="under-bottom" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <ellipse cx="386" cy="512" rx="180" ry="228" fill="none" stroke="#000" stroke-width="120"/>
+      <rect width="1024" height="512" fill="#fff"/>
+    </mask>
   </defs>
   <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
-  <g transform="translate(224 250) scale(24)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M8 5h4.5"/>
-    <path d="M13 12h8"/>
-    <path d="M13 19h8"/>
-    <path d="M3 10a2 2 0 0 0 2 2h3"/>
-    <path d="M3 5v12a2 2 0 0 0 2 2h3"/>
-  </g>
-  <g transform="translate(224 250) scale(24) translate(18.5 5) scale(0.36) translate(-12 -12)">
-    <path fill="#ffd166" d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
-  </g>
+  <ellipse cx="386" cy="512" rx="180" ry="228" fill="none" stroke="#FFFFFF" stroke-width="72" mask="url(#under-top)"/>
+  <ellipse cx="638" cy="512" rx="180" ry="228" fill="none" stroke="#FFFFFF" stroke-width="72" mask="url(#under-bottom)"/>
 </svg>

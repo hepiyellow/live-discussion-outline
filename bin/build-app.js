@@ -35,6 +35,8 @@ const [built] = await packager({
     appCategoryType: 'public.app-category.productivity',
     // The app's links (app/links.js): the Info.plist says which scheme the app opens.
     protocols: [{ name: productName, schemes: [SCHEME] }],
+    // A second name Spotlight finds the app by: its initials.
+    extendInfo: { CFBundleAlternateNames: ['OO'] },
     // No asar archive, so node-pty's binary and spawn-helper, web/dist and the server's files load as from the repo.
     asar: false,
     // Dev dependencies are left out (Vite, React and the rest are already built into web/dist).
