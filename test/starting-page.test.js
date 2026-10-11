@@ -20,6 +20,14 @@ const hasTmux = (() => {
 describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
     let server, browser, page, scratch, tmuxEnv
     const tmux = (...args) => execFileSync('tmux', args, { env: { ...process.env, ...tmuxEnv }, stdio: 'ignore' })
+    /** The command a started session runs: the stand-in for claude, with the arguments the server gave it. */
+    const commandOf = terminal => execFileSync('tmux', ['display-message', '-p', '-t', `=${terminal}:`, '#{pane_start_command}'], { env: { ...process.env, ...tmuxEnv }, encoding: 'utf8' }).trim()
+    /** POST /api/start as the dialog sends it: the answer's status and JSON. */
+    const post = request =>
+        page.evaluate(async request => {
+            const res = await fetch('/api/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request) })
+            return { status: res.status, ...(await res.json()) }
+        }, request)
     before(async () => {
         // A short path: a tmux socket's path is limited to about 100 characters.
         scratch = fs.mkdtempSync('/tmp/ldo-start-')
@@ -96,6 +104,64 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         assert.equal(await page.getByLabel('View').inputValue(), 'outline')
         assert.equal(await page.locator('.outline-tab').isVisible(), true)
         assert.equal(await page.locator('[data-terminal]').isVisible(), false)
+    })
+
+    test('starts in the mode asked for: each mode has its skill, and only server mode is given the outline tools', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        const folder = path.join(scratch, 'proj')
+        const inServer = commandOf((await post({ kind: 'folder', path: folder, topic: 'Kept by the server', mode: 'server' })).terminal)
+        assert.match(inServer, / --plugin-dir \S+\/plugin /)
+        assert.match(inServer, / --allowedTools mcp__plugin_outline-only_outline /)
+        assert.match(inServer, / -- "\/outline-only:outline Kept by the server"$/)
+        const inFile = commandOf((await post({ kind: 'folder', path: folder, topic: 'Kept as a file', mode: 'file' })).terminal)
+        assert.match(inFile, / --plugin-dir \S+\/plugin /)
+        assert.doesNotMatch(inFile, /allowedTools/)
+        assert.match(inFile, / -- "\/outline-only:outline-file Kept as a file"$/)
+        // Without a mode it is server mode, the one the dialog preselects.
+        assert.match(commandOf((await post({ kind: 'folder', path: folder, topic: 'Not said' })).terminal), / -- "\/outline-only:outline Not said"$/)
+    })
+
+    test('any other mode is refused, and starts nothing', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        const before = (await (await fetch(`${server.url}/api/outlines`)).json()).starting.length
+        for (const mode of ['mcp', '', 'Server', 7, null]) {
+            const answer = await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic: 'Refused', mode })
+            assert.deepEqual({ status: answer.status, error: answer.error }, { status: 400, error: 'unknown mode' }, JSON.stringify(mode))
+        }
+        assert.equal((await (await fetch(`${server.url}/api/outlines`)).json()).starting.length, before)
+    })
+
+    test('a resumed session keeps the mode of the outline that links to it; without one, the mode asked for applies', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        const folder = path.join(scratch, 'proj')
+        const transcripts = path.join(server.home, '.claude', 'projects', '-tmp-proj')
+        fs.mkdirSync(transcripts, { recursive: true })
+        const session = (id, title) => {
+            fs.writeFileSync(path.join(transcripts, `${id}.jsonl`), `${JSON.stringify({ cwd: folder, sessionId: id, type: 'user', message: { role: 'user', content: title } })}\n`)
+            return id
+        }
+        const byHand = session('aaaaaaaa-1111-4222-8333-444444444444', 'An outline written by hand')
+        const kept = session('bbbbbbbb-1111-4222-8333-444444444444', 'An outline the server keeps')
+        const none = session('cccccccc-1111-4222-8333-444444444444', 'No outline yet')
+        fs.mkdirSync(path.join(server.dir, 'proj'), { recursive: true })
+        fs.writeFileSync(path.join(server.dir, 'proj', 'by-hand.md'), `Title: By hand\nSession: ${byHand}\n\n# 1. A\n`)
+        fs.writeFileSync(path.join(server.dir, 'proj', 'kept.md'), `Title: Kept\nSession: ${kept}\nMode: server\n\n# 1. A\n`)
+        // The dialog is told which sessions have an outline, and in which mode.
+        const { sessions } = await (await fetch(`${server.url}/api/start-options`)).json()
+        assert.deepEqual(
+            [byHand, kept, none].map(id => sessions.find(s => s.id === id).mode),
+            ['file', 'server', undefined],
+        )
+        const resumed = async (id, mode) => commandOf((await post({ kind: 'resume', id, mode })).terminal)
+        // Asked for the other mode, each keeps its own.
+        const file = await resumed(byHand, 'server')
+        assert.match(file, new RegExp(` --resume ${byHand} `))
+        assert.match(file, / -- \/outline-only:outline-file$/)
+        assert.doesNotMatch(file, /allowedTools/)
+        const server_ = await resumed(kept, 'file')
+        assert.match(server_, / --allowedTools mcp__plugin_outline-only_outline -- \/outline-only:outline$/)
+        assert.match(await resumed(none, 'file'), / -- \/outline-only:outline-file$/)
+        fs.rmSync(path.join(server.dir, 'proj'), { recursive: true })
     })
 
     test("its own page marks its row, and the server's list carries it", async () => {

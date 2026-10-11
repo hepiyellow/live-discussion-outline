@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url'
 import { isSessionId } from './transcript.js'
 
 // Starting a discussion from the page: a new Claude Code session in a tmux session, opened on a workspace, a folder,
-// or a past session (resumed), with the outline skill as its first message.
+// or a past session (resumed), with the outline skill of the mode asked for as its first message.
 
-/** The plugin in this checkout, and its skill as a session types it. */
+/** The plugin in this checkout, and its skills as a session types them: one for each mode an outline can be kept in. */
 const PLUGIN_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'plugin')
-const OUTLINE_COMMAND = '/outline-only:outline'
+const OUTLINE_COMMANDS = { server: '/outline-only:outline', file: '/outline-only:outline-file' }
 
 const HOME = os.homedir()
 const PROJECTS = path.join(HOME, '.claude', 'projects')
@@ -285,9 +285,14 @@ async function freeSession(id, stopOther) {
 
 /**
  * Starts `claude` in a new detached tmux session and returns its name. `request` is one of
- * `{ kind: 'workspace', file, topic }`, `{ kind: 'folder', path, topic }` or `{ kind: 'resume', id, stopOther? }`.
+ * `{ kind: 'workspace', file, topic }`, `{ kind: 'folder', path, topic }` or `{ kind: 'resume', id, stopOther? }`, each
+ * with `mode`: `server` (the default) or `file`, who is to write the session's outline. `linkedMode` is the mode of the
+ * outline that already links to a resumed session, which the session keeps whatever was asked.
  */
-export async function startSession(request, { workspaceDirs, claudeCommand: configured }) {
+export async function startSession(request, { workspaceDirs, claudeCommand: configured }, linkedMode) {
+    const asked = request.mode === undefined ? 'server' : request.mode
+    if (typeof asked !== 'string' || !Object.hasOwn(OUTLINE_COMMANDS, asked)) throw new Error('unknown mode')
+    const mode = (request.kind === 'resume' && linkedMode) || asked
     let cwd, project, label
     const args = ['--permission-mode', 'auto']
     const topic = String(request.topic || '').trim().slice(0, 120)
@@ -316,11 +321,12 @@ export async function startSession(request, { workspaceDirs, claudeCommand: conf
     } else throw new Error('unknown kind')
 
     if (topic && request.kind !== 'resume') args.push('--name', topic)
-    // The session gets the plugin from this checkout (its skill, its MCP tools and its hooks), installed or not.
+    // The session gets the plugin from this checkout (its skills, its MCP tools and its hooks), installed or not.
     args.push('--plugin-dir', PLUGIN_DIR)
-    // The outline's own tools need no asking: they change nothing but the outline.
-    args.push('--allowedTools', 'mcp__plugin_outline-only_outline')
-    const prompt = request.kind === 'resume' ? OUTLINE_COMMAND : `${OUTLINE_COMMAND} ${topic}`.trim()
+    // In server mode the outline's own tools need no asking: they change nothing but the outline. A session in file
+    // mode does not use them.
+    if (mode === 'server') args.push('--allowedTools', 'mcp__plugin_outline-only_outline')
+    const prompt = request.kind === 'resume' ? OUTLINE_COMMANDS[mode] : `${OUTLINE_COMMANDS[mode]} ${topic}`.trim()
 
     let name = slug(label)
     for (let i = 2; hasTmuxSession(name); i++) name = `${slug(label).slice(0, 36)}-${i}`

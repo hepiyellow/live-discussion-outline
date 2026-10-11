@@ -180,6 +180,7 @@ export interface OutlineSummary {
     resume: string
     terminal: string
     session: string
+    mode: Mode
     /** Last change, in ms since the epoch. */
     mtime: number
 }
@@ -207,7 +208,8 @@ export interface OutlineList {
 /** What "New session" can start from, from GET /api/start-options (start.js). */
 export interface StartOptions {
     workspaces: { file: string; name: string; folders: { name: string }[] }[]
-    sessions: { id: string; mtime: number; cwd: string; title: string; openIn?: { app: string; pid?: number; tmux?: string } }[]
+    /** `mode`: the mode of the outline that links to the session, when one does; resumed, the session keeps it. */
+    sessions: { id: string; mtime: number; cwd: string; title: string; openIn?: { app: string; pid?: number; tmux?: string }; mode?: Mode }[]
 }
 
 /** A folder and its subfolders, from GET /api/dirs. */

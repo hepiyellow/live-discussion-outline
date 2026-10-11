@@ -377,7 +377,7 @@ const STATUS_KEYS = ['✅', '❓', '🔥']
 
 /** Title from the `Title:` line, plus counts of approved and open topics. */
 function summarize(file, fallback) {
-    const { title, resume, terminal, session, source } = extractHeaders(fs.readFileSync(file, 'utf8'))
+    const { title, resume, terminal, session, mode, source } = extractHeaders(fs.readFileSync(file, 'utf8'))
     const lines = source.split('\n')
     const counts = { done: 0, open: 0, now: 0 }
     for (const line of lines) {
@@ -387,7 +387,7 @@ function summarize(file, fallback) {
         else if (text.startsWith(STATUS_KEYS[1])) counts.open++
         else if (text.startsWith(STATUS_KEYS[2])) counts.now++
     }
-    return { title: title || fallback, counts, checkbox: countCheckboxProgress(source), resume, terminal, session }
+    return { title: title || fallback, counts, checkbox: countCheckboxProgress(source), resume, terminal, session, mode }
 }
 
 function json(res, status, value) {
@@ -417,7 +417,8 @@ async function startApi(req, res, pathname, url) {
             const running = runningInApp()
             const workspaces = findWorkspaces(config.workspaceDirs)
             refreshWorkspaces(workspaces)
-            return json(res, 200, { workspaces, sessions: recentSessions().map(s => ({ ...s, openIn: running.get(s.id) })) })
+            const modes = linkedModes()
+            return json(res, 200, { workspaces, sessions: recentSessions().map(s => ({ ...s, openIn: running.get(s.id), mode: modes.get(s.id) })) })
         }
         if (pathname === '/api/commands') {
             const session = url.searchParams.get('session') || ''
@@ -429,7 +430,7 @@ async function startApi(req, res, pathname, url) {
             const request = await readJson(req)
             const inTmux = request.kind === 'resume' && runningInApp().get(request.id)
             if (inTmux?.tmux) return json(res, 409, { error: `This session is already running in tmux session ${inTmux.tmux}.`, openIn: inTmux })
-            const terminal = await startSession(request, config)
+            const terminal = await startSession(request, config, request.kind === 'resume' ? linkedModes().get(request.id) : undefined)
             pushList()
             return json(res, 200, { terminal })
         }
@@ -443,6 +444,13 @@ async function startApi(req, res, pathname, url) {
     } catch (e) {
         json(res, e.openIn ? 409 : 400, { error: e.message, openIn: e.openIn })
     }
+}
+
+/** The mode of the outline that links to each session (the newest, when several do): a resumed session keeps it. */
+function linkedModes() {
+    const modes = new Map()
+    for (const { session, mode } of listMaps()) if (session && !modes.has(session)) modes.set(session, mode)
+    return modes
 }
 
 /** Running sessions, plus those an outline links to a live tmux session (idle ones show no process to find). */

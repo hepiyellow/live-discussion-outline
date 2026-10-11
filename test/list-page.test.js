@@ -98,4 +98,44 @@ describe('the outline list', () => {
         await dialog.getByRole('button', { name: 'Cancel' }).click()
         await dialog.waitFor({ state: 'detached' })
     })
+
+    test('the new-session dialog offers the two modes, server mode first; a session with an outline keeps its mode', async () => {
+        // What the dialog asks the server to start; the test answers in its place, so nothing starts.
+        const asked = []
+        await page.route('**/api/start', async route => {
+            asked.push(route.request().postDataJSON())
+            await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'Not started: this is a test.' }) })
+        })
+        const start = async () => {
+            await dialog.getByRole('button', { name: 'Start' }).click()
+            await dialog.getByRole('alert').filter({ hasText: 'Not started' }).waitFor()
+            return asked.at(-1)
+        }
+        await page.locator('nav[aria-label="Outlines"]').getByRole('button', { name: 'New', exact: true }).click()
+        const dialog = page.getByRole('dialog', { name: 'New session' })
+        await page.waitForFunction(() => document.querySelector('[aria-label="Folder"]')?.value.length > 0)
+        const modes = dialog.getByRole('radiogroup', { name: 'Mode' })
+        const mode = name => modes.getByRole('radio', { name })
+        assert.deepEqual([await mode('Server mode').isChecked(), await mode('File mode').isChecked()], [true, false])
+        assert.match(await modes.textContent(), /The server keeps the outline/)
+        assert.equal((await start()).mode, 'server')
+        await mode('File mode').check()
+        assert.match(await modes.textContent(), /The agent writes the outline as a file/)
+        const request = await start()
+        assert.deepEqual([request.kind, request.mode], ['folder', 'file'])
+        // The fixture transcript's session has an outline, sample.md, which its agent writes as a file: resumed, it
+        // stays in file mode, and the dialog says so in place of the choice.
+        await mode('Server mode').check()
+        await dialog.getByRole('tab', { name: 'Resume a session' }).click()
+        await dialog.getByText('Caching search results').waitFor()
+        await modes.getByText('This session already has an outline in file mode, and keeps it.').waitFor()
+        assert.deepEqual([await mode('File mode').isChecked(), await mode('File mode').isDisabled(), await mode('Server mode').isDisabled()], [true, true, true])
+        const resume = await start()
+        assert.deepEqual([resume.kind, resume.mode], ['resume', 'file'])
+        // Back on a folder, the choice made there stands.
+        await dialog.getByRole('tab', { name: 'Folder' }).click()
+        assert.deepEqual([await mode('Server mode').isChecked(), await mode('Server mode').isDisabled()], [true, false])
+        await dialog.getByRole('button', { name: 'Cancel' }).click()
+        await dialog.waitFor({ state: 'detached' })
+    })
 })

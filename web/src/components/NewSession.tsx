@@ -4,10 +4,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, liveHref } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { DirListing, StartOptions } from '@/types'
+import type { DirListing, Mode, StartOptions } from '@/types'
 
 type Kind = 'workspace' | 'folder' | 'resume'
-type StartRequest = { kind: 'workspace'; file: string; topic: string } | { kind: 'folder'; path: string; topic: string } | { kind: 'resume'; id: string; stopOther?: boolean }
+type StartRequest = ({ kind: 'workspace'; file: string; topic: string } | { kind: 'folder'; path: string; topic: string } | { kind: 'resume'; id: string; stopOther?: boolean }) & { mode: Mode }
 type OpenIn = { app: string; pid?: number; tmux?: string }
 
 const ago = (t: number) => {
@@ -17,9 +17,16 @@ const ago = (t: number) => {
 
 const row = 'flex cursor-pointer items-baseline gap-2.5 rounded-md px-2 py-[7px] hover:bg-accent'
 
+/** What each mode means for the user, under the choice between them. */
+const MODE_NOTE: Record<Mode, string> = {
+    server: 'The server keeps the outline: the agent changes it through the outline tools, and your ticks are recorded at once.',
+    file: 'The agent writes the outline as a file: your ticks reach it as messages, and wait until it records them.',
+}
+
 /**
  * "New session": starts an agent session in tmux from a Cursor workspace, a folder, or a past Claude Code session
- * (resumed), with the skill as its first message. The main area shows its terminal until the outline's first version is
+ * (resumed), with the skill of the mode chosen as its first message. A resumed session that already has an outline
+ * keeps that outline's mode. The main area shows its terminal until the outline's first version is
  * written, then opens the outline. `trigger` is the button that opens it, when not the default one.
  */
 export function NewSession({ trigger }: { trigger?: React.ReactNode } = {}) {
@@ -31,6 +38,7 @@ export function NewSession({ trigger }: { trigger?: React.ReactNode } = {}) {
     const [workspace, setWorkspace] = useState('')
     const [session, setSession] = useState('')
     const [topic, setTopic] = useState('')
+    const [chosen, setChosen] = useState<Mode>('server')
     const [error, setError] = useState('')
     const [openIn, setOpenIn] = useState<{ request: StartRequest; where: OpenIn } | null>(null)
     const [busy, setBusy] = useState(false)
@@ -74,10 +82,13 @@ export function NewSession({ trigger }: { trigger?: React.ReactNode } = {}) {
         }
         setBusy(false)
     }
+    // The mode of the outline the session to resume already has: not a choice.
+    const kept = kind === 'resume' ? options?.sessions.find(s => s.id === session)?.mode : undefined
+    const mode = kept ?? chosen
     const request = (): StartRequest | null => {
-        if (kind === 'workspace') return workspace ? { kind, file: workspace, topic: topic.trim() } : null
-        if (kind === 'folder') return { kind, path, topic: topic.trim() }
-        return session ? { kind, id: session } : null
+        if (kind === 'workspace') return workspace ? { kind, file: workspace, topic: topic.trim(), mode } : null
+        if (kind === 'folder') return { kind, path, topic: topic.trim(), mode }
+        return session ? { kind, id: session, mode } : null
     }
 
     return (
@@ -196,6 +207,19 @@ export function NewSession({ trigger }: { trigger?: React.ReactNode } = {}) {
                     </TabsContent>
                 </Tabs>
                 <div className="flex flex-col gap-2 border-t px-5 py-3">
+                    <div role="radiogroup" aria-label="Mode" className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13px]">
+                        <span>Outline</span>
+                        {(['server', 'file'] as const).map(m => (
+                            <label key={m} className={cn('flex items-baseline gap-1.5', kept ? 'text-muted-foreground' : 'cursor-pointer')}>
+                                <input type="radio" name="mode" checked={mode === m} disabled={!!kept} onChange={() => setChosen(m)} />
+                                {m === 'server' ? 'Server mode' : 'File mode'}
+                            </label>
+                        ))}
+                        <span data-mode-note className="basis-full text-xs text-muted-foreground">
+                            {kept ? `This session already has an outline in ${kept} mode, and keeps it. ` : ''}
+                            {MODE_NOTE[mode]}
+                        </span>
+                    </div>
                     <label className={cn('flex items-center gap-2 text-[13px]', kind === 'resume' && 'hidden')}>
                         Topic
                         <input
