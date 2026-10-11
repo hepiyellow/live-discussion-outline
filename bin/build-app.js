@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { SCHEME } from '../app/links.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const out = path.join(root, 'dist')
@@ -32,6 +33,8 @@ const [built] = await packager({
     icon: path.join(root, 'app', 'icon', 'icon.icns'),
     appBundleId: 'io.github.hepiyellow.outline-only',
     appCategoryType: 'public.app-category.productivity',
+    // The app's links (app/links.js): the Info.plist says which scheme the app opens.
+    protocols: [{ name: productName, schemes: [SCHEME] }],
     // No asar archive, so node-pty's binary and spawn-helper, web/dist and the server's files load as from the repo.
     asar: false,
     // Dev dependencies are left out (Vite, React and the rest are already built into web/dist).
@@ -65,6 +68,8 @@ if (!buildOnly) {
     fs.rmSync(installed, { recursive: true, force: true })
     // ditto keeps the bundle's symlinks, modes and signature as they are.
     run('ditto', [app, installed])
+    // One copy of the app on this Mac: a second one would also claim the app's links.
+    fs.rmSync(out, { recursive: true, force: true })
     console.log(`installed ${installed}`)
     run(process.execPath, [path.join(root, 'bin', 'install-skill.js')])
 }

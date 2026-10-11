@@ -11,14 +11,17 @@ const SETTLED_MS = 60_000
  *
  * `onListening(port)` is called each time the server listens. A server that dies is started again once, on the port it
  * had; if that one dies too before it has run for a minute, `onGaveUp()` is called, and `start()` tries again.
+ * `stop()` then `start()` is for a change of settings, and does not count as dying.
  */
 export function superviseServer({ fork, port = 0, onListening, onGaveUp, now = Date.now }) {
     let child
+    let alive = false
     let restartedAt = -Infinity
     let stopped = false
 
     function start() {
         stopped = false
+        alive = true
         const mine = (child = fork(['--port', String(port)]))
         mine.on('message', message => {
             if (mine !== child || !Number.isInteger(message?.port)) return
@@ -27,17 +30,24 @@ export function superviseServer({ fork, port = 0, onListening, onGaveUp, now = D
             onListening(port)
         })
         mine.once('exit', () => {
-            if (mine !== child || stopped) return
+            if (mine !== child) return
+            alive = false
+            if (stopped) return
             if (now() - restartedAt < SETTLED_MS) return onGaveUp()
             restartedAt = now()
             start()
         })
     }
 
-    /** Ends the server, and does not start it again. */
+    /** Ends the server, and does not start it again. Resolves once its process is gone, so its port is free. */
     function stop() {
         stopped = true
-        child?.kill()
+        if (!alive) return Promise.resolve()
+        const mine = child
+        return new Promise(resolve => {
+            mine.once('exit', () => resolve())
+            mine.kill()
+        })
     }
 
     start()

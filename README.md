@@ -104,7 +104,7 @@ The format is plain markdown: a `Title:` line, then numbered headings as nodes w
 npm run app    # builds "Outline Only.app", installs it in /Applications, and links the skill
 ```
 
-The Outline app, named **Outline Only** in the Dock, runs the server while it is open and shows the page in one window; closing the window quits it and stops the server. It listens on a port of its own (`appPort` in the settings file, picked on the first launch and kept), so it and `npm start` do not compete for one. It is built for this Mac only: signed ad hoc, not notarized, with no updater, so run `npm run app` again after a `git pull` (quit the app first). `npm run app -- --build-only` leaves the app in `dist/` without installing it, and `npm run icon` rebuilds its icon from `app/icon/icon.svg`.
+The Outline app, named **Outline Only** in the Dock, runs the server while it is open and shows the page in one window; closing the window quits it and stops the server. It listens on a port of its own (`appPort` in the settings file, picked on the first launch and kept), so it and `npm start` do not compete for one. On its first run, when there is no settings file yet, it asks where outlines are kept, proposing `~/live-discussion-outlines`. **Settings › Change Outlines Folder…** (in the app's own menu) picks another folder and offers to move the outlines there, with the trash and what the page remembers for each outline; it first names the outlines whose session is still running, since those sessions keep writing to the old folder. Once installed, it writes `linkBase` into the settings file, and links of the form `outline-only://open/<project>/<file>` open it on that outline, starting it if needed; only the installed app takes them, not `npm run app:dev`. It is built for this Mac only: signed ad hoc, not notarized, with no updater, so run `npm run app` again after a `git pull` (quit the app first). `npm run app -- --build-only` leaves the app in `dist/` without installing it, and `npm run icon` rebuilds its icon from `app/icon/icon.svg`.
 
 ### Viewing
 
@@ -141,6 +141,8 @@ Settings come from one settings file, `~/.config/live-discussion-outline/config.
 | Server port | `port` | `4577` |
 | Bind address | `host` (or the `OUTLINE_HOST` environment variable) | `127.0.0.1` |
 | Template for the resume link or command the agent writes into each outline; `{session}` is replaced by the chat's session id | `resumeTemplate` | none |
+| Port the Outline app listens on; the app picks and writes it | `appPort` | a free port |
+| Start of the links to outlines, followed by `/<project>/<file>`; the installed app writes `outline-only://open` | `linkBase` | `http://localhost:<port>` |
 
 The file is at a fixed path, and no environment variable overrides the outlines folder, the port or the resume template: the agent and the server both read the file, so they cannot disagree about where outlines go ([ADR 0002](docs/adr/0002-the-outline-app-owns-the-server.md)). `OUTLINE_DIR`, `OUTLINE_PORT`, `OUTLINE_CONFIG` and `OUTLINE_RESUME_TEMPLATE` are no longer read; put those values in the file.
 

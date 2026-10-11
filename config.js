@@ -8,7 +8,10 @@ import path from 'node:path'
  */
 export const settingsFile = () => path.join(os.homedir(), '.config', 'live-discussion-outline', 'config.json')
 
-const expandHome = p => (p === '~' || p.startsWith('~/') ? path.join(os.homedir(), p.slice(1)) : p)
+/** The outlines folder when the settings file is missing or has no `dir`: the same for the skill, the server and the app. */
+export const DEFAULT_DIR = '~/live-discussion-outlines'
+
+export const expandHome = p => (p === '~' || p.startsWith('~/') ? path.join(os.homedir(), p.slice(1)) : p)
 
 /** The settings file's keys as written, or none when it is missing or unreadable. */
 function readSettings() {
@@ -30,7 +33,7 @@ function readSettings() {
  */
 export function loadConfig() {
     const file = readSettings()
-    const dir = path.resolve(expandHome(file.dir || '~/live-discussion-outlines'))
+    const dir = path.resolve(expandHome(file.dir || DEFAULT_DIR))
     const port = Number(file.port || 4577)
     // The port the Outline app picked and keeps; `port` is what `npm start` listens on.
     const appPort = Number(file.appPort || 0)

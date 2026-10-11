@@ -40,13 +40,13 @@ From the outline, by node number:
   "resumeTemplate": "cursor://anthropic.claude-code/open?session={session}",
   "port": 4577,
   "appPort": 51234,
-  "linkBase": "outline://open"
+  "linkBase": "outline-only://open"
 }
 ```
 
 - `dir`, `resumeTemplate`, `port`, `workspaceDirs`, `claudeCommand`: as today. `port` is what `npm start` listens on.
 - `appPort` (new): the port the app picked and keeps. Separate from `port`, so the app and `npm start` from the repo never fight over one port.
-- `linkBase` (new): the start of every link the skill prints, followed by `/<project>/<file>`. The app writes `outline://open`; without the key it is `http://localhost:<port>`. The project goes in the path, not the host, because URL parsers lowercase hosts and project names have capitals (`ma3-pro-plugins-mainV2`).
+- `linkBase` (new): the start of every link the skill prints, followed by `/<project>/<file>`. The app writes `outline-only://open`; without the key it is `http://localhost:<port>`. The project goes in the path, not the host, because URL parsers lowercase hosts and project names have capitals (`ma3-pro-plugins-mainV2`).
 - Whoever writes the file keeps the keys it does not own.
 
 ## Steps
@@ -102,15 +102,15 @@ From the outline, by node number:
 **Checks:** the move plan (what moves, what is skipped because the target exists, which outlines have running sessions) as a pure function, tested on a fixture folder.
 **Review:** first launch with no settings file; change the folder with a session running, and see it named.
 
-### 6. outline:// links
+### 6. outline-only:// links
 
-- First, by hand: print `outline://open/demo/sample` in the Claude Code terminal (in iTerm and Terminal), in the Claude desktop app and in Cursor's chat, and check each makes it clickable. If one does not, stop and decide (see **Open**) before building.
-- The packaged app registers the scheme (`protocols` in the packager options, so it lands in `Info.plist`); `npm run app:dev` registers it with `app.setAsDefaultProtocolClient`.
-- `open-url` is handled from `will-finish-launching` on, so a link that starts the app is not lost: `outline://open/<project>/<file>` shows `/<project>/<file>` in the window, starting the app if needed.
-- The app writes `linkBase: "outline://open"` into the settings file.
+- First, by hand: print `outline-only://open/demo/sample` in the Claude Code terminal (in iTerm and Terminal), in the Claude desktop app and in Cursor's chat, and check each makes it clickable. If one does not, stop and decide (see **Open**) before building.
+- The packaged app registers the scheme (`protocols` in the packager options, so it lands in `Info.plist`). `npm run app:dev` does not: macOS hands links only to an app whose `Info.plist` names the scheme, and `app.setAsDefaultProtocolClient` from the repo would name the bare Electron app, which cannot start this checkout. So the app run from the repo neither receives links nor writes `linkBase`.
+- `open-url` is handled from the app's first line on, so a link that starts the app is not lost: the entry point is a small CommonJS file (`app/entry.cjs`) that holds such links until `app/main.js`, an ES module that loads a moment later, takes them. `outline-only://open/<project>/<file>` shows `/<project>/<file>` in the window, starting the app if needed.
+- The app writes `linkBase: "outline-only://open"` into the settings file.
 
 **Checks:** `app/links.js` maps link to page path (capitals and dashes in the project kept, anything outside `open/<project>/<file>` refused).
-**Review:** with the app closed, clicking an `outline://` link in each of those places opens it on that outline.
+**Review:** with the app closed, clicking an `outline-only://` link in each of those places opens it on that outline.
 
 ### 7. The skill reads the settings file
 
@@ -120,7 +120,7 @@ From the outline, by node number:
 - Last on purpose: until steps 3 to 6, `ensure.js` is what starts the server for agents.
 
 **Checks:** nothing imports or mentions `ensure.js`; `/health` is a 404.
-**Review:** a new Claude Code session, with the app closed, writes its outline into your folder and replies with an `outline://` link; with no settings file, into `~/live-discussion-outlines` with an `http://` link.
+**Review:** a new Claude Code session, with the app closed, writes its outline into your folder and replies with an `outline-only://` link; with no settings file, into `~/live-discussion-outlines` with an `http://` link.
 
 ### 8. The input box at the bottom
 
@@ -134,7 +134,7 @@ From the outline, by node number:
 ## Open
 
 - **ADR 0002.** "The Outline app owns the server; agents find the outlines folder through one settings file" meets the three criteria (hard to reverse once skills in the wild read the file, surprising without context, a real trade-off against `ensure.js` starting the server and against the app writing into the skill). Recommended: write it with step 1.
-- **The scheme's name.** `outline://` is short but generic; another app may claim it (an Outline wiki client, for one), and macOS then picks one of them. Recommended: a distinctive name, `live-outline://`, decided before step 6.
+- **The scheme's name.** Decided on 2026-10-10: `outline-only://`, after the app's name. `outline://` is short but generic; another app may claim it (an Outline wiki client, for one), and macOS then picks one of them.
 - **The remaining overrides.** `OUTLINE_RESUME_TEMPLATE` makes the server and the skill disagree like the others (the skill reads the file); recommended: drop it in step 1. `OUTLINE_HOST`, `OUTLINE_WORKSPACE_DIRS` and `OUTLINE_CLAUDE` only affect the server; they can stay.
 - **A link that fails to be clickable** in step 6's check: print both links in that agent, or only `http://` there.
 

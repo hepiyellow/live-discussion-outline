@@ -8,7 +8,7 @@
   },
   "description": "Watches markdown outlines of an AI-agent conversation and serves them as a collapsible, live-updating page.",
   "type": "module",
-  "main": "app/main.js",
+  "main": "app/entry.cjs",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js --dev",
