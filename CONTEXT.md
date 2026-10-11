@@ -20,6 +20,10 @@ _Avoid_: Edit, command, patch
 An outline without its text: each node's number, title and what it is. The server hands it to the agent so the agent knows what the outline holds.
 _Avoid_: Summary (that is a node's closing sentence), index
 
+**Mode**:
+Who writes an outline, fixed when its outline session starts: in **file mode** the agent writes the outline itself, following a skill; in **server mode** the server writes it and the agent sends operations.
+_Avoid_: MCP mode (MCP is only how operations travel), markdown mode (both modes store markdown), legacy
+
 **Title**:
 The name of an outline session; the agent gives it when it starts the outline, and the user can rename it from the page.
 _Avoid_: Name, heading (a heading is a node)
