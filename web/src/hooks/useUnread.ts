@@ -45,6 +45,9 @@ export function useUnread(outline: Outline, viewer: ViewerState, stateLoaded: bo
             const body = node.children.length ? row?.parentElement?.querySelector<HTMLElement>(':scope > .kids > .group-text') : row?.querySelector<HTMLElement>(':scope > .node-html')
             const now = allNodes(latest.current.nodes).find(n => n.num === node.num) ?? node
             setOpening(o => new Set(o).add(node.num))
+            // A collapsed node (an approved or done one starts so) is shown by the diff; its open state follows, or the
+            // triangle would say closed over the text and the next click on the row would only open it.
+            if (body?.hidden || body?.closest('[hidden]')) patch({ open: { [node.num]: true } })
             try {
                 if (title && body) {
                     body.hidden = false

@@ -1,4 +1,4 @@
-import { allNodes } from '@/lib/outline'
+import { allNodes, stillRunning } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import type { Outline, OutlineNode, StatePatch, UndoStep, ViewerState } from '@/types'
 
@@ -94,7 +94,7 @@ export function undoStep(outline: Outline, draft: Draft): UndoStep | null {
 
 /** Run requests that ended: the node is no longer an action waiting to run (the agent finished it, or it is gone). */
 export function settledPatch(outline: Outline, v: ViewerState): StatePatch | null {
-    const waiting = new Set(allNodes(outline.nodes).filter(n => n.tags.includes('action') && !n.tags.includes('ran') && !n.tags.includes('failed')).map(n => n.num))
+    const waiting = new Set(allNodes(outline.nodes).filter(n => stillRunning(n, v.runs[n.num])).map(n => n.num))
     const ran = Object.keys(v.runs).filter(k => !waiting.has(k))
     return ran.length ? { runs: Object.fromEntries(ran.map(k => [k, null])) } : null
 }

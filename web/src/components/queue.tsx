@@ -13,7 +13,7 @@ export const DIFF_ICON = (
 /** How each kind of queue item is drawn: in the queue column, and beside the node it is about. */
 export const KINDS: Record<QueueItem['kind'], { name: string; color: string; icon: React.ReactNode }> = {
     decide: { name: 'Decide', color: 'var(--danger)', icon: <CircleHelp aria-hidden="true" /> },
-    approve: { name: 'Approve', color: 'var(--claim)', icon: <CircleCheck aria-hidden="true" /> },
+    approve: { name: 'Approve', color: 'var(--approved)', icon: <CircleCheck aria-hidden="true" /> },
     action: {
         name: 'Run',
         color: 'var(--danger)',
@@ -30,7 +30,7 @@ export const KINDS: Record<QueueItem['kind'], { name: string; color: string; ico
  * Whether the user has handled a queue item on the page: an action once run, anything else once it (or every node
  * under it) is approved or picked. The agent drops it from the file later.
  */
-function handled(item: QueueItem, statuses: Statuses, runs: Record<string, number>) {
+function handled(item: QueueItem, statuses: Statuses, runs: Record<string, number | string>) {
     const node = allNodes(statuses.nodes).find(n => n.num === item.num)
     if (!node) return { missing: true, done: false }
     if (item.kind === 'action' && node.level > 1) return { missing: false, done: !node.tags.includes('action') || node.tags.includes('ran') || !!runs[node.num] }
@@ -52,5 +52,5 @@ function shownKind(item: QueueItem, statuses: Statuses): QueueItem['kind'] {
 }
 
 /** The queue items still waiting for the user, in the agent's order; `missing` when the outline has no such node. */
-export const waiting = (queue: QueueItem[], statuses: Statuses, runs: Record<string, number>) =>
+export const waiting = (queue: QueueItem[], statuses: Statuses, runs: Record<string, number | string>) =>
     queue.map(item => ({ item: { ...item, kind: shownKind(item, statuses) }, ...handled(item, statuses, runs) })).filter(q => !q.done)

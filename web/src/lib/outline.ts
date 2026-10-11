@@ -34,8 +34,23 @@ export function currentPath(nodes: OutlineNode[]): Set<string> {
 /** Whether a node has nodes under it, and so can collapse. */
 export const isParent = (node: OutlineNode) => node.children.length > 0
 
-/** A topic or parent node starts open unless the user approved it; the viewer's own choices override that. */
-export const startsOpen = (node: OutlineNode) => node.status !== 'approved'
+/** A node starts open unless the user approved it or the agent carried it out; the viewer's own choices override that. */
+export const startsOpen = (node: OutlineNode) => node.status !== 'approved' && !node.tags.includes('ran')
+
+/**
+ * What `runs` keeps for an action the viewer asked to run: 1, or for an action that failed before (its Failed tag
+ * stays until the agent finishes it again) a mark of what the node showed then, so that a new outcome ends the run.
+ */
+export const runMark = (node: OutlineNode): number | string => {
+    if (!node.tags.includes('failed')) return 1
+    let h = 0
+    for (const ch of node.html + node.closing.map(c => c.html).join('\n')) h = (h * 31 + ch.charCodeAt(0)) | 0
+    return `failed:${h}`
+}
+
+/** Whether an action the viewer asked to run is still waiting for the agent: not done, and not failed anew. */
+export const stillRunning = (node: OutlineNode, mark: unknown) =>
+    node.tags.includes('action') && !node.tags.includes('ran') && (!node.tags.includes('failed') || mark === runMark(node))
 
 /** The reference label of a node: its number and title, as references and the queue name it. */
 export const nodeLabel = (node: OutlineNode) => `${node.num} ${node.title}`.trim()

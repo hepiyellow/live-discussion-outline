@@ -4,7 +4,7 @@ import { isOpenIn } from '@/components/OutlineTab'
 import { referenceTo, removalOf } from '@/lib/references'
 import { Approvals, emptyDraft, settledPatch, ticksOf, undoStep, type Tick } from '@/lib/serverApprovals'
 import { api, outlineApiPath } from '@/lib/api'
-import { allNodes, pathNums } from '@/lib/outline'
+import { allNodes, pathNums, runMark } from '@/lib/outline'
 import { copyText } from '@/lib/send'
 import { Statuses } from '@/lib/status'
 import { collapseAnimated } from '@/lib/sticky'
@@ -97,12 +97,14 @@ export function useServerApprovals(outline: Outline, viewer: ViewerState, patch:
         async (node: OutlineNode) => {
             const { outline, viewer } = latest.current
             if (viewer.runs[node.num]) return
+            // The action shows as running from the click, not from the server's answer; a refusal takes it back.
+            patch({ runs: { [node.num]: runMark(node) } })
             try {
                 const { typed } = await api<{ typed: boolean }>(`/api/outline/${outlineApiPath(outline.project, outline.file)}/act`, { run: node.num })
-                patch({ runs: { [node.num]: 1 } })
                 if (typed) onSent()
                 notify(typed ? `Asked the agent to run ${node.num}` : `Recorded: the agent runs ${node.num} with your next message`)
             } catch (e) {
+                patch({ runs: { [node.num]: null } })
                 notify(`Not sent: ${(e as Error).message}`, true)
             }
         },

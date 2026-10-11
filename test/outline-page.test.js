@@ -68,7 +68,7 @@ for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mod
             '2.2.2': 'open',
             '2.3': 'claim',
             '2.4': 'open',
-            // An action the agent has carried out: a filled yellow tick.
+            // An action the agent has carried out: a yellow outlined tick.
             '2.5': 'done',
             3: 'mixed',
             '3.2': 'claim',
@@ -152,6 +152,38 @@ for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mod
         const bar = await page.locator('[data-topbar]').evaluate(e => e.offsetHeight)
         assert.equal(tops[0], bar)
         assert.ok(tops[1] > tops[0] && tops[2] > tops[1], tops.join(' < '))
+    })
+
+    test('the page stays still while headers stick and blocks end under them', async () => {
+        await page.setViewportSize({ width: 1200, height: 500 })
+        // Without the browser's scroll anchoring, which can hide a page that moves under a scroll position that does not.
+        await page.addStyleTag({ content: '* { overflow-anchor: none !important; }' })
+        await page.getByRole('button', { name: 'Expand all' }).click()
+        const seen = await page.evaluate(async () => {
+            const frame = () => new Promise(r => requestAnimationFrame(r))
+            const last = document.querySelector('.outline-tab .topic:last-child')
+            // Where the last topic is in the page: a stuck header that gave up its room would pull it up.
+            const place = () => Math.round((last.getBoundingClientRect().top + scrollY) * 10) / 10
+            scrollTo(0, 0)
+            await frame()
+            await frame()
+            const at = place()
+            const max = document.documentElement.scrollHeight - innerHeight
+            const moved = []
+            let stuck = 0
+            for (let y = 0; y <= max; y += 3) {
+                scrollTo(0, y)
+                for (let i = 0; i < 3; i++) {
+                    await frame()
+                    if (place() !== at) moved.push(y)
+                }
+                stuck = Math.max(stuck, document.querySelectorAll('.outline-tab [data-stuck]').length)
+            }
+            return { max, stuck, moved: [...new Set(moved)] }
+        })
+        // The scroll went past headers that stuck, several deep, and nothing below them ever moved.
+        assert.ok(seen.max > 300 && seen.stuck >= 3, JSON.stringify(seen))
+        assert.deepEqual(seen.moved, [])
     })
 
     test('the Markdown tab', async () => {

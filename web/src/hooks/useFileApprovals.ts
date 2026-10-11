@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useNotify } from '@/components/Notice'
 import { isOpenIn } from '@/components/OutlineTab'
 import { Approvals, approvalText, batchNums, diffDraft, draftOf, pendingNums, settledPatch, snapshot, undoStep, type Retracted } from '@/lib/fileApprovals'
-import { allNodes, nodeLabel, pathNums } from '@/lib/outline'
+import { allNodes, nodeLabel, pathNums, runMark } from '@/lib/outline'
 import { flyTo } from '@/lib/fly'
 import { referenceTo, removalOf } from '@/lib/references'
 import { copyText, sendToSession } from '@/lib/send'
@@ -136,12 +136,14 @@ export function useFileApprovals(outline: Outline, viewer: ViewerState, patch: (
                 if (await copyText(text)) notify('Copied to clipboard')
                 return
             }
+            // The action shows as running from the click, not from the answer; a refusal takes it back.
+            patch({ runs: { [node.num]: runMark(node) } })
             try {
                 await sendToSession(outline.terminal, text)
-                patch({ runs: { [node.num]: 1 } })
                 onSent()
                 notify(`Sent: ${text}`)
             } catch (e) {
+                patch({ runs: { [node.num]: null } })
                 notify(`Not sent: ${(e as Error).message}`, true)
             }
         },

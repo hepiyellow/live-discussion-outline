@@ -54,13 +54,16 @@ describe('approvals, picks, runs and undo in server mode', () => {
     const shows = (num, want) => until(async () => (await state(num)) === want, { what: `${num} to show ${want}` })
     const file = () => fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8')
     const heading = num => file().split('\n').find(line => new RegExp(`^#+ ${num.replaceAll('.', '\\.')}\\.? `).test(line))
+    /** A change the agent makes through its tools. */
+    const change = async ops =>
+        (await fetch(`${server.url}/api/agent/change`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-outline-agent': '1' }, body: JSON.stringify({ session: SESSION, ops }) })).json()
     /** What the agent is told with the user's next prompt (the plugin's hook asks for it). */
     const told = async () =>
         (await (await fetch(`${server.url}/api/agent/pending`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-outline-agent': '1' }, body: JSON.stringify({ session: SESSION }) })).json()).text
 
     test('ticking an open node records the approval in the outline at once', async () => {
         await box('2.4').click()
-        await shows('2.4', 'approved')
+        await shows('2.4', 'pending')
         assert.equal(heading('2.4'), '## 2.4 @user-approved @action Measure the hit rate on staging')
         // The agent learns of it with the user's next prompt; nothing is typed into its session.
         assert.match(await told(), /the user:\n- approved 2\.4 Measure the hit rate on staging\n/)
@@ -72,42 +75,42 @@ describe('approvals, picks, runs and undo in server mode', () => {
         // Nothing is queued in server mode, and the box says so.
         assert.equal(await box('2.3').getAttribute('title'), 'Claim — click to approve it')
         await box('2.3').click()
-        await shows('2.3', 'approved')
+        await shows('2.3', 'pending')
         assert.equal(heading('2.3'), '## 2.3 @user-approved @agent-claim Cache key')
     })
 
     test('picking an option answers its question and collapses it', async () => {
         await box('2.1.1').click()
-        await shows('2.1.1', 'approved')
+        await shows('2.1.1', 'pending')
         assert.equal(await state('2.1.2'), 'open')
         assert.equal(heading('2.1.1'), '### 2.1.1 @user-approved @option_A In each service instance')
         assert.equal(heading('2.1'), '## 2.1 @user-approved @options Cache placement')
         await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.1"]').getAttribute('aria-expanded') === 'false')
-        assert.equal(await state('2.1'), 'approved')
+        assert.equal(await state('2.1'), 'pending')
         assert.match(await told(), /- picked 2\.1\.1 \(A\) In each service instance\n/)
     })
 
     test('the question’s own box picks the recommended option', async () => {
         await box('2.1').click()
-        await shows('2.1', 'approved')
+        await shows('2.1', 'pending')
         assert.equal(heading('2.1.2'), '### 2.1.2 @user-approved @recommended @option_B A shared Redis cluster')
     })
 
-    test('play asks the agent to run the action, then waits', async () => {
-        const play = node('2.4').locator('.play')
+    test('the Action tag is the button that runs the action, then waits', async () => {
+        const play = node('2.4').locator('.closing [data-run]')
         await click(play)
-        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.4"] .play').classList.contains('sent'))
+        await node('2.4').locator('[data-run-sent]').waitFor()
         // No session terminal to type into: the agent is told with the user's next prompt.
         assert.match(await told(), /- pressed Run on 2\.4 Measure the hit rate on staging: carry it out now/)
         await play.click()
         await page.waitForTimeout(300)
         assert.equal(await told(), '')
-        // A node already run has no play button.
-        assert.equal(await node('2.5').locator('.play').count(), 0)
+        // A node already run has no triangle and no button.
+        assert.equal(await node('2.5').locator('.play, [data-run]').count(), 0)
         // Once the agent finishes it, the run request is forgotten.
         await until(async () => '2.4' in (await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read, { what: 'the first visit to be recorded' })
         fs.writeFileSync(path.join(server.dir, 'demo', 'sample.md'), file().replace('## 2.4 @action Measure', '## 2.4 @action-done Measure'))
-        // The node has changed: its play button goes, and opening the change turns its Action tag into Done.
+        // The node has changed: its triangle goes, and opening the change turns its Action tag into Done.
         await node('2.4').locator('> .env').waitFor()
         assert.equal(await node('2.4').locator('.play').count(), 0)
         assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Action'])
@@ -122,7 +125,7 @@ describe('approvals, picks, runs and undo in server mode', () => {
 
     test('undo takes the approval back', async () => {
         await box('2.4').click()
-        await shows('2.4', 'approved')
+        await shows('2.4', 'pending')
         await page.getByRole('button', { name: 'Undo your last approval' }).click()
         await shows('2.4', 'open')
         assert.equal(heading('2.4'), '## 2.4 @action Measure the hit rate on staging')
@@ -133,7 +136,7 @@ describe('approvals, picks, runs and undo in server mode', () => {
 
     test('undo over mixed children puts each back as it was', async () => {
         await box('3').click()
-        await shows('3', 'approved')
+        await shows('3', 'pending')
         assert.equal(heading('3'), '# 3. @user-approved Invalidation')
         // ⌘Z (Ctrl+Z) undoes too.
         await page.keyboard.press('Control+z')
@@ -152,11 +155,29 @@ describe('approvals, picks, runs and undo in server mode', () => {
         await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="4"]').getAttribute('aria-expanded') === 'true')
     })
 
-    test('an approval is drawn as a still, green outlined tick', async () => {
+    test('an approval is pending, fading out and in, until the agent acknowledges it; then it is a still, green outlined tick', async () => {
+        const drawn = () => node('4.1').locator('> .ck').evaluate(e => (({ animationName, backgroundColor }) => ({ animationName, backgroundColor }))(getComputedStyle(e)))
         await box('4.1').click()
+        // Recorded at once, and pending on the page all the same.
+        await shows('4.1', 'pending')
+        assert.equal(heading('4.1'), '## 4.1 @user-approved @agent-claim Behind a feature flag per tenant')
+        assert.deepEqual(await drawn(), { animationName: 'ckpending', backgroundColor: 'rgba(0, 0, 0, 0)' })
+        assert.match(await box('4.1').getAttribute('title'), /pending until the agent acknowledges it/)
+        // A change the agent made before it was told of the tick does not acknowledge it.
+        assert.equal((await change([{ op: 'acknowledge' }])).ok, true)
+        await page.waitForTimeout(200)
+        assert.equal(await state('4.1'), 'pending')
+        // That change's result told the agent; its next change acknowledges, whatever it holds.
+        assert.equal((await change([{ op: 'acknowledge' }])).ok, true)
         await shows('4.1', 'approved')
-        const drawn = await node('4.1').locator('> .ck').evaluate(e => (({ animationName, backgroundColor }) => ({ animationName, backgroundColor }))(getComputedStyle(e)))
-        assert.deepEqual(drawn, { animationName: 'none', backgroundColor: 'rgba(0, 0, 0, 0)' })
+        assert.deepEqual(await drawn(), { animationName: 'none', backgroundColor: 'rgba(0, 0, 0, 0)' })
+        // An approval taken back waits for the agent the same way: the box, a claim again, fades until it is acknowledged.
+        await box('4.1').click()
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="4.1"] > .ck').hasAttribute('data-waiting'))
+        assert.equal(await state('4.1'), 'claim')
+        assert.match(await told(), /took their approval back from 4\.1/)
+        assert.equal((await change([{ op: 'acknowledge' }])).ok, true)
+        await page.waitForFunction(() => !document.querySelector('.outline-tab [data-num="4.1"] > .ck').hasAttribute('data-waiting'))
         // Approvals are the outline's, not the viewer's: the viewer state's file-mode sections stay empty.
         const { overrides, sent, backTo } = await (await fetch(`${server.url}/api/state/demo/sample`)).json()
         assert.deepEqual({ overrides, sent, backTo }, { overrides: {}, sent: {}, backTo: {} })
@@ -172,22 +193,32 @@ describe('approvals, picks, runs and undo in server mode', () => {
         assert.deepEqual(await node('3.3').locator('> .qicon').evaluateAll(els => els.map(e => e.dataset.queueKind)), ['decide'])
     })
 
+    test('the triangle of an action runs nothing: it opens the node and points at the button that does', async () => {
+        await node('2.4').locator('> .node-title').click()
+        await node('2.4').locator('.closing [data-run]').waitFor({ state: 'hidden' })
+        await click(node('2.4').locator('> .play'))
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.4"] [data-run]').hasAttribute('data-pulse'))
+        assert.equal(await node('2.4').locator('.closing [data-run]').isVisible(), true)
+        assert.equal(await node('2.4').locator('[data-run-sent]').count(), 0)
+        assert.equal(await told(), '')
+    })
+
     test('a failed action says so, and can be run again', async () => {
         const target = path.join(server.dir, 'demo', 'sample.md')
         await until(async () => '2.4' in (await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read, { what: 'the first visit to be recorded' })
-        await click(node('2.4').locator('.play'))
-        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.4"] .play').classList.contains('sent'))
+        await click(node('2.4').locator('.closing [data-run]'))
+        await node('2.4').locator('[data-run-sent]').waitFor()
         await told()
         fs.writeFileSync(target, file().replace('## 2.4 @action Measure', '## 2.4 @action-failed Measure'))
-        // The request has ended: the play button is back, and the change waits to be opened.
-        await page.waitForFunction(() => !document.querySelector('.outline-tab [data-num="2.4"] .play').classList.contains('sent'))
+        // The request has ended: the ring is gone, and the change waits to be opened.
+        await node('2.4').locator('[data-run-sent]').waitFor({ state: 'detached' })
         await node('2.4').locator('> .env').click()
         await node('2.4').locator('.closing .pill-failed').waitFor()
         await page.locator('.tx-cur').waitFor({ state: 'detached' })
-        assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Failed'])
+        assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Failed', 'Run again'])
         // Still in the queue, and it can be run again.
         assert.equal(await page.locator('[data-queue="2.4"]').count(), 1)
-        await click(node('2.4').locator('.play'))
+        await click(node('2.4').locator('.closing [data-run]'))
         await until(async () => /pressed Run on 2\.4/.test(await told()), { what: 'the second run request' })
     })
 
@@ -201,17 +232,17 @@ describe('approvals, picks, runs and undo in server mode', () => {
         assert.equal(await node('2.1.2').isVisible(), true)
     })
 
-    test('a done action shows a filled yellow tick, which a click turns into an approval', async () => {
+    test('a done action shows a yellow outlined tick, which a click turns into an approval', async () => {
         assert.equal(await state('2.5'), 'done')
         await box('2.5').click()
-        await shows('2.5', 'approved')
+        await shows('2.5', 'pending')
         assert.equal(heading('2.5'), '## 2.5 @user-approved @action-done Add cache metrics to the dashboard')
     })
 
     test('queue items hide once handled here, and open their node', async () => {
         const queued = () => page.locator('[aria-label="Your queue"] [data-queue]').evaluateAll(els => els.map(e => e.dataset.queue))
         assert.deepEqual(await queued(), ['2.1', '2.4', '2.3', '3.1.1.1.1.1'])
-        // Each node shows its item's icon left of its checkbox, as the left pane does; an action's is its play button.
+        // Each node shows its item's icon left of its checkbox, as the left pane does; an action's is its triangle.
         const icon = num => node(num).locator('> .qicon').evaluateAll(els => els.map(e => e.dataset.queueKind))
         // The agent queued 2.1 to decide, but it recommends one of its options: that is something to approve.
         assert.deepEqual([await icon('2.1'), await icon('2.3'), await icon('3.1.1.1.1.1'), await icon('2.4')], [['approve'], ['approve'], ['read'], []])
@@ -224,7 +255,7 @@ describe('approvals, picks, runs and undo in server mode', () => {
         assert.match(file(), /# @queue\n- 2\.4 @action [^\n]*\n- 3\.1\.1\.1\.1\.1 @read [^\n]*\n$/)
         // Handled here: the icon goes with the item.
         assert.deepEqual([await icon('2.1'), await icon('2.3')], [[], []])
-        await click(node('2.4').locator('.play'))
+        await click(node('2.4').locator('.closing [data-run]'))
         await page.waitForFunction(() => !document.querySelector('[data-queue="2.4"]'))
         await page.getByRole('button', { name: 'Collapse all' }).click()
         await page.locator('[data-queue="3.1.1.1.1.1"]').click()

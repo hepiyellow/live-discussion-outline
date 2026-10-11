@@ -1,4 +1,4 @@
-import { allNodes, nodeLabel } from '@/lib/outline'
+import { allNodes, nodeLabel, stillRunning } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import type { Outline, OutlineNode, StatePatch, UndoStep, ViewerState } from '@/types'
 
@@ -155,7 +155,7 @@ export function settledPatch(outline: Outline, v: ViewerState): StatePatch | nul
     const done = new Map(allNodes(outline.nodes).map(n => [n.num, n.status === 'approved']))
     const settled = Object.keys(v.overrides).filter(k => !done.has(k) || v.overrides[k] === done.get(k))
     // A run request ends once the node is no longer an action waiting to run (the agent marked it done or failed).
-    const waiting = new Set(allNodes(outline.nodes).filter(n => n.tags.includes('action') && !n.tags.includes('ran') && !n.tags.includes('failed')).map(n => n.num))
+    const waiting = new Set(allNodes(outline.nodes).filter(n => stillRunning(n, v.runs[n.num])).map(n => n.num))
     const ran = Object.keys(v.runs).filter(k => !waiting.has(k))
     // What was sent and is now what the file says needs no remembering.
     const stale = Object.keys(v.sent).filter(k => !(k in v.overrides) && (!done.has(k) || v.sent[k] === done.get(k)))

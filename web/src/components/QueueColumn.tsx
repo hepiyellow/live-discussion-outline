@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { Ellipsis } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { allNodes } from '@/lib/outline'
 import { cn } from '@/lib/utils'
 import type { Statuses } from '@/lib/status'
 import type { QueueItem } from '@/types'
@@ -27,7 +28,7 @@ interface Entry {
 interface Props {
     queue: QueueItem[]
     statuses: Statuses
-    runs: Record<string, number>
+    runs: Record<string, number | string>
     onOpen: (item: QueueItem, color: string) => void
     /** Nodes changed since the viewer read them, in outline order: listed first. */
     unread: string[]
@@ -54,16 +55,20 @@ function slideIn(el: HTMLElement, delay: number) {
  */
 export function QueueColumn({ queue, statuses, runs, onOpen, unread, onOpenUnread, ready, footer }: Props) {
     const entries: Entry[] = [
-        ...unread.map(num => ({
-            key: `unread:${num}`,
-            num,
-            label: 'Changed since you read it',
-            title: `Changed since you read it: ${num} (shows the node; click its diff button to see the change)`,
-            color: 'var(--claim)',
-            icon: DIFF_ICON,
-            open: () => onOpenUnread(num),
-            data: { 'data-unread': num },
-        })),
+        ...unread.map(num => {
+            // A change whose new content has the Done tag is an action carried out: yellow, as the node's own diff button is.
+            const done = allNodes(statuses.nodes).find(n => n.num === num)?.tags.includes('ran')
+            return {
+                key: `unread:${num}`,
+                num,
+                label: 'Changed since you read it',
+                title: `Changed since you read it${done ? ', and now done' : ''}: ${num} (shows the node; click its diff button to see the change)`,
+                color: done ? 'var(--done)' : 'var(--claim)',
+                icon: DIFF_ICON,
+                open: () => onOpenUnread(num),
+                data: { 'data-unread': num, ...(done ? { 'data-done': '' } : {}) },
+            }
+        }),
         ...waiting(queue, statuses, runs).map(({ item, missing }) => {
             const kind = KINDS[item.kind]
             return {
