@@ -78,6 +78,20 @@ describe('/api/outline', () => {
         }
     })
 
+    test('a tick from the page is refused for an outline in file mode, which stays as its agent wrote it', async () => {
+        const file = path.join(server.dir, 'demo', 'sample.md')
+        const before = fs.readFileSync(file, 'utf8')
+        const act = body => fetch(`${server.url}/api/outline/demo/sample/act`, { method: 'POST', headers: { 'content-type': 'application/json', origin: server.url }, body: JSON.stringify(body) })
+        for (const body of [{ set: [{ num: '2.4', approved: true }] }, { run: '2.4' }]) {
+            const res = await act(body)
+            assert.equal(res.status, 400)
+            assert.match((await res.json()).error, /kept by its agent as a file/)
+        }
+        assert.equal(fs.readFileSync(file, 'utf8'), before)
+        assert.equal(fs.existsSync(path.join(server.dir, '.ledger')), false)
+        assert.equal((await (await fetch(`${server.url}/api/outline/demo/sample`)).json()).mode, 'file')
+    })
+
     test('no route serves the old page', async () => {
         for (const p of ['/', '/demo/sample', '/live?t=x', '/events', '/transcript?id=x']) {
             const html = await (await fetch(server.url + p)).text()

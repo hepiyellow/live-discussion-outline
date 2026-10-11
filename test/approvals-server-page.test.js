@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
-import { SESSION, launchBrowser, startServer, until } from './helpers.js'
+import { SESSION, inServerMode, launchBrowser, startServer, until } from './helpers.js'
 
-// A tick, a pick and a press of Run are recorded in the outline at once: the page tells the server, which writes the
-// file and keeps the news for the agent. Nothing is typed into the session for an approval. sample.md names a terminal
-// that does not exist, so a run is kept for the agent like the rest.
+// Server mode. A tick, a pick and a press of Run are recorded in the outline at once: the page tells the server, which
+// writes the file and keeps the news for the agent. Nothing is typed into the session for an approval. sample.md names
+// a terminal that does not exist, so a run is kept for the agent like the rest.
 
 /** Clicks an element in the middle of the window: scrolled just into view, it would sit under the sticky headers. */
 const click = async locator => {
@@ -14,7 +14,7 @@ const click = async locator => {
     await locator.click()
 }
 
-describe('approvals, picks, runs and undo', () => {
+describe('approvals, picks, runs and undo in server mode', () => {
     let server, browser, page, sent
     before(async () => {
         server = await startServer()
@@ -25,7 +25,7 @@ describe('approvals, picks, runs and undo', () => {
         await server?.stop()
     })
     beforeEach(async () => {
-        server.swap('demo/sample', 'demo/sample')
+        server.swap('demo/sample', 'demo/sample', 'server')
         server.resetState()
         fs.rmSync(path.join(server.dir, '.ledger'), { recursive: true, force: true })
         sent = []
@@ -230,12 +230,12 @@ describe('approvals, picks, runs and undo', () => {
     })
 })
 
-describe('approvals without a linked session', () => {
+describe('approvals in server mode without a linked session', () => {
     let server, browser, page
     before(async () => {
         server = await startServer()
         const text = fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8').replace(/^Terminal: .*\n/m, '')
-        fs.writeFileSync(path.join(server.dir, 'demo', 'unlinked.md'), text)
+        fs.writeFileSync(path.join(server.dir, 'demo', 'unlinked.md'), inServerMode(text))
         browser = await launchBrowser()
         const context = await browser.newContext()
         await context.grantPermissions(['clipboard-read', 'clipboard-write'])

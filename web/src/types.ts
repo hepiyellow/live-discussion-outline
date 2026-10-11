@@ -49,6 +49,12 @@ export interface QueueItem {
     label: string
 }
 
+/**
+ * Who writes an outline, fixed when its outline session starts: in file mode the agent writes the file itself, in server
+ * mode the server writes it and the agent sends operations.
+ */
+export type Mode = 'file' | 'server'
+
 /** GET /api/outline/<project>/<file>, and each event of its stream. */
 export interface Outline {
     project: string
@@ -64,6 +70,8 @@ export interface Outline {
     terminal: string
     /** The `Session:` line: the linked session's id. */
     session: string
+    /** The `Mode:` line: `server` when it says so, else `file`. */
+    mode: Mode
     /** The folder the linked session runs in, from its transcript. */
     folder: string
     /** Whether the Terminal tab can attach: the outline names a tmux session and the server can run terminals. */

@@ -6,9 +6,10 @@ import { OpError, allNodes, applyOperations, applyUserSet, findNode, mapText, no
 import { isSessionName } from './terminal.js'
 import { isSessionId } from './transcript.js'
 
-// The agent's side of an outline (docs/adr/0003): `start`, `read` and `change` as the MCP tools call them, what the
-// hooks ask for, and what the user does on the page. The server is the only writer of an outline's file; what it has to
-// remember beside the file is the outline's ledger.
+// The agent's side of an outline in server mode (docs/adr/0003): `start`, `read` and `change` as the MCP tools call
+// them, what the hooks ask for, and what the user does on the page. The server is the only writer of such an outline's
+// file; what it has to remember beside the file is the outline's ledger. An outline in file mode is its agent's to write:
+// nothing here reads it as a model or writes it.
 
 /** The folder of the outlines folder where each outline's ledger is kept: one JSON file per outline. */
 export const LEDGER_DIR = '.ledger'
@@ -38,6 +39,38 @@ const UNTITLED = 'New outline'
 
 /** A refusal the caller reads as text: the tool's result, marked as an error. */
 class Refusal extends Error {}
+
+const HEADER_LINE = /^(Title|Resume|Model|Terminal|Session): /
+
+/**
+ * Outlines the server kept before outlines had a mode have a ledger and no `Mode:` line, and would read as file mode:
+ * each gets the line, after its other header lines, where the server writes it. The file keeps its time of last change,
+ * which orders the outline list.
+ */
+export function markLedgered(root) {
+    const ledgers = path.join(root, LEDGER_DIR)
+    if (!fs.existsSync(ledgers)) return
+    for (const project of fs.readdirSync(ledgers, { withFileTypes: true })) {
+        if (!project.isDirectory()) continue
+        for (const f of fs.readdirSync(path.join(ledgers, project.name))) {
+            if (!f.endsWith('.json')) continue
+            const full = path.join(root, project.name, `${f.slice(0, -5)}.md`)
+            try {
+                const text = fs.readFileSync(full, 'utf8')
+                if (extractHeaders(text).mode === 'server') continue
+                const lines = text.split('\n')
+                let at = 0
+                while (HEADER_LINE.test(lines[at] ?? '')) at++
+                lines.splice(at, 0, 'Mode: server')
+                const { atime, mtime } = fs.statSync(full)
+                fs.writeFileSync(full, lines.join('\n'))
+                fs.utimesSync(full, atime, mtime)
+            } catch (e) {
+                if (e.code !== 'ENOENT') console.error(`marking ${project.name}/${f} as server mode: ${e.message}`)
+            }
+        }
+    }
+}
 
 /**
  * @param root the outlines folder
@@ -80,6 +113,8 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
     const readModel = (project, file) => parseOutline(fs.readFileSync(fileOf(project, file), 'utf8'))
 
     function writeModel(project, file, model) {
+        // An outline has one writer, and in file mode it is the agent: writing the model would reformat the agent's file.
+        if (model.headers.mode !== 'server') throw new Error(`${project}/${file} is in file mode: the server does not write it`)
         const text = serializeOutline(model)
         fs.mkdirSync(path.dirname(fileOf(project, file)), { recursive: true })
         fs.writeFileSync(fileOf(project, file), text)
@@ -104,21 +139,26 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
     /**
      * The outline a call is about: the one it names (`project/file`), else the newest that links to the caller's
      * session, else (an agent that does not know its session id) the newest started from its working folder that
-     * links to no session.
+     * links to no session. Only outlines in server mode count: one in file mode is not the tools' to read or change, so
+     * naming it is refused, and a session whose outline is in file mode has no outline here.
      */
     function locate({ outline, session, cwd }) {
         if (outline) {
             const [project, ...rest] = String(outline).split('/')
             const file = rest.join('/')
             if (!safeName(project) || !safeName(file) || !fs.existsSync(fileOf(project, file))) throw new Refusal(`There is no outline ${outline}.`)
+            if (headersOf({ project, file }).mode !== 'server')
+                throw new Refusal(`The outline ${outline} is kept by its agent as a file (file mode), so the outline tools neither read nor change it. Its agent edits the file itself, following the outline-file skill.`)
             return { project, file }
         }
         const all = outlines()
+            .map(o => ({ ...o, headers: headersOf(o) }))
+            .filter(o => o.headers.mode === 'server')
         if (session && isSessionId(session)) {
-            const found = all.find(o => headersOf(o).session === session)
+            const found = all.find(o => o.headers.session === session)
             if (found) return found
         }
-        if (cwd) return all.find(o => readLedger(o.project, o.file).cwd === cwd && (!session || !headersOf(o).session))
+        if (cwd) return all.find(o => readLedger(o.project, o.file).cwd === cwd && (!session || !o.headers.session))
         return undefined
     }
 
@@ -205,7 +245,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         let file = base
         for (let i = 2; fs.existsSync(fileOf(folder, file)); i++) file = `${base}-${i}`
         const created = { project: folder, file }
-        writeModel(folder, file, { headers: { title: name || UNTITLED, resume, model: String(agentModel).slice(0, 100), terminal: term, session: sessionId }, intro: '', nodes: [], queue: [] })
+        writeModel(folder, file, { headers: { title: name || UNTITLED, resume, model: String(agentModel).slice(0, 100), terminal: term, session: sessionId, mode: 'server' }, intro: '', nodes: [], queue: [] })
         writeLedger(folder, file, { events: [], shown: {}, messages: [], cwd, untitled: !name })
         const where = `It is filed under the project "${folder}", which the session it started from decides: say nothing else about where it is.`
         return {

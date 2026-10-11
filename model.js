@@ -141,8 +141,9 @@ function headingLine(node) {
 
 /** The model as the outline's text: what the page's reader (outline.js) and the Markdown tab read. */
 export function serializeOutline(model) {
-    const { title, resume, model: agentModel, terminal, session } = model.headers
-    const out = [['Title', title], ['Resume', resume], ['Model', agentModel], ['Terminal', terminal], ['Session', session]].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)
+    const { title, resume, model: agentModel, terminal, session, mode } = model.headers
+    // File mode has no line: a file without one is its agent's to write.
+    const out = [['Title', title], ['Resume', resume], ['Model', agentModel], ['Terminal', terminal], ['Session', session], ['Mode', mode === 'server' ? mode : '']].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)
     out.push('')
     if (model.intro) out.push(model.intro, '')
     const write = node => {

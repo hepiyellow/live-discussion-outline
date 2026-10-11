@@ -11,7 +11,7 @@ import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolde
 import { slashCommands } from './commands.js'
 import { STATE_DIR, createStateStore } from './state.js'
 import { installLogging } from './log.js'
-import { LEDGER_DIR, createAgentApi } from './agent.js'
+import { LEDGER_DIR, createAgentApi, markLedgered } from './agent.js'
 import { OpError } from './model.js'
 
 installLogging()
@@ -36,6 +36,7 @@ let PORT = ASKED_PORT ?? config.port
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
 fs.mkdirSync(ROOT, { recursive: true })
+markLedgered(ROOT)
 
 const TRASH = '.trash'
 
@@ -106,8 +107,8 @@ function baselineHistory() {
 baselineHistory()
 
 /**
- * The agent's side of the outlines (agent.js): the server writes every outline, and each write goes to the node history
- * and to the open pages at once, without waiting for the folder's watcher.
+ * The agent's side of the outlines in server mode (agent.js): the server writes each of them, and each write goes to
+ * the node history and to the open pages at once, without waiting for the folder's watcher.
  */
 const agent = createAgentApi({
     root: ROOT,
@@ -310,7 +311,7 @@ function outlineApi(req, res, parts, url) {
     if (parts.length > 3 || (events !== undefined && events !== 'events' && events !== 'history' && events !== 'act')) return send(res, 404, 'text/plain', 'not found')
     const outline = readOutline(project, file)
     if (!outline) return send(res, 404, 'text/plain', 'no such outline')
-    if (events === 'act') return actApi(req, res, project, file)
+    if (events === 'act') return actApi(req, res, outline)
     // A node's history: its entries, oldest first (`?num=2.1`).
     if (events === 'history') return send(res, 200, 'application/json', JSON.stringify(history.read(project, file, url.searchParams.get('num') ?? '')))
     const data = JSON.stringify(outline)
@@ -337,11 +338,13 @@ function outlineApi(req, res, parts, url) {
 
 /**
  * POST /api/outline/<project>/<file>/act: what the user did on the page, recorded in the outline at once. `set` lists
- * the nodes whose tick changed (`{ num, approved }`); `run` names an action the user pressed play on.
+ * the nodes whose tick changed (`{ num, approved }`); `run` names an action the user pressed play on. Only for an
+ * outline in server mode: one in file mode is its agent's to write, and the page tells that agent in its session.
  */
-async function actApi(req, res, project, file) {
+async function actApi(req, res, { project, file, mode }) {
     if (req.method !== 'POST') return send(res, 405, 'text/plain', 'method not allowed')
     if (!fromLocalPage(req, PORT, { write: true }) || !/^application\/json\b/.test(req.headers['content-type'] || '')) return send(res, 403, 'text/plain', 'forbidden')
+    if (mode !== 'server') return json(res, 400, { error: 'This outline is kept by its agent as a file: the server does not record ticks in it.' })
     try {
         json(res, 200, await agent.act(project, file, await readJson(req)))
     } catch (e) {
@@ -462,12 +465,14 @@ function renameOutline({ project, file, title }) {
     if (name.length > TITLE_MAX) throw new Error(`The name can be at most ${TITLE_MAX} characters.`)
     const full = path.join(ROOT, project, `${file}.md`)
     if (!fs.existsSync(full)) throw new Error('no such outline')
-    const lines = fs.readFileSync(full, 'utf8').split('\n')
+    const text = fs.readFileSync(full, 'utf8')
+    const lines = text.split('\n')
     const i = lines.slice(0, 8).findIndex(line => line.startsWith('Title: '))
     if (i < 0) throw new Error('This outline has no Title line.')
     lines[i] = `Title: ${name}${lines[i].endsWith('\r') ? '\r' : ''}`
     fs.writeFileSync(full, lines.join('\n'))
-    agent.userEvent(project, file, { kind: 'renamed', title: name })
+    // In server mode the agent is told with the user's next prompt; in file mode it reads the line in its own file.
+    if (extractHeaders(text).mode === 'server') agent.userEvent(project, file, { kind: 'renamed', title: name })
     return { title: name }
 }
 

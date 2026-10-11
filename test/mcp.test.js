@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
 import { after, before, describe, test } from 'node:test'
+import { markLedgered } from '../agent.js'
 import { ROOT, eventStream, startServer } from './helpers.js'
 
 const SESSION = '7a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
@@ -85,7 +87,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
         const link = /Page: (\S+)/.exec(started.text)[1]
         assert.match(link, /\/shop\/\d{4}-\d\d-\d\d-rate-limiting$/)
         file = path.join(server.dir, 'shop', `${link.split('/').pop()}.md`)
-        assert.match(outlineText(), /^Title: Rate limiting\nModel: Claude Opus 5\.5, high\nSession: 7a1d2c3b-/)
+        assert.match(outlineText(), /^Title: Rate limiting\nModel: Claude Opus 5\.5, high\nSession: 7a1d2c3b-[0-9a-f-]+\nMode: server\n$/)
         // Starting again reattaches: the session has one outline.
         const again = await mcp.tool('start', { title: 'Another name' })
         assert.match(again.text, /Reattached to the outline "Rate limiting"/)
@@ -215,9 +217,103 @@ describe('an agent keeps an outline through the MCP tools', () => {
         }
     })
 
+    test('the outline keeps its Mode line through every change', () => {
+        assert.match(outlineText(), /^Title: [^\n]*\n(?:[A-Z][a-z]+: [^\n]*\n)*Mode: server\n\n/)
+    })
+
     test('a web page cannot call the agent’s API', async () => {
         const res = await fetch(`${server.url}/api/agent/read`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://evil.example', 'x-outline-agent': '1' }, body: '{}' })
         assert.equal(res.status, 403)
         assert.equal((await fetch(`${server.url}/api/agent/read`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 403)
+    })
+})
+
+describe('an outline in file mode is its agent’s: the tools and the hooks leave it alone', () => {
+    const OTHER = '22222222-3333-4444-8555-666666666666'
+    let server, mcp, kept
+    const keptText = () => fs.readFileSync(kept, 'utf8')
+
+    before(async () => {
+        server = await startServer()
+        // An outline the agent of session OTHER writes itself, in the project the tests' sessions file under.
+        kept = path.join(server.dir, 'shop', 'by-hand.md')
+        fs.mkdirSync(path.dirname(kept), { recursive: true })
+        fs.writeFileSync(kept, `Title: By hand\nSession: ${OTHER}\n\n# 1. Topic\n\n## 1.1 @agent-claim A claim\nIts text,\nwrapped by hand.\n`)
+        mcp = startMcp(server, { CLAUDE_CODE_SESSION_ID: OTHER })
+    })
+    after(async () => {
+        mcp.stop()
+        await server.stop()
+    })
+
+    test('a tool that names it is refused, and says who keeps it', async () => {
+        const before = keptText()
+        const refused = await mcp.tool('start', { title: 'Mine now', outline: 'shop/by-hand' })
+        assert.equal(refused.error, true)
+        assert.match(refused.text, /The outline shop\/by-hand is kept by its agent as a file/)
+        // The MCP process names an outline only once a call has found it; the server refuses the name all the same.
+        const agent = (name, body) => fetch(`${server.url}/api/agent/${name}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-outline-agent': '1' }, body: JSON.stringify(body) }).then(r => r.json())
+        for (const [name, body] of [['read', {}], ['change', { ops: [{ op: 'add', num: '2', title: 'More' }] }]]) {
+            const answer = await agent(name, { ...body, outline: 'shop/by-hand' })
+            assert.equal(answer.ok, false, name)
+            assert.match(answer.text, /kept by its agent as a file/, name)
+        }
+        assert.equal(keptText(), before)
+    })
+
+    test('its session has no outline for the tools, and the hooks say nothing', async () => {
+        assert.match((await mcp.tool('read')).text, /Call start first/)
+        const hook = event => runHook(server, { session_id: OTHER, ...event })
+        assert.equal(await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'and now?' }), '')
+        assert.equal(await hook({ hook_event_name: 'SessionStart', source: 'compact' }), '')
+        assert.equal(await hook({ hook_event_name: 'SessionStart', source: 'resume' }), '')
+    })
+
+    test('start in its session opens a new outline in server mode beside it', async () => {
+        const before = keptText()
+        const started = await mcp.tool('start', { title: 'By the server' })
+        assert.equal(started.error, false, started.text)
+        assert.match(started.text, /Opened the outline "By the server"/)
+        const made = path.join(server.dir, 'shop', `${/Page: \S+\/(\S+)/.exec(started.text)[1]}.md`)
+        assert.notEqual(made, kept)
+        assert.match(fs.readFileSync(made, 'utf8'), /\nMode: server\n/)
+        assert.equal(keptText(), before)
+        // From here on the session's tools are about the new outline.
+        assert.match((await mcp.tool('read')).text, /^Outline "By the server"/)
+    })
+
+    test('renaming it from the page rewrites its Title line and tells no agent', async () => {
+        const res = await fetch(`${server.url}/api/rename`, { method: 'POST', headers: { 'content-type': 'application/json', origin: server.url }, body: JSON.stringify({ project: 'shop', file: 'by-hand', title: 'Renamed by hand' }) })
+        assert.equal(res.status, 200)
+        assert.match(keptText(), /^Title: Renamed by hand\nSession: /)
+        assert.equal(fs.existsSync(path.join(server.dir, '.ledger', 'shop', 'by-hand.json')), false)
+    })
+})
+
+describe('outlines the server kept before outlines had a mode', () => {
+    test('get their Mode line when the server starts, and keep their time of last change', async () => {
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-marked-'))
+        const dir = path.join(home, 'outlines')
+        const file = path.join(dir, 'shop', 'old.md')
+        const byHand = path.join(dir, 'shop', 'by-hand.md')
+        fs.mkdirSync(path.join(dir, '.ledger', 'shop'), { recursive: true })
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.writeFileSync(file, 'Title: Old\nSession: 7a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d\n\n# 1. Topic\n\nText.\n')
+        fs.writeFileSync(path.join(dir, '.ledger', 'shop', 'old.json'), JSON.stringify({ events: [], shown: {}, messages: [], cwd: '/tmp/shop' }))
+        fs.writeFileSync(byHand, 'Title: By hand\n\n# 1. Topic\n')
+        const then = new Date('2026-01-02T03:04:05Z')
+        fs.utimesSync(file, then, then)
+        markLedgered(dir)
+        try {
+            assert.equal(fs.readFileSync(file, 'utf8'), 'Title: Old\nSession: 7a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d\nMode: server\n\n# 1. Topic\n\nText.\n')
+            assert.equal(fs.statSync(file).mtimeMs, then.getTime())
+            // An outline without a ledger was never the server's.
+            assert.equal(fs.readFileSync(byHand, 'utf8'), 'Title: By hand\n\n# 1. Topic\n')
+            // Marked once.
+            markLedgered(dir)
+            assert.equal(fs.readFileSync(file, 'utf8').match(/Mode: server/g).length, 1)
+        } finally {
+            fs.rmSync(home, { recursive: true, force: true })
+        }
     })
 })

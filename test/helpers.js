@@ -11,6 +11,9 @@ export const FIXTURES = path.join(ROOT, 'test', 'fixtures')
 /** The session id of the fixture transcript, which sample.md links to. */
 export const SESSION = '3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f'
 
+/** An outline's text as the server keeps it in server mode: with a `Mode: server` line after its other header lines. */
+export const inServerMode = text => text.replace(/^((?:[A-Z][a-z]+: .*\n)*)/, '$1Mode: server\n')
+
 /** A port nothing listens on right now. */
 export const freePort = () =>
     new Promise((resolve, reject) => {
@@ -73,8 +76,15 @@ export async function startServer({ args = [], env = {} } = {}) {
         await new Promise(r => setTimeout(r, 50))
     }
     const url = `http://127.0.0.1:${listening[1]}`
-    /** Replaces outline <project>/<file> with a fixture outline, the way the agent rewrites it. */
-    const swap = (target, fixture) => fs.copyFileSync(path.join(FIXTURES, 'outlines', `${fixture}.md`), path.join(dir, `${target}.md`))
+    /**
+     * Replaces outline <project>/<file> with a fixture outline, the way the agent rewrites it. The fixtures are in file
+     * mode; with `mode` 'server' the outline is one the server keeps.
+     */
+    const swap = (target, fixture, mode = 'file') => {
+        const from = path.join(FIXTURES, 'outlines', `${fixture}.md`)
+        if (mode === 'server') fs.writeFileSync(path.join(dir, `${target}.md`), inServerMode(fs.readFileSync(from, 'utf8')))
+        else fs.copyFileSync(from, path.join(dir, `${target}.md`))
+    }
     /** Forgets the viewer state of every outline. */
     const resetState = () => fs.rmSync(path.join(dir, '.state'), { recursive: true, force: true })
     return { url, dir, home, settingsPort: port, stop, swap, resetState }

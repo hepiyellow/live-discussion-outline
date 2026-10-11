@@ -27,6 +27,20 @@ test('header lines that are not valid are dropped', () => {
     assert.equal(p.nodes.length, 1)
 })
 
+test('the Mode line says who writes the outline; without it, or with any other value, its agent does', () => {
+    // sample.md has no Mode line, as every outline an agent writes itself.
+    assert.equal(sample.mode, 'file')
+    const p = outlinePayload('Title: x\nSession: 3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f\nMode: server\n\n# 1. A')
+    assert.equal(p.mode, 'server')
+    // The line is a header line: it is not part of the outline's text.
+    assert.equal(p.intro, '')
+    assert.doesNotMatch(p.markdown, /Mode/)
+    assert.equal(p.nodes.length, 1)
+    for (const value of ['file', 'Server', 'mcp', '']) assert.equal(outlinePayload(`Title: x\nMode: ${value}\n\n# 1. A`).mode, 'file', value)
+    // The Model line is another header.
+    assert.deepEqual((({ model, mode }) => ({ model, mode }))(outlinePayload('Title: x\nModel: Opus\n\n# 1. A')), { model: 'Opus', mode: 'file' })
+})
+
 test('numbering and nesting, six levels deep', () => {
     assert.deepEqual(
         sample.nodes.map(n => n.num),

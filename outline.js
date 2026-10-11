@@ -22,8 +22,9 @@ function extractHeader(source, label, maxLength) {
 
 /**
  * The outline's header lines, and the source without them: `Title:` (the outline session's name), `Resume:` (link or
- * command the page copies), `Model:` (shown as written), `Terminal:` (the tmux session the Terminal tab attaches to) and
- * `Session:` (the agent's session id, whose transcript the Transcript tab shows). The queue is taken out too.
+ * command the page copies), `Model:` (shown as written), `Terminal:` (the tmux session the Terminal tab attaches to),
+ * `Session:` (the agent's session id, whose transcript the Transcript tab shows) and `Mode:` (who writes the outline:
+ * `server` is server mode, and anything else, or no line, file mode). The queue is taken out too.
  */
 export function extractHeaders(text) {
     const title = extractHeader(text, 'Title', TITLE_MAX)
@@ -31,13 +32,15 @@ export function extractHeaders(text) {
     const model = extractHeader(resume.source, 'Model', 100)
     const terminal = extractHeader(model.source, 'Terminal', 64)
     const session = extractHeader(terminal.source, 'Session', 36)
-    const queue = extractQueue(session.source)
+    const mode = extractHeader(session.source, 'Mode', 20)
+    const queue = extractQueue(mode.source)
     return {
         title: title.value,
         resume: resume.value,
         model: model.value,
         terminal: isSessionName(terminal.value) ? terminal.value : '',
         session: isSessionId(session.value) ? session.value : '',
+        mode: mode.value === 'server' ? 'server' : 'file',
         queue: queue.items,
         source: queue.source,
     }
