@@ -17,6 +17,8 @@ interface Props {
     onReveal: (num: string) => void
     /** The reference the user just added from the outline (`n` counts them): the box takes the focus, and that chip pulses once. */
     added: { ref: string; n: number }
+    /** On the Outline tab, the box lines up with the outline's column (right of the queue); on the other tabs, with their centered column. */
+    inOutline: boolean
 }
 
 /** How long typing pauses before the draft is saved. */
@@ -34,7 +36,7 @@ const chipNum = (c: Chip) => /^(\d+(?:\.\d+)*)\.?\s/.exec(c.label)?.[1]
  * At the end of the box, the Enter key in a circle sends. While the agent works, a dot blinks at its corner, and with
  * nothing typed it stops the agent instead of sending; typing a new message makes it send again, the dot still blinking.
  */
-export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added }: Props) {
+export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added, inOutline }: Props) {
     const notify = useNotify()
     const root = useRef<HTMLFormElement>(null)
     const box = useRef<HTMLTextAreaElement>(null)
@@ -185,107 +187,103 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
                 e.preventDefault()
                 submit()
             }}
-            className="fixed right-0 bottom-0 left-(--pane-w) z-[15] border-t bg-background px-5 py-2.5"
+            className="fixed right-0 bottom-0 left-(--pane-w) z-[15] border-t bg-background py-2.5"
         >
-            {shown.length > 0 && (
-                <Command value={selected} onValueChange={setSelected} shouldFilter={false} className="absolute right-5 bottom-[calc(100%+6px)] left-5 h-auto w-auto border shadow-lg">
-                    <CommandList label="Slash commands" className="max-h-[min(320px,50vh)]">
-                        {shown.map(c => (
-                            <CommandItem
-                                key={c.name}
-                                value={c.name}
-                                title={c.source}
-                                onMouseDown={e => e.preventDefault()}
-                                onSelect={() => pick(c.name)}
-                                className="block"
-                            >
-                                <b className="font-semibold">/{c.name}</b> {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}
-                                {c.description && <div className="truncate text-xs text-muted-foreground">{c.description}</div>}
-                            </CommandItem>
-                        ))}
-                    </CommandList>
-                </Command>
-            )}
-            <div className="flex flex-col rounded-[18px] border px-1.5 py-1 focus-within:border-muted-foreground">
-                {chips.length > 0 && (
-                    <div className="flex flex-wrap gap-1 px-0.5 pt-0.5" aria-label="References">
-                        {chips.map((c, i) => {
-                            const num = chipNum(c)
-                            return (
-                                <span
-                                    // A new key each time it is added again, so the pulse plays again.
-                                    key={c.ref === added.ref ? `${c.ref}\u0001${added.n}` : c.ref}
-                                    data-chip={c.label}
-                                data-chip-kind={c.kind}
-                                    data-added={c.ref === added.ref || undefined}
-                                    title={c.ref}
-                                    onClick={e => num && !(e.target as Element).closest('button') && onReveal(num)}
-                                    className={cn('inline-flex max-w-full items-center gap-0.5 rounded-[10px] bg-muted py-px pr-0.5 pl-2.5 text-xs', num && 'cursor-pointer hover:bg-accent')}
-                                >
-                                    {c.kind === 'remove' && <Trash2 className="mr-1 size-3 shrink-0 text-danger" aria-label="Remove" />}
-                                <span className="truncate">{c.label}</span>
-                                    <button
-                                        type="button"
-                                        title="Remove"
-                                        aria-label={`Remove ${c.label}`}
-                                        className="px-1 text-muted-foreground hover:text-foreground"
-                                        onClick={() => {
-                                            setChips(chips.filter((_, j) => j !== i))
-                                            box.current?.focus()
-                                        }}
-                                    >
-                                        <X className="size-3" />
-                                    </button>
-                                </span>
-                            )
-                        })}
-                    </div>
+            {/* One container for the box and the model picker: as wide as the content column above it, and centered like it. */}
+            <div data-composer-col className={cn('relative', inOutline ? 'outline-col' : 'mx-auto max-w-[900px] px-5')}>
+                {shown.length > 0 && (
+                    <Command value={selected} onValueChange={setSelected} shouldFilter={false} className="absolute right-5 bottom-[calc(100%+16px)] left-5 h-auto w-auto border shadow-lg">
+                        <CommandList label="Slash commands" className="max-h-[min(320px,50vh)]">
+                            {shown.map(c => (
+                                <CommandItem key={c.name} value={c.name} title={c.source} onMouseDown={e => e.preventDefault()} onSelect={() => pick(c.name)} className="block">
+                                    <b className="font-semibold">/{c.name}</b> {c.hint && <span className="text-xs text-muted-foreground">{c.hint}</span>}
+                                    {c.description && <div className="truncate text-xs text-muted-foreground">{c.description}</div>}
+                                </CommandItem>
+                            ))}
+                        </CommandList>
+                    </Command>
                 )}
-                <div className="flex items-end gap-1.5">
-                    <textarea
-                        ref={box}
-                        rows={1}
-                        value={text}
-                        aria-label="Message the session"
-                        placeholder={removing ? 'Why should it be removed? · Enter sends, Shift+Enter adds a line' : 'Message the session · Enter sends, Shift+Enter adds a line'}
-                        title={`Typed into tmux ${outline.terminal}`}
-                        className="max-h-[40vh] min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-[3px] leading-[1.45] outline-none"
-                        onChange={e => {
-                            edit(e.target.value)
-                            setCaret(e.target.selectionStart)
-                            setMenuClosed(false)
-                        }}
-                        onSelect={e => setCaret(e.currentTarget.selectionStart)}
-                        onFocus={() => setFocused(true)}
-                        onBlur={() => setFocused(false)}
-                        onKeyDown={onKeyDown}
-                    />
-                    {/* In the box, at its end: the Enter key in a circle sends; while the agent works and there is nothing to send, it stops the agent. */}
-                    <span className="relative mb-px shrink-0">
-                        <button
-                            type={stops ? 'button' : 'submit'}
-                            data-send-button
-                            title={stops ? 'Stop the agent' : 'Send'}
-                            aria-label={stops ? 'Stop' : 'Send'}
-                            disabled={stops ? stopping : empty || sending}
-                            onClick={stops ? stop : undefined}
-                            className="inline-flex size-[26px] items-center justify-center rounded-full border border-muted-foreground/60 text-muted-foreground hover:border-foreground hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:border-muted-foreground/60 disabled:hover:text-muted-foreground"
-                        >
-                            {stops ? <Square className="size-2.5" fill="currentColor" /> : <CornerDownLeft className="size-3.5" />}
-                        </button>
-                        {/* The working indicator: a dot on the button's corner, blinking until the agent's turn ends. */}
-                        <span
-                            role="status"
-                            aria-label={busy ? 'The agent is working' : 'The agent is idle'}
-                            data-busy={busy || undefined}
-                            className={cn('work-dot pointer-events-none absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-background bg-foreground', !busy && 'invisible')}
+                <div className="flex flex-col rounded-[18px] border px-1.5 py-1 focus-within:border-muted-foreground">
+                    {chips.length > 0 && (
+                        <div className="flex flex-wrap gap-1 px-0.5 pt-0.5" aria-label="References">
+                            {chips.map((c, i) => {
+                                const num = chipNum(c)
+                                return (
+                                    <span
+                                        // A new key each time it is added again, so the pulse plays again.
+                                        key={c.ref === added.ref ? `${c.ref}\u0001${added.n}` : c.ref}
+                                        data-chip={c.label}
+                                        data-chip-kind={c.kind}
+                                        data-added={c.ref === added.ref || undefined}
+                                        title={c.ref}
+                                        onClick={e => num && !(e.target as Element).closest('button') && onReveal(num)}
+                                        className={cn('inline-flex max-w-full items-center gap-0.5 rounded-[10px] bg-muted py-px pr-0.5 pl-2.5 text-xs', num && 'cursor-pointer hover:bg-accent')}
+                                    >
+                                        {c.kind === 'remove' && <Trash2 className="mr-1 size-3 shrink-0 text-danger" aria-label="Remove" />}
+                                        <span className="truncate">{c.label}</span>
+                                        <button
+                                            type="button"
+                                            title="Remove"
+                                            aria-label={`Remove ${c.label}`}
+                                            className="px-1 text-muted-foreground hover:text-foreground"
+                                            onClick={() => {
+                                                setChips(chips.filter((_, j) => j !== i))
+                                                box.current?.focus()
+                                            }}
+                                        >
+                                            <X className="size-3" />
+                                        </button>
+                                    </span>
+                                )
+                            })}
+                        </div>
+                    )}
+                    <div className="flex items-end gap-1.5">
+                        <textarea
+                            ref={box}
+                            rows={1}
+                            value={text}
+                            aria-label="Message the session"
+                            placeholder={removing ? 'Why should it be removed? · Enter sends, Shift+Enter adds a line' : 'Message the session · Enter sends, Shift+Enter adds a line'}
+                            title={`Typed into tmux ${outline.terminal}`}
+                            className="max-h-[40vh] min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-[3px] leading-[1.45] outline-none"
+                            onChange={e => {
+                                edit(e.target.value)
+                                setCaret(e.target.selectionStart)
+                                setMenuClosed(false)
+                            }}
+                            onSelect={e => setCaret(e.currentTarget.selectionStart)}
+                            onFocus={() => setFocused(true)}
+                            onBlur={() => setFocused(false)}
+                            onKeyDown={onKeyDown}
                         />
-                    </span>
+                        {/* In the box, at its end: the Enter key in a circle sends; while the agent works and there is nothing to send, it stops the agent. */}
+                        <span className="relative mb-px shrink-0">
+                            <button
+                                type={stops ? 'button' : 'submit'}
+                                data-send-button
+                                title={stops ? 'Stop the agent' : 'Send'}
+                                aria-label={stops ? 'Stop' : 'Send'}
+                                disabled={stops ? stopping : empty || sending}
+                                onClick={stops ? stop : undefined}
+                                className="inline-flex size-[26px] items-center justify-center rounded-full border border-muted-foreground/60 text-muted-foreground hover:border-foreground hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:border-muted-foreground/60 disabled:hover:text-muted-foreground"
+                            >
+                                {stops ? <Square className="size-2.5" fill="currentColor" /> : <CornerDownLeft className="size-3.5" />}
+                            </button>
+                            {/* The working indicator: a dot on the button's corner, blinking until the agent's turn ends. */}
+                            <span
+                                role="status"
+                                aria-label={busy ? 'The agent is working' : 'The agent is idle'}
+                                data-busy={busy || undefined}
+                                className={cn('work-dot pointer-events-none absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-background bg-foreground', !busy && 'invisible')}
+                            />
+                        </span>
+                    </div>
                 </div>
-            </div>
-            {/* Under the box, outside it: the session's model and effort, ending where the box does. */}
-            <div className="mt-1.5 flex justify-end pr-1">
-                <ModelPicker outline={outline} />
+                {/* Under the box, outside it: the session's model and effort, ending where the box does. */}
+                <div className="mt-1.5 flex justify-end pr-1">
+                    <ModelPicker outline={outline} />
+                </div>
             </div>
         </form>
     )

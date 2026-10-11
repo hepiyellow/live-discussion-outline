@@ -124,7 +124,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
         }),
         [linked, clickNode, clickTopic, run, onReference, onRemove, unread, opening, openUnread, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen],
     )
-    const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
+    const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides, 'file', new Set(), new Set(unreadNums)), [outline, viewer.overrides, unreadNums])
     const duplicates = useMemo(() => duplicateNums(outline.nodes), [outline])
 
     const onToggle = useCallback((node: OutlineNode, value: boolean) => patch({ open: { [node.num]: value } }), [patch])
@@ -132,10 +132,11 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
 
     /**
      * Opens the way to a node (and a topic itself), then scrolls it to the top, below the headers above it. With
-     * `inside`, a node that has nodes under it is opened too: what there is to do is in them (a question's options).
+     * `inside`, a node that has nodes under it is opened too: what there is to do is in them (a question's options). So
+     * is an action, whose Run button is in its text.
      */
     const reveal = (num: string, then?: (el: HTMLElement) => void, inside = false) => {
-        const parent = inside && allNodes(outline.nodes).some(n => n.num === num && n.children.length > 0)
+        const parent = inside && allNodes(outline.nodes).some(n => n.num === num && (n.children.length > 0 || n.tags.includes('action')))
         flushSync(() => {
             if (tab !== 'outline') setTab('outline')
             patch({ open: Object.fromEntries(pathNums(num).slice(0, parent || !num.includes('.') ? undefined : -1).map(n => [n, true])) })
@@ -239,7 +240,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                 <>
                     {/* Room under the content for the input box. */}
                     <div aria-hidden="true" style={{ height: 'var(--composer-h, 60px)' }} />
-                    <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} onSent={session.working} onReveal={reveal} added={added} />
+                    <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} onSent={session.working} onReveal={reveal} added={added} inOutline={tab === 'outline'} />
                 </>
             )}
             {/* File mode only: in server mode a tick is recorded at once, and nothing waits to be copied. */}
