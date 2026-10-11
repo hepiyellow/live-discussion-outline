@@ -86,7 +86,7 @@ describe('unread changes', () => {
         assert.equal(await page.locator('[data-unread]').count(), 0)
     })
 
-    test('the animation takes at most a second, however long the text', async () => {
+    test('each stage of the animation takes half a second, however long the text', async () => {
         // A node of two hundred words, then the same with every fifth word rewritten and a sentence added.
         const file = path.join(server.dir, 'demo', 'sample.md')
         const long = Array.from({ length: 200 }, (_, i) => `word${i}`)
@@ -109,9 +109,14 @@ describe('unread changes', () => {
             }).observe(document.body, { childList: true })
         })
         await button.click()
+        // First the rewritten words are marked, in orange, and nothing has come in yet.
+        await page.locator('.tx-o.c .tx-u').first().waitFor()
+        assert.equal(await node('3.3').locator('.tx-n .tx-u.on').count(), 0)
+        assert.match(await node('3.3').locator('.node-html').evaluate(e => e.innerText), /^word0 word1 /)
         const took = await (await page.waitForFunction(() => window.tx.to && window.tx.to - window.tx.from, null, { timeout: 10000 })).jsonValue()
-        // A text this long uses the whole second, and no more (with some room for a busy machine).
-        assert.ok(took > 800 && took < 1250, `the animation took ${Math.round(took)} ms`)
+        // Three stages here (the marks, the rewritten words, the added ones), then the last colour fading and the
+        // cursor leaving: 1880 ms, with some room for a busy machine.
+        assert.ok(took > 1700 && took < 2300, `the animation took ${Math.round(took)} ms`)
         assert.match(await text('3.3'), /changed195 word196.*a new closing sentence\./)
         assert.doesNotMatch(await node('3.3').locator('.node-html').innerHTML(), /tx-/)
     })

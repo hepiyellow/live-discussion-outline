@@ -1,11 +1,15 @@
-// The unread-diff animation, ported from the old page. Opening a changed node shows what changed as a cursor passing
-// through its text from the start, in at most a second however long the text is: it scans over unchanged words quickly; added words grow in one by one in green,
-// pushing the rest along, and fade to nothing; removed words, in red, collapse one by one; rewritten words collapse
-// while the new ones grow in beside them (white, fading out). It works on the DOM of the node's cells directly, whose
-// children React does not manage (they are server HTML).
+// The unread-diff animation. Opening a changed node shows what changed in up to four stages of half a second each,
+// however long the text is; a stage with nothing to show is skipped:
+//   1. the text reads as it did, with the words about to go marked: red for removed ones, orange for rewritten ones;
+//   2. the removed words collapse, all at once, with no cursor;
+//   3. a cursor passes over the rewritten words: each collapses while the new one grows in beside it, in orange;
+//   4. the cursor passes over the added words: they grow in one by one in green, pushing the rest along.
+// The colour of a word that came in fades to nothing. It works on the DOM of the node's cells directly, whose children
+// React does not manage (they are server HTML).
 
 type Block = { k: 'eq' | 'add' | 'del' | 'chg'; a: [number, number]; b: [number, number] }
-type Step = { k: 'eq'; stops: [Text, number][]; spans: HTMLElement[] } | { k: 'add' | 'del' | 'chg'; add: HTMLElement[]; old: HTMLElement[] }
+type Change = { k: 'add' | 'del' | 'chg'; add: HTMLElement[]; old: HTMLElement[] }
+type Step = { k: 'eq'; spans: HTMLElement[] } | Change
 
 const words = (t: string) => t.split(/(\s+)/).filter(Boolean)
 
@@ -89,7 +93,7 @@ function unitize(sp: HTMLElement, text = sp.textContent ?? '') {
 
 /**
  * Puts a cell's new content in place so that it reads as the old one: removed words come back as red ghosts at their
- * place, added words are hidden. Returns the steps in text order.
+ * place, rewritten ones as orange ghosts, and added words are hidden. Returns the steps in text order.
  */
 function stageCell(c: HTMLElement, diff: Block[], oldText: string): Step[] {
     const groups = wrapGroups(
@@ -101,15 +105,8 @@ function stageCell(c: HTMLElement, diff: Block[], oldText: string): Step[] {
     diff.forEach(b => {
         const spans = b.b[1] > b.b[0] ? groups[gi++] : []
         if (b.k === 'eq') {
-            const stops: [Text, number][] = []
-            spans.forEach(sp => {
-                sp.className = 'tx-q'
-                const n = sp.firstChild
-                const re = /\S+/g
-                let m
-                while (n && n.nodeType === 3 && (m = re.exec((n as Text).data))) stops.push([n as Text, m.index + m[0].length])
-            })
-            steps.push({ k: 'eq', stops, spans })
+            spans.forEach(sp => (sp.className = 'tx-q'))
+            steps.push({ k: 'eq', spans })
             return
         }
         const add = spans.flatMap(sp => {
@@ -119,7 +116,7 @@ function stageCell(c: HTMLElement, diff: Block[], oldText: string): Step[] {
         let old: HTMLElement[] = []
         if (b.a[1] > b.a[0]) {
             const g = document.createElement('span')
-            g.className = 'tx-o'
+            g.className = `tx-o${b.k === 'chg' ? ' c' : ''}`
             if (add.length) spans[0].before(g)
             else {
                 const prev = steps[steps.length - 1]
@@ -129,7 +126,14 @@ function stageCell(c: HTMLElement, diff: Block[], oldText: string): Step[] {
             }
             old = unitize(g, oldText.slice(b.a[0], b.a[1]))
         }
-        steps.push({ k: b.k, add, old })
+        // Rewritten words go one for one. Where the new text has more words, the rest are added ones; where the old
+        // text has more, the rest are removed ones: each is marked and animated as such.
+        const pairs = b.k === 'chg' ? Math.min(old.length, add.length) : 0
+        const more = b.k === 'chg' ? [...old.slice(pairs), ...add.slice(pairs)] : []
+        more.forEach(u => u.classList.add('x'))
+        steps.push({ k: b.k, add: b.k === 'chg' ? add.slice(0, pairs) : add, old: b.k === 'chg' ? old.slice(0, pairs) : old })
+        if (old.length > pairs && b.k === 'chg') steps.push({ k: 'del', add: [], old: old.slice(pairs) })
+        if (add.length > pairs && b.k === 'chg') steps.push({ k: 'add', add: add.slice(pairs), old: [] })
     })
     // A block whose words are all still hidden (a new paragraph or list item) is hidden too, until its first word comes in.
     c.querySelectorAll('p,li,pre,blockquote,ul,ol,h1,h2,h3,h4,h5,h6,table,tr').forEach(e => {
@@ -146,16 +150,26 @@ function stageCell(c: HTMLElement, diff: Block[], oldText: string): Step[] {
     return steps
 }
 
-const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
+/** Waits `ms`, or until `signal` aborts. */
+export const sleep = (ms: number, signal?: AbortSignal) =>
+    new Promise<void>(res => {
+        if (signal?.aborted) return res()
+        const timer = setTimeout(res, ms)
+        signal?.addEventListener(
+            'abort',
+            () => {
+                clearTimeout(timer)
+                res()
+            },
+            { once: true },
+        )
+    })
 
-// The whole animation ends within a second, however long the text: the cursor's pass, then the last words' highlight
-// fading, then the cursor leaving.
-const TOTAL = 1000
-/** How long a word's highlight takes to fade (`--tx-fade`). */
+/** How long each stage takes: the marks, the removal, the pass over rewritten words, the pass over added words. */
+const STAGE = 500
+/** How long a word's colour takes to fade once it came in (`--tx-fade`). */
 const FADE = 280
 const CURSOR_OUT = 100
-/** The cursor's pass, less a frame: the pass ends on the first frame after its time. */
-const PASS = TOTAL - FADE - CURSOR_OUT - 20
 
 /** Something that happens once, when the pass reaches `at` (ms, at the unhurried pace). */
 type Cue = { at: number; run: () => void }
@@ -163,15 +177,16 @@ type Cue = { at: number; run: () => void }
 type Span = { from: number; to: number; run: (p: number) => void }
 
 /**
- * Plays the pass: `length` ms at the unhurried pace, played `rate` times faster. One clock drives it, so a frame can
+ * Plays a pass: `length` ms at the unhurried pace, played `rate` times faster. One clock drives it, so a frame can
  * bring in as many words as the pace asks for, and a long text takes no longer than a short one.
  */
-const play = (cues: Cue[], spans: Span[], length: number, rate: number) =>
+const play = (cues: Cue[], spans: Span[], length: number, rate: number, signal?: AbortSignal) =>
     new Promise<void>((res, rej) => {
         const t0 = performance.now()
         let cue = 0
         let span = 0
         const frame = (now: number) => {
+            if (signal?.aborted) return res()
             try {
                 // A frame's time is when the frame began, which can be just before t0.
                 const t = Math.max(0, now - t0) * rate
@@ -191,8 +206,10 @@ const play = (cues: Cue[], spans: Span[], length: number, rate: number) =>
 /**
  * Animates cells (title, text) from what they show now to new HTML. Resolves once they hold the new HTML; without a
  * change to show, on a hidden page, or with reduced motion, the HTML just changes.
+ *
+ * `fit` plays the whole animation, every stage of it, in that many ms. Aborting `signal` ends it at once, on the new HTML.
  */
-export async function animateTo(cells: HTMLElement[], parts: string[]) {
+export async function animateTo(cells: HTMLElement[], parts: string[], { fit, signal }: { fit?: number; signal?: AbortSignal } = {}) {
     const olds = cells.map(c => c.textContent ?? '')
     const diffs = cells.map((_, i) => {
         const t = document.createElement('div')
@@ -224,56 +241,64 @@ export async function animateTo(cells: HTMLElement[], parts: string[]) {
         const rc = el.getBoundingClientRect()
         return { left: end ? rc.right : rc.left, top: rc.top, height: rc.height, width: 0 }
     }
-    const at = (n: Text, o: number) => {
-        const rg = document.createRange()
-        rg.setStart(n, o)
-        rg.collapse(true)
-        return rg.getClientRects()[0] || rg.getBoundingClientRect()
-    }
     try {
-        const stages = cells.map((c, i) => {
+        // Every change, in text order, with the cell it is in.
+        const changes = cells.flatMap((c, i) => {
             c.innerHTML = parts[i]
-            return changed(diffs[i]) ? stageCell(c, diffs[i]!, olds[i]) : null
+            if (!changed(diffs[i])) return []
+            return stageCell(c, diffs[i]!, olds[i]).flatMap(s => (s.k === 'eq' ? [] : [{ s, cell: c }]))
         })
-        // The pass at an unhurried pace: when each word comes in or goes, and where the cursor is meanwhile.
-        const cues: Cue[] = []
-        const spans: Span[] = []
-        let t = 0
-        // Set once the pace is known: how long a word takes to grow in or collapse.
-        let wordMs = 1
-        const grow = (u: HTMLElement, cell: HTMLElement) => {
-            for (let e: HTMLElement | null = u.parentElement; e; e = e.parentElement) {
-                e.classList.remove('tx-hide')
-                if (e === cell) break
+        const of = (k: Change['k']) => changes.filter(c => c.s.k === k)
+        // The stages this change has, and how much faster they play to fit.
+        const marks = of('del').length > 0 || of('chg').length > 0
+        const passes = of('chg').length > 0 || of('add').length > 0
+        const natural = [marks, of('del').length, of('chg').length, of('add').length].filter(Boolean).length * STAGE + (passes ? FADE + CURSOR_OUT : 0)
+        const pace = fit && natural ? fit / natural : 1
+        const stage = STAGE * pace
+        const fade = FADE * pace
+        cells.forEach(c => c.style.setProperty('--tx-fade', `${fade}ms`))
+        const stopped = () => !!signal?.aborted
+
+        // 1. The words about to go are marked: nothing moves yet.
+        if (marks) await sleep(stage, signal)
+        if (stopped()) return
+
+        // 2. The removed words collapse together, with no cursor.
+        const removed = of('del').flatMap(c => c.s.old)
+        if (removed.length) {
+            for (const u of removed) {
+                const w = u.getBoundingClientRect().width
+                u.animate([{ maxWidth: `${w}px`, opacity: 1 }, { maxWidth: '0px', opacity: 0 }], { duration: stage, easing: 'ease-in-out', fill: 'forwards' })
             }
-            u.classList.add('on')
-            const w = u.getBoundingClientRect().width
-            u.animate([{ maxWidth: '0px', opacity: 0 }, { maxWidth: `${w}px`, opacity: 1 }], { duration: 130 * wordMs, easing: 'ease-out' })
+            await sleep(stage, signal)
         }
-        const shrink = (u: HTMLElement) => {
-            const w = u.getBoundingClientRect().width
-            u.animate([{ maxWidth: `${w}px`, opacity: 1 }, { maxWidth: '0px', opacity: 0 }], { duration: 110 * wordMs, easing: 'ease-in', fill: 'forwards' })
-        }
-        for (let i = 0; i < cells.length; i++) {
-            const st = stages[i]
-            if (!st) continue
-            cells[i].style.setProperty('--tx-fade', `${FADE}ms`)
-            for (const s of st) {
-                if (s.k === 'eq') {
-                    const n = s.stops.length
-                    if (!n) continue
-                    const d = Math.min(500, Math.max(60, n * 9))
-                    spans.push({
-                        from: t,
-                        to: t + d,
-                        run: p => {
-                            const [node, off] = s.stops[Math.min(n - 1, Math.floor(p * n))]
-                            put(at(node, off))
-                        },
-                    })
-                    t += d
-                    continue
+
+        /**
+         * 3 and 4. The cursor passes over these changes, each word coming in (and the word it replaces going) as the
+         * cursor reaches it. A short pass keeps an unhurried pace and the cursor then rests; a long one is played as
+         * much faster as it takes to fit the stage.
+         */
+        const pass = async (list: typeof changes) => {
+            if (!list.length || stopped()) return
+            const cues: Cue[] = []
+            const spans: Span[] = []
+            // How long a word takes to grow in or collapse, at the pace of this pass.
+            let wordMs = 1
+            const grow = (u: HTMLElement, cell: HTMLElement) => {
+                for (let e: HTMLElement | null = u.parentElement; e; e = e.parentElement) {
+                    e.classList.remove('tx-hide')
+                    if (e === cell) break
                 }
+                u.classList.add('on')
+                const w = u.getBoundingClientRect().width
+                u.animate([{ maxWidth: '0px', opacity: 0 }, { maxWidth: `${w}px`, opacity: 1 }], { duration: 130 * wordMs, easing: 'ease-out' })
+            }
+            const shrink = (u: HTMLElement) => {
+                const w = u.getBoundingClientRect().width
+                u.animate([{ maxWidth: `${w}px`, opacity: 1 }, { maxWidth: '0px', opacity: 0 }], { duration: 110 * wordMs, easing: 'ease-in', fill: 'forwards' })
+            }
+            let t = 0
+            for (const { s, cell } of list) {
                 if (s.old.length) {
                     const first = s.old[0]
                     spans.push({ from: t, to: t + 90, run: () => put(edge(first, false)) })
@@ -283,12 +308,12 @@ export async function animateTo(cells: HTMLElement[], parts: string[]) {
                 for (let j = 0; j < n; j++) {
                     const o = s.old[j]
                     const a = s.add[j]
-                    const d = s.k === 'add' ? 36 : s.k === 'del' ? 28 : 42
+                    const d = s.k === 'add' ? 36 : 42
                     cues.push({
                         at: t,
                         run: () => {
                             if (o) shrink(o)
-                            if (a) grow(a, cells[i])
+                            if (a) grow(a, cell)
                         },
                     })
                     spans.push({ from: t, to: t + d, run: () => put(a ? edge(a, true) : edge(o, false)) })
@@ -296,15 +321,18 @@ export async function animateTo(cells: HTMLElement[], parts: string[]) {
                 }
                 t += 40
             }
+            const rate = Math.max(1, t / stage)
+            wordMs = 1 / rate
+            await play(cues, spans, stage * rate, rate, signal)
         }
-        // A short change keeps its pace; a long one is played as much faster as it takes to fit.
-        const rate = Math.max(1, t / PASS)
-        wordMs = 1 / rate
-        await play(cues, spans, t, rate)
-        // The last words are still fading; the cursor leaves once they have.
-        await sleep(FADE)
-        cur.style.opacity = '0'
-        await sleep(CURSOR_OUT)
+        await pass(of('chg'))
+        await pass(of('add'))
+        if (placed && !stopped()) {
+            // The last words' colour is still fading; the cursor leaves once it has.
+            await sleep(fade, signal)
+            cur.style.opacity = '0'
+            await sleep(CURSOR_OUT * pace, signal)
+        }
     } finally {
         settle()
         cells.forEach(c => c.style.removeProperty('--tx-fade'))

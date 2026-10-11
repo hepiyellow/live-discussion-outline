@@ -399,12 +399,16 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
 /* The current topic's line is a border, which moves what `left` is measured from. */
 .topic-head.current > .qicon { left: -21px; }
 
-/* The diff animation: words are units (a word and the space after it) that grow in or collapse one by one while a cursor passes. */
+/* The diff animation: words are units (a word and the space after it) that grow in or collapse. Words about to go are
+   marked first: red for removed ones, orange for rewritten ones, whose new words come in orange too; added ones in green. */
 .tx-u { display: inline-block; white-space: pre; overflow: clip; vertical-align: baseline; }
 .tx-n .tx-u:not(.on) { display: none; }
 .tx-n .tx-u.on { animation: txadd var(--tx-fade, 1s) ease-out forwards; }
 .tx-n.c .tx-u.on { animation: txchg var(--tx-fade, 1s) ease-out forwards; }
-.tx-o .tx-u { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
+/* In a rewritten run, the words beyond the ones replaced one for one: added ones in green, removed ones in red. */
+.tx-n.c .tx-u.x.on { animation-name: txadd; }
+.tx-o .tx-u { --tx-mark: var(--danger); color: var(--tx-mark); background: color-mix(in srgb, var(--tx-mark) 18%, transparent); animation: txmark 0.15s ease-out; }
+.tx-o.c .tx-u:not(.x) { --tx-mark: var(--changed); }
 .tx-hide { display: none !important; }
 .tx-cur {
     position: fixed;
@@ -420,7 +424,8 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
     transition: transform 0.07s linear, height 0.07s linear, opacity 0.1s;
 }
 @keyframes txadd { from { background: color-mix(in srgb, var(--approved) 50%, transparent); } to { background: transparent; } }
-@keyframes txchg { from { background: color-mix(in srgb, var(--foreground) 35%, transparent); } to { background: transparent; } }
+@keyframes txchg { from { background: color-mix(in srgb, var(--changed) 45%, transparent); } to { background: transparent; } }
+@keyframes txmark { from { color: inherit; background: transparent; } }
 
 /* A node's own envelope: muted (the queue column's is red). On a bubble it sits top right; on a parent row or topic it
    takes its place in the row, before the rolled-up icons. */
@@ -497,3 +502,10 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
 .hist-head .num { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
 .hist-body { padding: 0 0 2px 4px; color: var(--muted-foreground); }
 .hist-kids { padding-left: 16px; border-left: 1px solid var(--border); }
+/* Switching to another change: a node about to go is marked red, with all under it; a node whose text is about to change
+   orange, itself only; a node that comes in is green, fading while it grows. */
+.hist-node, .hist-node > :is(.hist-head, .hist-body) { border-radius: 4px; transition: background-color 0.15s ease-out, box-shadow 0.15s ease-out; }
+.hist-node.hist-del { background: color-mix(in srgb, var(--danger) 16%, transparent); box-shadow: inset 2px 0 0 var(--danger); }
+.hist-node.hist-chg > :is(.hist-head, .hist-body) { background: color-mix(in srgb, var(--changed) 16%, transparent); box-shadow: inset 2px 0 0 var(--changed); }
+.hist-node.hist-add { animation: histadd 0.5s ease-out; }
+@keyframes histadd { from { background: color-mix(in srgb, var(--approved) 30%, transparent); } }

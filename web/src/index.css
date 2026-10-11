@@ -91,6 +91,7 @@
     --settled: #8c959f;
     /* An action the agent has carried out. */
     --done: #9a6700;
+    --changed: #bc4c00;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -130,6 +131,7 @@
         --current: #ffffff;
         --settled: #6e7681;
         --done: #e3b341;
+        --changed: #f0883e;
     }
 }
 

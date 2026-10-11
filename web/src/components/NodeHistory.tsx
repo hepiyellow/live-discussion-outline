@@ -1,49 +1,34 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
-import { contentHtml } from '@/lib/content'
-import { animateTo } from '@/lib/diffAnimation'
+import { drawTree, transitionTree } from '@/lib/historyTree'
 import type { HistoryEntry, OutlineNode } from '@/types'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 
 const when = (at: number) => new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 /**
- * Draws nodes into `root`, reusing the elements of nodes it already shows, so that the diff animation can take each
- * one from the text it shows to the new text. Returns the cells to animate, with their new HTML.
+ * A node's state at one entry, its children included. Switching entries takes the tree from the one to the other, a
+ * node at a time (lib/historyTree.ts); switching again meanwhile takes in the change under way at once, then starts the new one.
  */
-function drawTree(root: HTMLElement, nodes: OutlineNode[]) {
-    const shown = new Map<string, HTMLElement>()
-    root.querySelectorAll<HTMLElement>('[data-hnum]').forEach(el => shown.set(el.dataset.hnum ?? '', el))
-    const changes: [HTMLElement[], string[]][] = []
-    const make = (n: OutlineNode): HTMLElement => {
-        const text = contentHtml(n)
-        let el = shown.get(n.num)
-        if (el) {
-            const title = el.querySelector<HTMLElement>(':scope > .hist-head > .title-html')
-            const body = el.querySelector<HTMLElement>(':scope > .hist-body')
-            if (title && body) changes.push([[title, body], [n.titleHtml, text]])
-            shown.delete(n.num)
-        } else {
-            el = document.createElement('div')
-            el.className = 'hist-node'
-            el.dataset.hnum = n.num
-            el.innerHTML = `<div class="hist-head"><span class="num">${n.num}</span><span class="title-html">${n.titleHtml}</span></div><div class="hist-body node-html">${text}</div><div class="hist-kids"></div>`
-        }
-        const kids = el.querySelector<HTMLElement>(':scope > .hist-kids')
-        kids?.replaceChildren(...n.children.map(make))
-        return el
-    }
-    root.replaceChildren(...nodes.map(make))
-    return changes
-}
-
-/** A node's state at one entry, its children included. Switching entries animates each node from its old text to the new. */
 function HistoryTree({ nodes }: { nodes: OutlineNode[] }) {
     const ref = useRef<HTMLDivElement>(null)
+    const run = useRef<{ stop: AbortController; done: Promise<void>; nodes: OutlineNode[] }>(undefined)
     useLayoutEffect(() => {
-        if (!ref.current) return
-        for (const [cells, parts] of drawTree(ref.current, nodes)) void animateTo(cells, parts)
+        const root = ref.current
+        if (!root) return
+        const before = run.current
+        const stop = new AbortController()
+        before?.stop.abort()
+        const done = (async () => {
+            if (before) {
+                await before.done
+                drawTree(root, before.nodes)
+            }
+            if (!stop.signal.aborted) await transitionTree(root, nodes, stop.signal)
+        })().catch(e => console.error(e))
+        run.current = { stop, done, nodes }
     }, [nodes])
+    useEffect(() => () => run.current?.stop.abort(), [])
     return <div ref={ref} className="hist-tree" />
 }
 
