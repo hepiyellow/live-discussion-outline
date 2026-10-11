@@ -54,7 +54,7 @@ describe('inbox, input box and spinner', () => {
         return sent[n - 1]
     }
 
-    test('the @message shows in the inbox, and is seen once opened', async () => {
+    test('the @message shows in the inbox with a closed envelope, and is read once it is clicked', async () => {
         const inbox = page.getByRole('button', { name: 'Messages from the agent' })
         await inbox.waitFor()
         assert.equal((await inbox.textContent()).trim(), '1')
@@ -62,8 +62,14 @@ describe('inbox, input box and spinner', () => {
         const list = page.locator('[data-slot="popover-content"]')
         assert.match(await list.textContent(), /The staging replay finished with an 82% hit rate\./)
         assert.match(await list.textContent(), /2\.4/)
-        await page.keyboard.press('Escape')
+        // Opening the list reads nothing: the envelope is closed and the count stays.
+        const message = list.locator('[data-message]')
+        assert.equal(await message.getAttribute('data-read'), null)
+        assert.equal((await inbox.textContent()).trim(), '1')
+        await message.getByRole('button', { name: /Unread/ }).click()
+        await message.locator('[data-read]').or(page.locator('[data-message][data-read]')).first().waitFor()
         assert.equal((await inbox.textContent()).trim(), '')
+        await page.keyboard.press('Escape')
         // Seen marks live in the viewer state.
         await page.reload()
         await page.getByRole('button', { name: 'Messages from the agent' }).waitFor()
