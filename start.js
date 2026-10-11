@@ -318,6 +318,8 @@ export async function startSession(request, { workspaceDirs, claudeCommand: conf
     if (topic && request.kind !== 'resume') args.push('--name', topic)
     // The session gets the plugin from this checkout (its skill, its MCP tools and its hooks), installed or not.
     args.push('--plugin-dir', PLUGIN_DIR)
+    // The outline's own tools need no asking: they change nothing but the outline.
+    args.push('--allowedTools', 'mcp__plugin_outline-only_outline')
     const prompt = request.kind === 'resume' ? OUTLINE_COMMAND : `${OUTLINE_COMMAND} ${topic}`.trim()
 
     let name = slug(label)
