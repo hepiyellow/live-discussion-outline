@@ -262,6 +262,15 @@ describe('an outline in file mode is its agent’s: the tools and the hooks leav
     })
 
     test('its session has no outline for the tools, and the hooks say nothing', async () => {
+        // Not even beside an outline the server keeps for an agent that gave no session id, started from the same folder.
+        const nameless = startMcp(server, { CLAUDE_CODE_SESSION_ID: '' })
+        try {
+            const started = await nameless.tool('start', { title: 'No session id' })
+            assert.equal(started.error, false, started.text)
+            assert.match((await nameless.tool('read')).text, /^Outline "No session id"/)
+        } finally {
+            nameless.stop()
+        }
         assert.match((await mcp.tool('read')).text, /Call start first/)
         const hook = event => runHook(server, { session_id: OTHER, ...event })
         assert.equal(await hook({ hook_event_name: 'UserPromptSubmit', prompt: 'and now?' }), '')

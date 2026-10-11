@@ -151,14 +151,15 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 throw new Refusal(`The outline ${outline} is kept by its agent as a file (file mode), so the outline tools neither read nor change it. Its agent edits the file itself, following the outline-file skill.`)
             return { project, file }
         }
-        const all = outlines()
-            .map(o => ({ ...o, headers: headersOf(o) }))
-            .filter(o => o.headers.mode === 'server')
+        const all = outlines().map(o => ({ ...o, headers: headersOf(o) }))
+        const kept = all.filter(o => o.headers.mode === 'server')
         if (session && isSessionId(session)) {
-            const found = all.find(o => o.headers.session === session)
+            const found = kept.find(o => o.headers.session === session)
             if (found) return found
+            // A session that keeps its outline as a file has none here, whatever else was started from its folder.
+            if (all.some(o => o.headers.session === session)) return undefined
         }
-        if (cwd) return all.find(o => readLedger(o.project, o.file).cwd === cwd && (!session || !o.headers.session))
+        if (cwd) return kept.find(o => readLedger(o.project, o.file).cwd === cwd && (!session || !o.headers.session))
         return undefined
     }
 
