@@ -1,5 +1,7 @@
 # The server owns the outline; agents change it through MCP tools
 
+_For a transition, the old way is kept beside this one: an outline is in **server mode** (what this ADR decides) or in **file mode** (the agent writes the file, as before), chosen when its session starts and written in the file as a `Mode: server` line. The server never writes an outline in file mode, and the tools and hooks pass it over. So the first consequence below does not hold for now: an agent without the tools can still feed the page by writing a file. One mode is to be retired; [the plan](../plans/two-modes.md) says how._
+
 The agent used to write the outline as a markdown file, following a long skill, and the server watched the folder. The skill could only ask for what an outline needs (unique numbers, one current node, roll-up, a queue kept up to date), and an approval on the page stayed pending until the agent copied it into the file. We are making the server the only writer: an agent changes an outline through three MCP tools (`start`, `read`, `change`), the user through the page, and each learns from the server what the other did. [The plan](../plans/outline-over-mcp.md) has the reasoning and the measurements.
 
 ## Decisions

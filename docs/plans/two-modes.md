@@ -1,6 +1,6 @@
 # Plan — Two modes: an outline is kept by its agent as a file, or by the server
 
-**Depends on:** the `outline-over-mcp` branch ([ADR 0003](../adr/0003-the-server-owns-the-outline.md) as built) · **Decisions:** [ADR 0001](../adr/0001-react-spa-fed-by-json-over-sse.md), [ADR 0003](../adr/0003-the-server-owns-the-outline.md) · **Terms:** [CONTEXT.md](../../CONTEXT.md)
+**Status:** built on the `two-modes` branch, steps 1 to 5; "Review by hand" is still to do. · **Depends on:** the `outline-over-mcp` branch ([ADR 0003](../adr/0003-the-server-owns-the-outline.md) as built) · **Decisions:** [ADR 0001](../adr/0001-react-spa-fed-by-json-over-sse.md), [ADR 0003](../adr/0003-the-server-owns-the-outline.md) · **Terms:** [CONTEXT.md](../../CONTEXT.md)
 
 ## Goal
 

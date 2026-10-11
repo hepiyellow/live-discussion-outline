@@ -1,6 +1,6 @@
 # The Outline app owns the server; agents find the outlines folder through one settings file
 
-_[ADR 0003](0003-the-server-owns-the-outline.md) changes two things said here: the agent no longer writes files, and its plugin starts the server when none is running._
+_[ADR 0003](0003-the-server-owns-the-outline.md) changes two things said here: in server mode the agent no longer writes files, and in both modes its plugin starts the server when none is running._
 
 The agent used to start the server itself: the skill ran `bin/ensure.js`, which started the server in the background when `/health` did not answer and printed the outlines folder and the page's URL. With the Outline app, two things could start the server, and a server started by an agent outlived every window that showed it. We are making the app the only thing that starts the server, stopped when the app quits, and having the agent read one settings file, `~/.config/live-discussion-outline/config.json`, to learn where to write outlines and which link to print. The agent only writes files, so it never needs the server, and it keeps writing outlines while nothing serves them.
 

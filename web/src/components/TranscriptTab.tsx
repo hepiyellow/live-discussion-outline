@@ -61,7 +61,7 @@ export function TranscriptTab({ outline, transcript, active }: { outline: Outlin
         return (
             <p className="text-muted-foreground">
                 This outline isn't linked to an agent session yet. With Claude Code, the skill writes a <code>Session:</code> line (the <code>session=</code> value{' '}
-                <code>bin/ensure.js</code> prints); ask the agent to add it to this outline.
+                its Start step prints); ask the agent to add it to this outline.
             </p>
         )
     return (
