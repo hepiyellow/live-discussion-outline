@@ -481,3 +481,11 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
 }
 .queue-col [data-queue-more][data-pulse] { animation: qpulse 0.5s ease-in-out 3; }
 @keyframes qpulse { 50% { transform: scale(1.15); color: var(--claim); border-color: var(--claim); } }
+
+/* Node history: the clock beside a node's hover buttons, and the node as it was at a change (its children included). */
+.row.leaf > .asks { grid-area: ask; align-self: start; position: relative; margin: 8px 10px 0 0; }
+.hist-node { margin-top: 6px; }
+.hist-head { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; font-weight: 600; }
+.hist-head .num { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.hist-body { padding: 0 0 2px 4px; color: var(--muted-foreground); }
+.hist-kids { padding-left: 16px; border-left: 1px solid var(--border); }

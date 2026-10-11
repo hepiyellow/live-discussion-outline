@@ -1,5 +1,5 @@
 import { createContext, useContext, type KeyboardEvent, type MouseEvent } from 'react'
-import { ChevronDown, Copy, Reply } from 'lucide-react'
+import { ChevronDown, Copy, History, Reply } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Statuses } from '@/lib/status'
 import { DONE_PILL, FAILED_PILL, contentHtml, type NodeContent } from '@/lib/content'
@@ -24,6 +24,8 @@ export interface OutlineContext {
     onTopicCheck: (topic: OutlineNode) => void
     onRun: (node: OutlineNode) => void
     onReference: (node: OutlineNode) => void
+    /** Opens the node's history: its changes, and the node as it was at each. */
+    onHistory: (node: OutlineNode) => void
     /** Nodes changed since the viewer read them: what they read, shown until they open the change. */
     unread: Map<string, NodeContent>
     /** Unread nodes being opened: their diff button is gone, their text animating. */
@@ -125,13 +127,33 @@ function Ask({ node }: { node: OutlineNode }) {
     )
 }
 
-/** A parent's buttons on hover: the reference, and the diff of everything changed under it. */
+/** The node's history, on hover: its changes, with the node as it was at each. */
+function HistoryButton({ node }: { node: OutlineNode }) {
+    const { onHistory } = useOutlineCtx()
+    return (
+        <button
+            type="button"
+            className="ask"
+            title="History: the changes to this node"
+            aria-label={`History of ${node.num}`}
+            onClick={e => {
+                e.stopPropagation()
+                onHistory(node)
+            }}
+        >
+            <History className="size-3.5" />
+        </button>
+    )
+}
+
+/** A parent's buttons on hover: the reference, the history, and the diff of everything changed under it. */
 function Asks({ node }: { node: OutlineNode }) {
     const { unreadUnder, onOpenUnreadUnder } = useOutlineCtx()
     const under = unreadUnder(node.num).length
     return (
         <span className="asks">
             <Ask node={node} />
+            <HistoryButton node={node} />
             {under > 0 && (
                 <button
                     type="button"
@@ -266,7 +288,10 @@ function Leaf({ node }: { node: OutlineNode }) {
             <StatusBox box={box} onToggle={() => onCheck(node)} />
             <span className="num">{node.num}</span>
             <Title node={node} titleHtml={shown.titleHtml} />
-            <Ask node={node} />
+            <span className="asks">
+                <Ask node={node} />
+                <HistoryButton node={node} />
+            </span>
             <Messages node={node} />
             <Html className="node-html" html={shown.html} />
         </div>

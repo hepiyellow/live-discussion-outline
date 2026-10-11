@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload } from './outline.js'
+import { HISTORY_DIR, createHistory } from './history.js'
 import { loadConfig } from './config.js'
 import { attachTerminals, fromLocalPage, hasSession, sendToTerminal, stopInTerminal } from './terminal.js'
 import { followSession, isSessionId, streamActivity, streamMessages } from './transcript.js'
@@ -38,18 +39,38 @@ const TRASH = '.trash'
 
 let debounce
 const viewerState = createStateStore(ROOT)
-// Writes to the viewer state and the trash are not outline changes.
-const IGNORED = new Set([STATE_DIR, TRASH])
+const history = createHistory(ROOT)
+// Writes to the viewer state, the trash and the node history are not outline changes.
+const IGNORED = new Set([STATE_DIR, TRASH, HISTORY_DIR])
+// Outline files that changed since the last recording of their history: `project/file`.
+const touched = new Set()
 const changed = () => {
     clearTimeout(debounce)
     debounce = setTimeout(() => {
+        recordTouched()
         pushOutlines()
         pushList()
     }, 120)
 }
+/** Records the history of each outline file that changed, from its text as it is now. */
+function recordTouched() {
+    for (const key of touched) {
+        const [project, file] = JSON.parse(key)
+        try {
+            const full = outlineFile(project, file)
+            if (full) history.record(project, file, fs.readFileSync(full, 'utf8'))
+        } catch (e) {
+            console.error(`history of ${project}/${file}: ${e.message}`)
+        }
+    }
+    touched.clear()
+}
 function watchOutlines() {
     const watcher = fs.watch(ROOT, { recursive: true }, (_, name) => {
         if (name && IGNORED.has(name.split(/[/\\]/)[0])) return
+        // A file directly in a project folder is an outline: `project/file.md`.
+        const parts = name ? name.split(/[/\\]/) : []
+        if (parts.length === 2 && parts[1].endsWith('.md') && safeName(parts[0])) touched.add(JSON.stringify([parts[0], parts[1].slice(0, -3)]))
         changed()
     })
     // On Linux the recursive watcher fails when a folder it watches is removed (a project folder, .state/): start a
@@ -64,6 +85,23 @@ function watchOutlines() {
     })
 }
 watchOutlines()
+
+/** The history of each outline as it was when the server started: its nodes, stamped with the file's last change. */
+function baselineHistory() {
+    for (const project of fs.readdirSync(ROOT, { withFileTypes: true })) {
+        if (!project.isDirectory() || project.name.startsWith('.')) continue
+        for (const f of fs.readdirSync(path.join(ROOT, project.name))) {
+            if (!f.endsWith('.md')) continue
+            try {
+                const full = path.join(ROOT, project.name, f)
+                history.record(project.name, f.slice(0, -3), fs.readFileSync(full, 'utf8'), fs.statSync(full).mtimeMs)
+            } catch (e) {
+                console.error(`history of ${project.name}/${f}: ${e.message}`)
+            }
+        }
+    }
+}
+baselineHistory()
 
 /**
  * Open streams the outline list goes out on, each with the list it last sent and its event name: the list's own stream
@@ -237,9 +275,11 @@ async function stateApi(req, res, parts) {
  */
 function outlineApi(req, res, parts, url) {
     const [project, file, events] = parts
-    if (parts.length > 3 || (events !== undefined && events !== 'events')) return send(res, 404, 'text/plain', 'not found')
+    if (parts.length > 3 || (events !== undefined && events !== 'events' && events !== 'history')) return send(res, 404, 'text/plain', 'not found')
     const outline = readOutline(project, file)
     if (!outline) return send(res, 404, 'text/plain', 'no such outline')
+    // A node's history: its entries, oldest first (`?num=2.1`).
+    if (events === 'history') return send(res, 200, 'application/json', JSON.stringify(history.read(project, file, url.searchParams.get('num') ?? '')))
     const data = JSON.stringify(outline)
     if (!events) return send(res, 200, 'application/json', data)
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })

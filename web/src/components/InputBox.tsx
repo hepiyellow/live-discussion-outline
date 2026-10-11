@@ -263,6 +263,7 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
             <span className="relative shrink-0">
                 <button
                     type={stops ? 'button' : 'submit'}
+                    data-send-button
                     title={stops ? 'Stop the agent' : 'Send'}
                     aria-label={stops ? 'Stop' : 'Send'}
                     disabled={stops ? stopping : empty || sending}

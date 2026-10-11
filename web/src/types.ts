@@ -36,6 +36,12 @@ export interface OutlineNode {
     children: OutlineNode[]
 }
 
+/** One change of a node, from GET /api/outline/<project>/<file>/history?num=: when, and the node's subtree then. */
+export interface HistoryEntry {
+    at: number
+    node: OutlineNode
+}
+
 /** An item of the queue: what the agent advises the user to handle next. */
 export interface QueueItem {
     num: string

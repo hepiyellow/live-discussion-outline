@@ -1,8 +1,9 @@
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { currentPath, startsOpen } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
+import { NodeHistory } from './NodeHistory'
 import { OutlineCtx, Topic, type OutlineContext } from './NodeView'
 import { waiting } from './queue'
 import { RenameTitle } from './RenameTitle'
@@ -25,11 +26,13 @@ interface Props {
 
 export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     const root = useRef<HTMLDivElement>(null)
+    const [historyOf, setHistoryOf] = useState<OutlineNode | null>(null)
     const ctx = useMemo<OutlineContext>(() => {
         const isOpen = isOpenIn(viewer.open)
         const statuses = new Statuses(outline.nodes, viewer.overrides)
         return {
             ...actions,
+            onHistory: setHistoryOf,
             statuses,
             // The first item about a node, as the queue column lists them.
             queued: new Map(
@@ -74,6 +77,7 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
 
     return (
         <OutlineCtx.Provider value={ctx}>
+            {historyOf && <NodeHistory project={outline.project} file={outline.file} node={historyOf} onClose={() => setHistoryOf(null)} />}
             <div ref={root} className="outline-tab">
                 {outline.title && (
                     <h1 className="mb-[0.85em] text-[1.85em] leading-tight font-bold tracking-tight">

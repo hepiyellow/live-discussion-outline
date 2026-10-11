@@ -3,6 +3,7 @@ import { useNotify } from '@/components/Notice'
 import { isOpenIn } from '@/components/OutlineTab'
 import { Approvals, approvalText, batchNums, diffDraft, draftOf, pendingNums, referenceTo, settledPatch, snapshot, undoStep, type Retracted } from '@/lib/approvals'
 import { allNodes, nodeLabel, pathNums } from '@/lib/outline'
+import { flyTo } from '@/lib/fly'
 import { copyText, sendToSession } from '@/lib/send'
 import { Statuses } from '@/lib/status'
 import { collapseAnimated } from '@/lib/sticky'
@@ -43,7 +44,11 @@ export function useApprovals(outline: Outline, viewer: ViewerState, patch: (p: S
             patch({ sent: Object.fromEntries(nums.flatMap(n => (byNum.has(n) ? [[n, st.effective(byNum.get(n)!)]] : []))) })
             nums.forEach(n => retracted.current.delete(n))
             onSent()
-            notify(`Sent: ${text.split('\n').join(' · ')}`)
+            // Each sent checkbox flies to the Send button, one after another; without both on the page, a message says so.
+            const target = document.querySelector('[data-send-button]')
+            const sources = nums.map(n => document.querySelector(`[data-num="${n}"] .ck`)).filter((el): el is Element => !!el)
+            if (!target || !sources.length) return notify(`Sent: ${text.split('\n').join(' · ')}`)
+            sources.forEach((el, i) => window.setTimeout(() => flyTo(el, target), i * 80))
         } catch (e) {
             notify(`Not sent: ${(e as Error).message}`, true)
         }
