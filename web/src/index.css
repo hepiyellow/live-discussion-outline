@@ -140,6 +140,25 @@ html[data-pane='hidden'] {
 html[data-pane='hidden'] nav[aria-label='Outlines'] {
     display: none;
 }
+/* The top bar's start is then only as wide as its button, and part of the bar. */
+html[data-pane='hidden'] [data-pane-head] {
+    width: auto;
+    margin-right: 0;
+    border-right-width: 0;
+    background: none;
+}
+
+/* In the Outline app the window has no title bar: the top bar is what the window is dragged by, its controls excepted,
+   and its button starts after the window buttons, which macOS hides in full screen. */
+html[data-app] [data-topbar] {
+    -webkit-app-region: drag;
+}
+html[data-app] [data-topbar] :is(button, a, input, select, textarea, [role='button']) {
+    -webkit-app-region: no-drag;
+}
+html[data-app]:not([data-fullscreen]) [data-pane-head] {
+    padding-left: 78px;
+}
 
 @layer base {
     * {

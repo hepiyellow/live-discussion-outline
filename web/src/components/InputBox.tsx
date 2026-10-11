@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { ArrowUp, Square, X } from 'lucide-react'
+import { CornerDownLeft, Square, X } from 'lucide-react'
 import { Command, CommandItem, CommandList } from '@/components/ui/command'
 import { sendToSession, stopSession } from '@/lib/send'
 import { cn } from '@/lib/utils'
@@ -30,8 +30,8 @@ const chipNum = (c: Chip) => /^(\d+(?:\.\d+)*)\.?\s/.exec(c.label)?.[1]
  * wait in it as chips, sent as `Re: outline …` lines before the text. Its draft and chips live in the viewer state, so
  * every window on the outline shares them. `/` at the start lists the session's commands.
  *
- * While the agent works, a dot blinks at the corner of the round button, and with nothing typed the button stops the
- * agent instead of sending; typing a new message makes it the send button again, the dot still blinking.
+ * At the end of the box, the Enter key in a circle sends. While the agent works, a dot blinks at its corner, and with
+ * nothing typed it stops the agent instead of sending; typing a new message makes it send again, the dot still blinking.
  */
 export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added }: Props) {
     const notify = useNotify()
@@ -183,10 +183,10 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
                 e.preventDefault()
                 submit()
             }}
-            className="fixed right-0 bottom-0 left-(--pane-w) z-[15] flex items-end gap-2 border-t bg-background px-5 py-2.5"
+            className="fixed right-0 bottom-0 left-(--pane-w) z-[15] border-t bg-background px-5 py-2.5"
         >
             {shown.length > 0 && (
-                <Command value={selected} onValueChange={setSelected} shouldFilter={false} className="absolute right-16 bottom-[calc(100%+6px)] left-5 h-auto w-auto border shadow-lg">
+                <Command value={selected} onValueChange={setSelected} shouldFilter={false} className="absolute right-5 bottom-[calc(100%+6px)] left-5 h-auto w-auto border shadow-lg">
                     <CommandList label="Slash commands" className="max-h-[min(320px,50vh)]">
                         {shown.map(c => (
                             <CommandItem
@@ -204,7 +204,7 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
                     </CommandList>
                 </Command>
             )}
-            <div className="flex min-w-0 flex-1 flex-col rounded-[18px] border px-1.5 py-1 focus-within:border-muted-foreground">
+            <div className="flex flex-col rounded-[18px] border px-1.5 py-1 focus-within:border-muted-foreground">
                 {chips.length > 0 && (
                     <div className="flex flex-wrap gap-1 px-0.5 pt-0.5" aria-label="References">
                         {chips.map((c, i) => {
@@ -237,49 +237,52 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
                         })}
                     </div>
                 )}
-                <textarea
-                    ref={box}
-                    rows={1}
-                    value={text}
-                    aria-label="Message the session"
-                    placeholder="Message the session · Enter sends, Shift+Enter adds a line"
-                    title={`Typed into tmux ${outline.terminal}`}
-                    className="max-h-[40vh] resize-none border-0 bg-transparent px-2 py-[3px] leading-[1.45] outline-none"
-                    onChange={e => {
-                        edit(e.target.value)
-                        setCaret(e.target.selectionStart)
-                        setMenuClosed(false)
-                    }}
-                    onSelect={e => setCaret(e.currentTarget.selectionStart)}
-                    onFocus={() => setFocused(true)}
-                    onBlur={() => setFocused(false)}
-                    onKeyDown={onKeyDown}
-                />
-                {/* The bar fixed at the bottom of the box: the session's model and effort, on the right. */}
-                <div className="flex justify-end border-t px-1 pt-1 pb-0.5">
-                    <ModelPicker outline={outline} />
+                <div className="flex items-end gap-1.5">
+                    <textarea
+                        ref={box}
+                        rows={1}
+                        value={text}
+                        aria-label="Message the session"
+                        placeholder="Message the session · Enter sends, Shift+Enter adds a line"
+                        title={`Typed into tmux ${outline.terminal}`}
+                        className="max-h-[40vh] min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-[3px] leading-[1.45] outline-none"
+                        onChange={e => {
+                            edit(e.target.value)
+                            setCaret(e.target.selectionStart)
+                            setMenuClosed(false)
+                        }}
+                        onSelect={e => setCaret(e.currentTarget.selectionStart)}
+                        onFocus={() => setFocused(true)}
+                        onBlur={() => setFocused(false)}
+                        onKeyDown={onKeyDown}
+                    />
+                    {/* In the box, at its end: the Enter key in a circle sends; while the agent works and there is nothing to send, it stops the agent. */}
+                    <span className="relative mb-px shrink-0">
+                        <button
+                            type={stops ? 'button' : 'submit'}
+                            data-send-button
+                            title={stops ? 'Stop the agent' : 'Send'}
+                            aria-label={stops ? 'Stop' : 'Send'}
+                            disabled={stops ? stopping : empty || sending}
+                            onClick={stops ? stop : undefined}
+                            className="inline-flex size-[26px] items-center justify-center rounded-full border border-muted-foreground/60 text-muted-foreground hover:border-foreground hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:border-muted-foreground/60 disabled:hover:text-muted-foreground"
+                        >
+                            {stops ? <Square className="size-2.5" fill="currentColor" /> : <CornerDownLeft className="size-3.5" />}
+                        </button>
+                        {/* The working indicator: a dot on the button's corner, blinking until the agent's turn ends. */}
+                        <span
+                            role="status"
+                            aria-label={busy ? 'The agent is working' : 'The agent is idle'}
+                            data-busy={busy || undefined}
+                            className={cn('work-dot pointer-events-none absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-background bg-foreground', !busy && 'invisible')}
+                        />
+                    </span>
                 </div>
             </div>
-            <span className="relative shrink-0">
-                <button
-                    type={stops ? 'button' : 'submit'}
-                    data-send-button
-                    title={stops ? 'Stop the agent' : 'Send'}
-                    aria-label={stops ? 'Stop' : 'Send'}
-                    disabled={stops ? stopping : empty || sending}
-                    onClick={stops ? stop : undefined}
-                    className="inline-flex size-[34px] items-center justify-center rounded-full bg-claim text-white disabled:cursor-default disabled:opacity-40"
-                >
-                    {stops ? <Square className="size-3" fill="currentColor" /> : <ArrowUp className="size-4" />}
-                </button>
-                {/* The working indicator: a dot on the button's corner, blinking until the agent's turn ends. */}
-                <span
-                    role="status"
-                    aria-label={busy ? 'The agent is working' : 'The agent is idle'}
-                    data-busy={busy || undefined}
-                    className={cn('work-dot pointer-events-none absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-background bg-foreground', !busy && 'invisible')}
-                />
-            </span>
+            {/* Under the box, outside it: the session's model and effort, ending where the box does. */}
+            <div className="mt-1.5 flex justify-end pr-1">
+                <ModelPicker outline={outline} />
+            </div>
         </form>
     )
 }

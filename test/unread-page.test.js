@@ -22,7 +22,7 @@ describe('unread changes', () => {
             if (errors.length) throw errors[0]
         }
         await page.goto(`${server.url}/demo/sample`)
-        await page.locator('.outline-tab h1').waitFor()
+        await page.locator('[data-topbar] [data-title]').waitFor()
     }
     beforeEach(async () => {
         server.swap('demo/sample', 'demo/sample')

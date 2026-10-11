@@ -463,10 +463,12 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
     margin-right: auto;
     padding-inline: var(--colpad);
 }
-/* Sticks below the top bar; its column hangs from it. --qbottom is what the page keeps fixed at the bottom (the input box). */
+/* Sticks under the first stuck header row, level with the second (--qtop below the top bar); its column hangs from it.
+   --qbottom is what the page keeps fixed at the bottom (the input box). */
 .queue-anchor {
+    --qtop: calc(var(--rh) + 5px);
     position: sticky;
-    top: calc(var(--barh) + 16px);
+    top: calc(var(--barh) + var(--qtop));
     height: 0;
     z-index: 20;
 }
@@ -475,7 +477,7 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
     top: 0;
     right: calc(100% + var(--colpad) + var(--qgap));
     width: var(--qw);
-    height: calc(100vh - var(--barh) - 16px - var(--qbottom, 0px) - 12px);
+    height: calc(100vh - var(--barh) - var(--qtop) - var(--qbottom, 0px) - 12px);
     display: flex;
     flex-direction: column;
 }

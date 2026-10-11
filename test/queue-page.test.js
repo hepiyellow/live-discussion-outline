@@ -34,7 +34,7 @@ describe('the queue column', () => {
             if (errors.length) throw errors[0]
         }
         await page.goto(`${server.url}/demo/sample`)
-        await page.locator('.outline-tab h1').waitFor()
+        await page.locator('[data-topbar] [data-title]').waitFor()
         await page.locator('[aria-label="Your queue"]').waitFor()
     }
     const rect = selector => page.locator(selector).first().evaluate(e => e.getBoundingClientRect().toJSON())

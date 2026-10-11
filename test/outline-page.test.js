@@ -22,7 +22,7 @@ describe('the Outline tab', () => {
         server.swap('demo/sample', 'demo/sample')
         server.resetState()
         page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1200, height: 900 } })
-        await page.locator('.outline-tab h1').waitFor()
+        await page.locator('[data-topbar] [data-title]').waitFor()
     })
     afterEach(async () => {
         page.checkErrors()
@@ -35,7 +35,7 @@ describe('the Outline tab', () => {
 
     test('shows the title, the text before the first topic, and every node', async () => {
         assert.equal(await page.title(), 'Caching for the search service')
-        assert.equal(await page.locator('.outline-tab h1').textContent(), 'Caching for the search service')
+        assert.equal(await page.locator('[data-topbar] [data-title]').textContent(), 'Caching for the search service')
         assert.match(await page.locator('.outline-intro').textContent(), /answers in 900 ms/)
         for (const n of all(sample.nodes)) {
             assert.equal(await node(n.num).count(), 1, n.num)
@@ -231,7 +231,7 @@ describe('the viewer state', () => {
         assert.equal(await hidden(one, '3.1.1'), true)
         await two.waitForFunction(() => document.querySelector('.outline-tab [data-num="3.1.1"]').offsetParent === null)
         await one.reload()
-        await one.locator('.outline-tab h1').waitFor()
+        await one.locator('[data-topbar] [data-title]').waitFor()
         await one.waitForFunction(() => document.querySelector('.outline-tab [data-num="3.1.1"]').offsetParent === null)
         // And back, from the second window.
         await two.locator('.outline-tab [data-num="3.1"]').click()

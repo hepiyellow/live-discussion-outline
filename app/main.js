@@ -37,8 +37,14 @@ function showWindow(port) {
         showList = false
         return
     }
-    win = new BrowserWindow({ width: 1280, height: 860, title: app.name })
+    // No title bar: the page's top bar is the window's top row, with the window buttons at its left (index.css).
+    win = new BrowserWindow({ width: 1280, height: 860, title: app.name, titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 15 } })
     win.on('closed', () => (win = undefined))
+    // In full screen macOS hides the window buttons: the page is told, so the top bar takes their room back.
+    const markFullScreen = () => win?.webContents.executeJavaScript(`document.documentElement.toggleAttribute('data-fullscreen', ${win.isFullScreen()})`).catch(() => {})
+    win.on('enter-full-screen', markFullScreen)
+    win.on('leave-full-screen', markFullScreen)
+    win.webContents.on('dom-ready', markFullScreen)
     const openOutside = url => /^https?:/.test(url) && shell.openExternal(url)
     win.webContents.setWindowOpenHandler(({ url }) => {
         openOutside(url)

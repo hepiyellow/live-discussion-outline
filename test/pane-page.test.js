@@ -76,10 +76,13 @@ describe('the outlines pane', () => {
             { project: 'demo', titles: ['Caching for the search service', 'Caching for the search service'] },
         ])
         assert.equal(await pane().locator('[aria-current="page"]').getAttribute('data-pane-outline'), 'demo/sample')
-        // The page leaves the pane its room.
+        // The top bar's start is as wide as the pane, and the session's name starts right of it.
         const paneBox = await pane().boundingBox()
-        const barBox = await page.locator('[data-topbar]').first().boundingBox()
-        assert.ok(barBox.x >= paneBox.x + paneBox.width, 'the top bar starts right of the pane')
+        const headBox = await page.locator('[data-pane-head]').boundingBox()
+        assert.equal(headBox.width, paneBox.width)
+        assert.equal(headBox.y + headBox.height, paneBox.y, 'the pane starts where the top bar ends')
+        const titleBox = await page.locator('[data-topbar] [data-title]').boundingBox()
+        assert.ok(titleBox.x >= paneBox.x + paneBox.width, 'the session name starts right of the pane')
     })
 
     test('follows outlines as they are written, without a reload', async () => {
@@ -120,7 +123,7 @@ describe('the outlines pane', () => {
         await page.mouse.move(400, h.y + 220, { steps: 5 })
         await page.mouse.up()
         assert.equal(Math.round((await pane().boundingBox()).width), 400)
-        assert.equal(Math.round((await page.locator('[data-topbar]').first().boundingBox()).x), 400)
+        assert.equal(Math.round((await page.locator('[data-pane-head]').boundingBox()).width), 400)
         await page.reload()
         await pane().locator('[data-pane-outline="demo/sample"]').waitFor()
         assert.equal(Math.round((await pane().boundingBox()).width), 400)

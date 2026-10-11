@@ -50,7 +50,7 @@ export function LivePage({ terminal }: { terminal: string }) {
     return (
         <div className="pl-(--pane-w)">
             <OutlinesPane list={list} starting={terminal} />
-            <header data-topbar className="sticky top-0 z-40 -ml-(--pane-w) flex h-11 items-center gap-2 border-b bg-background px-2 text-[13px] text-muted-foreground">
+            <header data-topbar className="sticky top-0 z-40 -ml-(--pane-w) flex h-11 items-center gap-2 border-b bg-background pr-2 text-[13px] text-muted-foreground">
                 <PaneToggle />
                 <span className="font-medium text-foreground">Terminal</span>
                 <span role="status">Waiting for the agent to write the outline…</span>

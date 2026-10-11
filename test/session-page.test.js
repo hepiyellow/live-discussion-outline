@@ -16,7 +16,7 @@ describe('inbox, input box and spinner', () => {
     })
     const open = async () => {
         await page.goto(`${server.url}/demo/sample`)
-        await page.locator('.outline-tab h1').waitFor()
+        await page.locator('[data-topbar] [data-title]').waitFor()
     }
     beforeEach(async () => {
         server.swap('demo/sample', 'demo/sample')
@@ -90,7 +90,7 @@ describe('inbox, input box and spinner', () => {
     test('a chip and text compose one message to the session', async () => {
         await node('3.2').evaluate(e => e.scrollIntoView({ block: 'center' }))
         await node('3.2').hover()
-        await node('3.2').locator('.ask').click()
+        await node('3.2').locator('.ask').first().click()
         const chip = page.locator('[data-chip="3.2 Time to live"]')
         await chip.waitFor()
         // The click shows in the chip, which grows and shrinks once; no notice slides in for it.
@@ -100,7 +100,7 @@ describe('inbox, input box and spinner', () => {
         // Adding it again plays the pulse again, on the one chip.
         await chip.evaluate(e => (e.dataset.old = '1'))
         await node('3.2').hover()
-        await node('3.2').locator('.ask').click()
+        await node('3.2').locator('.ask').first().click()
         await page.locator('[data-chip="3.2 Time to live"]:not([data-old])').waitFor()
         assert.equal(await page.locator('[data-chip]').count(), 1)
         await box().fill('Why 60 seconds?')
@@ -136,7 +136,7 @@ describe('inbox, input box and spinner', () => {
     })
 
     test('Shift+Enter adds a line; Backspace at the start drops the last chip', async () => {
-        await node('2').locator('.ask').click({ force: true })
+        await node('2').locator('.ask').first().click({ force: true })
         await page.locator('[data-chip="2. Where the cache lives"]').waitFor()
         await box().click()
         await box().press('Backspace')

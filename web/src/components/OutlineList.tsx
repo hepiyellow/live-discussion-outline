@@ -12,7 +12,7 @@ export function OutlineList() {
     return (
         <div className="pl-(--pane-w)">
             <OutlinesPane list={list} home />
-            <header data-topbar className="sticky top-0 z-40 -ml-(--pane-w) flex h-11 items-center border-b bg-background px-2">
+            <header data-topbar className="sticky top-0 z-40 -ml-(--pane-w) flex h-11 items-center border-b bg-background pr-2">
                 <PaneToggle />
             </header>
             <main className="flex min-h-[calc(100vh-2.75rem)] items-center justify-center px-5 text-center text-muted-foreground">

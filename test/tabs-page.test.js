@@ -15,7 +15,7 @@ describe('the Transcript and Terminal tabs', () => {
     beforeEach(async () => {
         server.resetState()
         page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1200, height: 800 } })
-        await page.locator('.outline-tab h1').waitFor()
+        await page.locator('[data-topbar] [data-title]').waitFor()
     })
     afterEach(async () => {
         page.checkErrors()
@@ -59,7 +59,7 @@ describe('the Transcript and Terminal tabs', () => {
             for (let i = 0; i < 4; i++) {
                 const w = await context.newPage()
                 await w.goto(`${server.url}/demo/sample`)
-                await w.locator('.outline-tab h1').waitFor()
+                await w.locator('[data-topbar] [data-title]').waitFor()
                 windows.push(w)
             }
             // The tab is shared through the viewer state: every window now follows the transcript too.

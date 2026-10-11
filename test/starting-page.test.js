@@ -91,7 +91,7 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         await new Promise(r => setTimeout(r, 2500))
         assert.match(page.url(), /\/live\?/)
         fs.writeFileSync(file, `Title: Watch me\nTerminal: ${terminal}\n\n# 1. First\nThe first version.\n`)
-        await page.locator('.outline-tab h1').waitFor({ timeout: 8000 })
+        await page.locator('[data-topbar] [data-title]').waitFor({ timeout: 8000 })
         assert.match(page.url(), /\/proj\/watch-me$/)
         assert.equal(await page.getByLabel('View').inputValue(), 'outline')
         assert.equal(await page.locator('.outline-tab').isVisible(), true)

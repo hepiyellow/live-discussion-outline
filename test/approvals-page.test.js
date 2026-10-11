@@ -39,7 +39,7 @@ describe('approvals, picks, runs and undo', () => {
             if (errors.length) throw errors[0]
         }
         await page.goto(`${server.url}/demo/sample`)
-        await page.locator('.outline-tab h1').waitFor()
+        await page.locator('[data-topbar] [data-title]').waitFor()
     })
     afterEach(async () => {
         page.checkErrors()
@@ -256,7 +256,7 @@ describe('approvals without a linked session', () => {
         await context.grantPermissions(['clipboard-read', 'clipboard-write'])
         page = await context.newPage()
         await page.goto(`${server.url}/demo/unlinked`)
-        await page.locator('.outline-tab h1').waitFor()
+        await page.locator('[data-topbar] [data-title]').waitFor()
     })
     after(async () => {
         await browser?.close()
@@ -279,12 +279,12 @@ describe('approvals without a linked session', () => {
     test('the reference button copies a reference, after any approvals not copied yet', async () => {
         server.resetState()
         await page.reload()
-        await page.locator('.outline-tab h1').waitFor()
+        await page.locator('[data-topbar] [data-title]').waitFor()
         await click(page.locator('.outline-tab [data-num="2.4"] > .ck'))
         const ref = page.locator('.outline-tab [data-num="3.2"]')
         await ref.evaluate(e => e.scrollIntoView({ block: 'center' }))
         await ref.hover()
-        await ref.locator('.ask').click()
+        await ref.locator('.ask').first().click()
         const expected = 'Approved in the outline: 2.4 Measure the hit rate on staging.\nRe: outline "Caching for the search service" › 3. Invalidation › 3.2 Time to live — '
         await until(async () => (await page.evaluate(() => navigator.clipboard.readText())) === expected, { what: 'the reference on the clipboard' })
     })

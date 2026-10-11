@@ -50,7 +50,7 @@ describe('the outline list', () => {
         assert.equal(await link('sample').textContent(), 'Caching for the search service')
         await link('sample').click()
         await page.waitForURL(/\/demo\/sample$/)
-        await page.locator('.outline-tab h1').waitFor()
+        await page.locator('[data-topbar] [data-title]').waitFor()
     })
 
     test('renaming rewrites the Title line, and the list follows', async () => {
@@ -79,14 +79,6 @@ describe('the outline list', () => {
         await row('doomed').waitFor({ state: 'detached' })
         assert.ok(!fs.existsSync(path.join(server.dir, 'demo', 'doomed.md')))
         assert.ok(fs.existsSync(path.join(server.dir, '.trash', 'demo', 'doomed.md')))
-    })
-
-    test('the page title has the same pencil', async () => {
-        await page.goto(`${server.url}/demo/sample`)
-        await page.locator('.outline-tab h1').getByRole('button', { name: 'Rename' }).click()
-        await page.getByRole('textbox', { name: 'Outline name' }).fill('Caching, renamed')
-        await page.getByRole('textbox', { name: 'Outline name' }).press('Enter')
-        await page.locator('.outline-tab h1 [data-title]').filter({ hasText: 'Caching, renamed' }).waitFor()
     })
 
     test('the new-session dialog lists folders and past sessions', async () => {
