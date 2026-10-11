@@ -15,16 +15,16 @@ describe('the state store', () => {
     after(() => fs.rmSync(root, { recursive: true, force: true }))
 
     test('an outline without state starts empty', () => {
-        assert.deepEqual(store.read('demo', 'sample'), { open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline' })
+        assert.deepEqual(store.read('demo', 'sample'), { open: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline' })
     })
 
     test('a patch changes single entries, and null deletes one', () => {
-        store.patch('demo', 'sample', { open: { '3.1': false, 1: true }, overrides: { '2.3': true } })
+        store.patch('demo', 'sample', { open: { '3.1': false, 1: true }, runs: { '2.3': 1 } })
         store.patch('demo', 'sample', { open: { '3.1': true, '2.2': false } })
         store.patch('demo', 'sample', { open: { 1: null } })
         const state = store.read('demo', 'sample')
         assert.deepEqual(state.open, { '3.1': true, '2.2': false })
-        assert.deepEqual(state.overrides, { '2.3': true })
+        assert.deepEqual(state.runs, { '2.3': 1 })
     })
 
     test('undo and the draft are replaced whole', () => {
@@ -42,7 +42,7 @@ describe('the state store', () => {
 
     test('bad patches are refused and change nothing', () => {
         const before = store.read('demo', 'sample')
-        for (const bad of [null, [], { nope: {} }, { open: [] }, { open: { __proto__x: { a: 1 } } }, { open: { 'a b': true } }, { undo: {} }, { draft: 3 }, { backTo: { 1: 'x'.repeat(201) } }, { chips: [{ label: 1 }] }, { chips: [{ label: 'a', ref: 'b', kind: 'nope' }] }, { tab: 'nope' }, { read: { 1: 'x'.repeat(50001) } }])
+        for (const bad of [null, [], { nope: {} }, { open: [] }, { open: { __proto__x: { a: 1 } } }, { open: { 'a b': true } }, { undo: {} }, { draft: 3 }, { runs: { 1: 'x'.repeat(201) } }, { overrides: { 1: true } }, { chips: [{ label: 1 }] }, { chips: [{ label: 'a', ref: 'b', kind: 'nope' }] }, { tab: 'nope' }, { read: { 1: 'x'.repeat(50001) } }])
             assert.throws(() => store.patch('demo', 'sample', bad), undefined, JSON.stringify(bad))
         assert.deepEqual(store.read('demo', 'sample'), before)
     })

@@ -1,6 +1,6 @@
-# Idea — The server owns the outline; agents change it through MCP
+# The server owns the outline; agents change it through MCP
 
-**Status:** an idea, not a decision. Nothing here is scheduled. · **Terms:** [CONTEXT.md](../../CONTEXT.md)
+**Status:** built on the `outline-over-mcp` branch; what was decided while building is in [ADR 0003](../adr/0003-the-server-owns-the-outline.md). Not built: the Claude Code channel, and the Codex packaging beyond the MCP process and the hook script. · **Terms:** [CONTEXT.md](../../CONTEXT.md)
 
 ## Summary
 

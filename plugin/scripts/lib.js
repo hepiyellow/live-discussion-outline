@@ -51,6 +51,9 @@ function checkout() {
 export async function findServer({ start = false } = {}) {
     const { appPort, port } = settings()
     const own = Number(port) || 4577
+    // For trying a server that is not the settings file's (a second checkout): the agent's own environment names its port.
+    const asked = Number(process.env.OUTLINE_PORT) || 0
+    if (asked) return (await alive(asked)) ? asked : 0
     for (const p of [Number(appPort) || 0, own]) if (p && (await alive(p))) return p
     if (!start) return 0
     const root = checkout()
@@ -69,6 +72,9 @@ export async function findServer({ start = false } = {}) {
 /** Calls /api/agent/<name> and returns its `{ ok, text, … }`. */
 export async function call(port, name, body, timeout = 15000) {
     const res = await request(port, 'POST', `/api/agent/${name}`, body, timeout)
+    // A server from before the agent's API answers its page here.
+    if (res.status === 404 || (res.status === 200 && !res.text.startsWith('{')))
+        return { ok: false, text: `The outline server on port ${port} is an older version that cannot take changes from an agent. Ask the user to restart it (the Outline Only app, or \`npm start\`) from the current checkout.` }
     try {
         return JSON.parse(res.text)
     } catch {

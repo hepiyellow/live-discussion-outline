@@ -55,6 +55,8 @@ describe('what the page reads of the transcript', () => {
         try {
             assert.equal((await stream.take()).event, 'message')
             assert.equal((await stream.take()).event, 'state')
+            // The messages the agent posted with its `message` operation: none here.
+            assert.deepEqual(await stream.take(), { event: 'notes', data: '[]' })
             // The outline list, for the pane beside the outline.
             assert.equal((await stream.take()).event, 'outlines')
             // The session is named before anything about it.

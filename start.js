@@ -2,10 +2,15 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from './log.js'
+import { fileURLToPath } from 'node:url'
 import { isSessionId } from './transcript.js'
 
 // Starting a discussion from the page: a new Claude Code session in a tmux session, opened on a workspace, a folder,
 // or a past session (resumed), with the outline skill as its first message.
+
+/** The plugin in this checkout, and its skill as a session types it. */
+const PLUGIN_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'plugin')
+const OUTLINE_COMMAND = '/outline-only:outline'
 
 const HOME = os.homedir()
 const PROJECTS = path.join(HOME, '.claude', 'projects')
@@ -311,7 +316,9 @@ export async function startSession(request, { workspaceDirs, claudeCommand: conf
     } else throw new Error('unknown kind')
 
     if (topic && request.kind !== 'resume') args.push('--name', topic)
-    const prompt = request.kind === 'resume' ? '/outline-only' : `/outline-only ${topic}`.trim()
+    // The session gets the plugin from this checkout (its skill, its MCP tools and its hooks), installed or not.
+    args.push('--plugin-dir', PLUGIN_DIR)
+    const prompt = request.kind === 'resume' ? OUTLINE_COMMAND : `${OUTLINE_COMMAND} ${topic}`.trim()
 
     let name = slug(label)
     for (let i = 2; hasTmuxSession(name); i++) name = `${slug(label).slice(0, 36)}-${i}`

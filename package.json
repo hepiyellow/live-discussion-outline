@@ -18,8 +18,7 @@
     "prepare": "npm run build",
     "typecheck": "tsc -p web",
     "test": "npm run typecheck && node --test test/*.test.js",
-    "ensure": "node bin/ensure.js",
-    "install-skill": "node bin/install-skill.js",
+    "install-plugin": "node bin/install-plugin.js",
     "icon": "node bin/make-icon.js"
   },
   "dependencies": {

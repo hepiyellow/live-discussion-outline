@@ -9,11 +9,19 @@ One piece of work done with an agent (deciding, planning, coding or acting), mir
 _Avoid_: Discussion, chat, conversation, thread, and a bare "session" (that is the agent's own)
 
 **Outline**:
-The markdown file the agent keeps for an outline session, which the page shows.
-_Avoid_: Map, mirror, notes
+What the server keeps for an outline session and the page shows: its title, its nodes and its queue. The agent changes it through operations and the user through the page.
+_Avoid_: Mirror, notes, file (the file is how the server stores it)
+
+**Operation**:
+One change an agent asks of an outline: add, update, move or remove a node, record what the user decided in chat, finish an action, post a message, or replace the queue.
+_Avoid_: Edit, command, patch
+
+**Map**:
+An outline without its text: each node's number, title and what it is. The server hands it to the agent so the agent knows what the outline holds.
+_Avoid_: Summary (that is a node's closing sentence), index
 
 **Title**:
-The name of an outline session, kept on the `Title:` line at the top of its outline; the agent writes it, and the user can rename it from the page.
+The name of an outline session; the agent gives it when it starts the outline, and the user can rename it from the page.
 _Avoid_: Name, heading (a heading is a node)
 
 **Node**:
@@ -29,15 +37,23 @@ A plain list item inside a node's text; it has no number and no status.
 _Avoid_: Node, item
 
 **Status**:
-Where a node stands: **open** (no tag), an **agent claim**, or claim for short (the agent states it as settled or certain), or **user-approved** (the user approved it; only the user can make it so). The agent's wording of an answer the user gave is a claim until the user approves it: answering a question is not approving what the agent wrote down. A node the user approved on the page is **pending** until the agent records the approval in the outline. A node whose descendants all share a status takes that status too.
-_Avoid_: Checkbox, resolved, agent-approved, done, and a bare "approved" (it does not say who approved), pending human approval (the human has approved; the agent has not recorded it)
+Where a node stands: **open** (no tag), an **agent claim**, or claim for short (the agent states it as settled or certain), or **user-approved** (the user approved it; only the user can make it so). The agent's wording of an answer the user gave is a claim until the user approves it: answering a question is not approving what the agent wrote down. An approval covers the wording the user saw: when the agent rewrites an approved node, it is a claim again. A node whose descendants all share a status takes that status too.
+_Avoid_: Checkbox, resolved, agent-approved, done, and a bare "approved" (it does not say who approved), pending (an approval on the page is recorded at once)
+
+**Question**:
+A node that asks the user to choose exactly one of the options under it.
+_Avoid_: Choice, poll, decision (a decide item is a queue item)
+
+**Option**:
+A child node of a question, shown with a letter; the agent may recommend one, and the user picks one, which answers the question.
+_Avoid_: Alternative, answer, choice
 
 **Summary**:
 One sentence closing a long node that sums up that node's own text. It never answers a question; an answer changes the node's text or adds child nodes.
 _Avoid_: Answer, conclusion, bottom line
 
 **Outlines folder**:
-The one folder outlines are written to and read from, with one subfolder per project. The agent finds it on its own, so it can write outlines while nothing is serving them.
+The one folder the server keeps outlines in, with one subfolder per project.
 _Avoid_: Dir, output folder
 
 **Outline app**:
@@ -45,7 +61,7 @@ The Mac application that runs the server while it is open and shows outline sess
 _Avoid_: Electron app, desktop app (that is Claude's own app)
 
 **Settings file**:
-The one file that says where the outlines folder is and how to reach the page; the app writes it, and the agent and the server read it. Without it the agent writes to a default outlines folder.
+The one file that says where the outlines folder is and how to reach the page; the app writes it, and the server and the agent's plugin read it.
 _Avoid_: Config, preferences
 
 **Project**:
@@ -84,7 +100,7 @@ An outline item proposing something to do in the session itself (run tests, chan
 _Avoid_: Play task, step, job
 
 **Message**:
-A note the agent writes in its chat reply, tagged `@message`, about something the outline does not hold (the outcome of a request made in chat, a status, a warning); it may name the node it relates to.
+A note the agent posts about something the outline does not hold (the outcome of a request made in chat, a status, a warning); it may name the node it relates to.
 _Avoid_: Notification, reply, response
 
 **Inbox**:
@@ -104,7 +120,7 @@ The tab that shows the linked session's transcript as rendered messages.
 _Avoid_: Chat tab, chat view
 
 **Viewer state**:
-What the page remembers for the user about one outline (open nodes, unsent approvals, what was read, undo steps, seen messages, the input box's draft, the tab shown), kept by the server so every window on the outline shows the same.
+What the page remembers for the user about one outline (open nodes, what was read, undo steps, seen messages, the input box's draft, the tab shown), kept by the server so every window on the outline shows the same.
 _Avoid_: Local storage, preferences, settings (that is the settings file)
 
 **Input box**:

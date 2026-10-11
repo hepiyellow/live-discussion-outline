@@ -41,9 +41,9 @@ const [built] = await packager({
     asar: false,
     // Dev dependencies are left out (Vite, React and the rest are already built into web/dist).
     prune: true,
-    // What the app does not run: tests, docs, the skill (it stays a symlink into the repo), the page's sources, and
-    // the caches tools keep in node_modules (Vite's).
-    ignore: [/^\/(test|docs|spike|examples|dist|bin|skill)($|\/)/, /^\/\.(github|claude|vscode)($|\/)/, /^\/web\/(?!dist($|\/))/, /^\/node_modules\/\./],
+    // What the app does not run: tests, docs, the page's sources, and the caches tools keep in node_modules (Vite's).
+    // The plugin goes in: sessions the app starts load it from the bundle (start.js).
+    ignore: [/^\/(test|docs|spike|examples|dist|bin)($|\/)/, /^\/\.(github|claude|vscode)($|\/)/, /^\/web\/(?!dist($|\/))/, /^\/node_modules\/\./],
     quiet: true,
 })
 const app = path.join(built, `${productName}.app`)
@@ -73,7 +73,7 @@ if (!buildOnly) {
     // One copy of the app on this Mac: a second one would also claim the app's links.
     fs.rmSync(out, { recursive: true, force: true })
     console.log(`installed ${installed}`)
-    run(process.execPath, [path.join(root, 'bin', 'install-skill.js')])
+    run(process.execPath, [path.join(root, 'bin', 'install-plugin.js')])
 }
 
 /** Whether the app at `bundle` has a process running. */
