@@ -25,6 +25,8 @@ export interface Box {
     title: string
     /** Settled: the row is drawn muted. */
     done: boolean
+    /** Server mode: the user changed this node's tick and the agent has not acknowledged it yet, so the box blinks. */
+    waiting?: boolean
 }
 
 /**
@@ -41,6 +43,10 @@ export class Statuses {
         readonly overrides: Overrides = {},
         /** In server mode a tick is recorded at once, so a box does not say it queues one. */
         readonly mode: Mode = 'file',
+        /** Server mode: the nodes whose tick the user changed and the agent has not acknowledged yet. */
+        readonly unacked: ReadonlySet<string> = new Set(),
+        /** The nodes whose change the viewer has not opened yet: an action done there is not shown as done until they do. */
+        readonly unread: ReadonlySet<string> = new Set(),
     ) {
         const index = (list: OutlineNode[], parent?: OutlineNode) =>
             list.forEach(n => {
@@ -52,8 +58,8 @@ export class Statuses {
 
     parent = (node: OutlineNode) => this.parents.get(node.num)
     fileDone = (node: OutlineNode) => node.status === 'approved'
-    /** An action the agent has carried out. */
-    ran = (node: OutlineNode) => node.tags.includes('ran')
+    /** An action the agent has carried out, once the viewer has opened its change: until then its box keeps what it showed. */
+    ran = (node: OutlineNode) => node.tags.includes('ran') && !this.unread.has(node.num)
     /** Whether the node counts as approved, the user's unrecorded change included. */
     effective = (node: OutlineNode) => (node.num in this.overrides ? this.overrides[node.num] : this.fileDone(node))
     /**
@@ -71,7 +77,7 @@ export class Statuses {
         const file = this.fileDone(node)
         const on = this.effective(node)
         if (on && !file) return 'pending'
-        if (on && file) return 'approved'
+        if (on && file) return this.unacked.has(node.num) ? 'pending' : 'approved'
         if (this.ran(node)) return 'done'
         return node.status === 'claim' ? 'claim' : 'open'
     }
@@ -123,11 +129,15 @@ export class Statuses {
         const agent = node.status === 'claim' && !outvoted
         const checked = on || (agent && !(node.num in this.overrides))
         const fromFile: Kind = !checked ? 'open' : pendingOn ? 'pending' : agent && !pendingOff ? 'claim' : 'approved'
-        // Done until the user says otherwise: a filled yellow tick, which a click turns into their approval.
+        // Done until the user says otherwise: a yellow outlined tick, which a click turns into their approval.
         const ranHere = this.ran(node) && (fromFile === 'open' || fromFile === 'claim') && !(node.num in this.overrides)
-        const state: Kind = ranHere ? 'done' : fromFile
+        // Recorded at once in server mode, and pending all the same until the agent acknowledges it.
+        const waiting = this.unacked.has(node.num)
+        const state: Kind = ranHere ? 'done' : waiting && fromFile === 'approved' ? 'pending' : fromFile
         const approve = this.mode === 'server' ? 'click to approve it' : 'click to queue your approval'
-        const title = ranHere
+        const title = waiting
+            ? `${option ? (on ? 'Chosen' : 'No longer chosen') : on ? 'User-approved' : 'Approval taken back'} — pending until the agent acknowledges it`
+            : ranHere
             ? `Done: the agent carried out this action — ${approve}`
             : option
             ? pendingOn
@@ -152,7 +162,7 @@ export class Statuses {
         const extras = node.children.length ? kinds.filter(k => k !== this.ownKind(node)) : []
         const parent = this.parent(node)
         const done = (on && file && (!node.children.length || kinds.every(k => k === 'approved'))) || (option && !!parent && this.kindsOf(parent)[0] === 'approved')
-        return { shape: option ? 'radio' : 'box', state, extras, title, done }
+        return { shape: option ? 'radio' : 'box', state, extras, title, done, waiting }
     }
 
     /** A topic's box rolls up every node under it; a topic with none shows its own status. */

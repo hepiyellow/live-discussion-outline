@@ -284,7 +284,9 @@ async function freeSession(id, stopOther) {
 }
 
 /**
- * Starts `claude` in a new detached tmux session and returns its name. `request` is one of
+ * Starts `claude` in a new detached tmux session and returns `{ terminal, mode, project, cwd, title, session }`: the
+ * tmux session's name, the mode it runs in, the project its outline files under, its working folder, the topic asked
+ * for (or none) and, when resumed, its session id. `request` is one of
  * `{ kind: 'workspace', file, topic }`, `{ kind: 'folder', path, topic }` or `{ kind: 'resume', id, stopOther? }`, each
  * with `mode`: `server` (the default) or `file`, who is to write the session's outline. `linkedMode` is the mode of the
  * outline that already links to a resumed session, which the session keeps whatever was asked.
@@ -340,7 +342,7 @@ export async function startSession(request, { workspaceDirs, claudeCommand: conf
     try {
         execFileSync('tmux', [...option('@outline-project', project || path.basename(cwd)), ';', ...option('@outline-title', label), ';', ...option('@outline-started', Date.now())], { stdio: 'ignore' })
     } catch {}
-    return name
+    return { terminal: name, mode, project: project || path.basename(cwd), cwd, title: request.kind === 'resume' ? '' : topic, session: request.kind === 'resume' ? request.id : '' }
 }
 
 /**

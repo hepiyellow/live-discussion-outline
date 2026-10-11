@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { api, liveHref } from '@/lib/api'
+import { api, liveHref, outlineHref } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DirListing, Mode, StartOptions } from '@/types'
 
@@ -26,8 +26,9 @@ const MODE_NOTE: Record<Mode, string> = {
 /**
  * "New session": starts an agent session in tmux from a Cursor workspace, a folder, or a past Claude Code session
  * (resumed), with the skill of the mode chosen as its first message. A resumed session that already has an outline
- * keeps that outline's mode. The main area shows its terminal until the outline's first version is
- * written, then opens the outline. `trigger` is the button that opens it, when not the default one.
+ * keeps that outline's mode. In server mode the page opens the session's outline at once, empty, and the user writes
+ * to the agent from there; in file mode the main area shows the terminal until the agent has written the outline's
+ * first version. `trigger` is the button that opens it, when not the default one.
  */
 export function NewSession({ trigger }: { trigger?: React.ReactNode } = {}) {
     const [open, setOpen] = useState(false)
@@ -72,8 +73,9 @@ export function NewSession({ trigger }: { trigger?: React.ReactNode } = {}) {
         setError('')
         setOpenIn(null)
         try {
-            const { terminal } = await api<{ terminal: string }>('/api/start', request)
-            location.href = liveHref(terminal)
+            const { terminal, outline } = await api<{ terminal: string; outline?: { project: string; file: string } }>('/api/start', request)
+            // In server mode the outline is there already, empty; in file mode the terminal shows until the agent writes it.
+            location.href = outline ? outlineHref(outline.project, outline.file) : liveHref(terminal)
             return
         } catch (e) {
             setError((e as Error).message)

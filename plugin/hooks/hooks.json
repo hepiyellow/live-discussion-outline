@@ -1,5 +1,5 @@
 {
-    "description": "Hands the agent what the user did on the outline's page with each prompt, and the outline's map after compaction or resume; refuses a write to the file of an outline the server keeps.",
+    "description": "Hands the agent what the user did on the outline's page with each prompt, and the outline's map after compaction or resume; holds a turn open once when the agent ends it without acknowledging the user's ticks; refuses a write to the file of an outline the server keeps.",
     "hooks": {
         "UserPromptSubmit": [
             {
@@ -9,6 +9,11 @@
         "SessionStart": [
             {
                 "matcher": "resume|compact",
+                "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/outline-hook.js\"", "timeout": 5 }]
+            }
+        ],
+        "Stop": [
+            {
                 "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/outline-hook.js\"", "timeout": 5 }]
             }
         ],

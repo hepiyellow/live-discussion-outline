@@ -15,7 +15,8 @@ export const STATE_DIR = '.state'
  * - sent: node number → the override already sent to the session
  * - backTo: node number → 1 when undoing reopens a former claim ("Back to claim")
  * - read: node number → the node as the viewer last read it (its title and text as HTML), shown until they open the change
- * - runs: node number → 1 once the viewer asked the agent to run that action
+ * - runs: node number → 1 once the viewer asked the agent to run that action; for one that had failed before, a string
+ *   marking what it showed then, so that a new outcome ends the run
  * - seen: message id → 1 once the viewer saw it in an inbox
  * - undo: the viewer's undo steps, newest last
  * - draft: the input box's text

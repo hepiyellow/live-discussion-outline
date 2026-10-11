@@ -23,12 +23,24 @@ interface Props {
     onToggle: (node: OutlineNode, open: boolean) => void
 }
 
+/**
+ * What an outline without nodes says. One the server opened for a session it has just started links to no session
+ * until that session's agent attaches to it.
+ */
+const EMPTY = {
+    starting: 'This outline is empty, and its agent is starting. Write below to begin. If nothing answers, look at the Terminal view: the agent may be asking something there.',
+    linked: 'This outline is empty. Write to the agent below to begin.',
+    unlinked: 'This outline is empty.',
+}
+
 export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     const root = useRef<HTMLDivElement>(null)
     const [historyOf, setHistoryOf] = useState<OutlineNode | null>(null)
     const ctx = useMemo<OutlineContext>(() => {
         const isOpen = isOpenIn(viewer.open)
-        const statuses = new Statuses(outline.nodes, viewer.overrides, outline.mode)
+        // A change being opened counts as read: its box turns done as the animation starts.
+        const unopened = new Set([...actions.unread.keys()].filter(num => !actions.opening.has(num)))
+        const statuses = new Statuses(outline.nodes, viewer.overrides, outline.mode, new Set(outline.unacked), unopened)
         return {
             ...actions,
             onHistory: setHistoryOf,
@@ -79,6 +91,11 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
             {historyOf && <NodeHistory project={outline.project} file={outline.file} node={historyOf} onClose={() => setHistoryOf(null)} />}
             <div ref={root} className="outline-tab">
                 {outline.intro && <div className="outline-intro" dangerouslySetInnerHTML={{ __html: outline.intro }} />}
+                {!outline.intro && !outline.nodes.length && (
+                    <p data-empty role="status" className="mt-10 text-center text-sm text-muted-foreground">
+                        {EMPTY[!actions.linked ? 'unlinked' : outline.mode === 'server' && !outline.session ? 'starting' : 'linked']}
+                    </p>
+                )}
                 {outline.nodes.map(n => (
                     <Topic key={n.num} node={n} />
                 ))}

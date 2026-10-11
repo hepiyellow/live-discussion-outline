@@ -410,6 +410,16 @@ function checkLine(value, where, field) {
     return text
 }
 
+/** An action line stands beside the button that runs the action: one short sentence. The details are the node's text. */
+const ACTION_MAX = 100
+
+function checkAction(value, where) {
+    const line = checkLine(value, where, 'action')
+    if (line && line.length > ACTION_MAX)
+        throw new OpError(`The action of ${where} is ${line.length} characters long, and an action line has at most ${ACTION_MAX}.`, 'Say in one short sentence what you will do, without file names, and put the details in the node’s text.')
+    return line
+}
+
 /** A new node from an `add` (or one of its children, or an option of its question). */
 function buildNode(spec, num, level, option = '') {
     const where = `node ${num}`
@@ -428,10 +438,18 @@ function buildNode(spec, num, level, option = '') {
     if (spec.status !== undefined && spec.status !== 'open' && spec.status !== 'claim') throw new OpError(`${where} has status ${JSON.stringify(spec.status)}.`, 'A status is "open" or "claim".')
     node.claim = spec.status === 'claim'
     if (spec.action !== undefined && spec.action !== false) {
-        const line = checkLine(spec.action === true ? '' : spec.action, where, 'action')
+        const line = checkAction(spec.action === true ? '' : spec.action, where)
         if (!line) throw new OpError(`${where} is an action without saying what will be done.`, 'Set action to one sentence on what you will do when the user runs it.')
         node.action = 'proposed'
         node.actionLine = line
+    }
+    // The user asked in chat and the agent did it: the node comes in as an action already carried out.
+    if (spec.outcome !== undefined || spec.failed) {
+        if (spec.options !== undefined) throw new OpError(`The question ${num} is added with an outcome.`, 'A question is answered by a pick. Add what you did as a node of its own.')
+        const outcome = checkText(spec.outcome, where, 'outcome')
+        if (!outcome) throw new OpError(`${where} is added as an action you carried out, without its outcome.`, 'Set outcome to one or two sentences on what happened.')
+        node.action = spec.failed ? 'failed' : 'done'
+        node.text = [node.text, outcome].filter(Boolean).join('\n\n')
     }
     if (option) node.recommended = !!spec.recommended
     else if (spec.recommended) throw new OpError(`${where} is marked recommended, and it is not an option.`, 'For a recommendation on a node that is not a choice, use the recommendation field.')
@@ -542,7 +560,7 @@ export function applyOperations(model, ops, shown = {}) {
             if (op.summary !== undefined) node.summary = checkLine(op.summary, where, 'summary') ?? ''
             if (op.recommendation !== undefined) node.recommendation = checkLine(op.recommendation, where, 'recommendation') ?? ''
             if (op.action !== undefined) {
-                const line = op.action === false ? '' : checkLine(op.action, where, 'action')
+                const line = op.action === false ? '' : checkAction(op.action, where)
                 node.actionLine = line ?? ''
                 if (!line) node.action = ''
                 else node.action ||= 'proposed'
@@ -627,14 +645,26 @@ export function applyOperations(model, ops, shown = {}) {
 
         finish(op) {
             const { node } = get(op.num)
-            if (!node.action) throw new OpError(`${op.num} is not an action.`, 'Only an action is finished. Put an outcome that is not an action’s into the node’s text with an update.')
+            // A node that was never proposed as an action is finished too: the user asked for it in chat, and it is done.
+            if (isQuestion(node)) throw new OpError(`${op.num} is a question: the user answers it by picking an option.`, 'Finish the option you carried out, or add what you did as a node with its outcome.')
             const outcome = checkText(op.outcome, `node ${op.num}`, 'outcome')
             if (!outcome) throw new OpError(`Finishing ${op.num} needs its outcome.`, 'Say in one or two sentences what happened; add a child node for anything long.')
+            // Done says the whole node is carried out, and only the agent knows what became of the actions under it.
+            const unsettled = op.failed ? [] : unsettledActions(node)
+            if (unsettled.length)
+                throw new OpError(
+                    `${op.num} has ${unsettled.length === 1 ? 'an action' : 'actions'} under it that ${unsettled.length === 1 ? 'is' : 'are'} not settled: ${unsettled.map(n => `${label(n)} (${n.action === 'failed' ? 'failed' : 'not run'})`).join('; ')}.`,
+                    `Settle each one before ${op.num}, in this same change: finish it with its outcome if you carried it out, finish it with failed if you tried and could not, or, when it is no longer needed, take its action off ({ op: "update", action: "" }) and say why in its text.`,
+                )
             node.action = op.failed ? 'failed' : 'done'
             node.text = [node.text, outcome].filter(Boolean).join('\n\n')
             shown[op.num] = nodeHash(node)
             touch(op.num)
         },
+
+        // The agent took in the user's ticks and nothing in the outline follows from them: any change says so (agent.js),
+        // and this operation makes a change that holds nothing else.
+        acknowledge() {},
 
         message(op) {
             if (!isText(op.text) || !op.text.trim()) throw new OpError('A message needs its text.')
@@ -668,6 +698,20 @@ export function applyOperations(model, ops, shown = {}) {
         }
     })
     return result
+}
+
+/**
+ * The actions under a node that the agent has neither carried out nor given up: proposed or failed. An option counts
+ * only once the user picked it: which option to take is the user's to say, and one not picked is not waiting to run.
+ */
+function unsettledActions(node, out = []) {
+    const question = isQuestion(node)
+    for (const n of node.children) {
+        if (question && !n.approved) continue
+        if (n.action === 'proposed' || n.action === 'failed') out.push(n)
+        unsettledActions(n, out)
+    }
+    return out
 }
 
 /** What approving a parent approves: the leaves under it, leaving questions (the user picks those) as they are. */

@@ -125,6 +125,7 @@ const agent = createAgentApi({
         pushList()
     },
     onMessages: (project, file) => pushNotes(project, file),
+    onLedger: () => pushOutlines(),
     typeInto: sendToTerminal,
 })
 
@@ -222,7 +223,9 @@ function readOutline(project, file) {
     const full = outlineFile(project, file)
     if (!full) return null
     const outline = outlinePayload(fs.readFileSync(full, 'utf8'))
-    return { project, file, ...outline, folder: (outline.session && sessionFolder(outline.session)) || '', terminalTab: terminalEnabled && !!outline.terminal }
+    // In server mode a tick is pending until the agent acknowledges it (agent.js); in file mode the page works it out.
+    const unacked = outline.mode === 'server' ? agent.unacknowledged(project, file) : []
+    return { project, file, ...outline, unacked, folder: (outline.session && sessionFolder(outline.session)) || '', terminalTab: terminalEnabled && !!outline.terminal }
 }
 
 /** Sends each outline stream its outline again if it changed, or `gone` once the file is no longer there. */
@@ -364,7 +367,7 @@ const fromAgent = req => fromLocalPage(req, PORT, { write: false }) && req.heade
  */
 async function agentApi(req, res, name) {
     if (!fromAgent(req)) return send(res, 403, 'text/plain', 'forbidden')
-    if (req.method !== 'POST' || !Object.hasOwn(agent, name) || ['act', 'userEvent', 'messages'].includes(name)) return send(res, 404, 'text/plain', 'not found')
+    if (req.method !== 'POST' || !Object.hasOwn(agent, name) || ['open', 'act', 'userEvent', 'messages', 'unacknowledged'].includes(name)) return send(res, 404, 'text/plain', 'not found')
     try {
         json(res, 200, agent[name](await readJson(req)))
     } catch (e) {
@@ -427,12 +430,21 @@ async function startApi(req, res, pathname, url) {
         }
         if (pathname === '/api/dirs') return json(res, 200, listDirs(url.searchParams.get('path')))
         if (pathname === '/api/start' && write) {
-            const request = await readJson(req)
+            const request = resolveProject(await readJson(req))
             const inTmux = request.kind === 'resume' && runningInApp().get(request.id)
             if (inTmux?.tmux) return json(res, 409, { error: `This session is already running in tmux session ${inTmux.tmux}.`, openIn: inTmux })
-            const terminal = await startSession(request, config, request.kind === 'resume' ? linkedModes().get(request.id) : undefined)
+            const started = await startSession(request, config, request.kind === 'resume' ? linkedModes().get(request.id) : undefined)
+            // In server mode the session has its outline from here on, empty: the page shows that, not the terminal. In
+            // file mode the outline appears when the agent writes it.
+            let outline
+            try {
+                if (started.mode === 'server') outline = agent.open(started)
+            } catch (e) {
+                // The session runs all the same: its agent opens the outline itself, or says why it cannot.
+                console.error(`opening the outline of ${started.terminal}: ${e.message}`)
+            }
             pushList()
-            return json(res, 200, { terminal })
+            return json(res, 200, { terminal: started.terminal, outline })
         }
         if (pathname === '/api/delete' && write) return json(res, 200, trashOutline(await readJson(req)))
         if (pathname === '/api/rename' && write) return json(res, 200, renameOutline(await readJson(req)))
@@ -444,6 +456,22 @@ async function startApi(req, res, pathname, url) {
     } catch (e) {
         json(res, e.openIn ? 409 : 400, { error: e.message, openIn: e.openIn })
     }
+}
+
+/**
+ * A `{ kind: 'project', project }` start request (the plus of a group in the pane) as the request New would send: the
+ * workspace of that name, else the folder the project's newest linked session ran in.
+ */
+function resolveProject(request) {
+    if (request.kind !== 'project') return request
+    const { project, ...rest } = request
+    const workspace = findWorkspaces(config.workspaceDirs).find(w => w.name === project)
+    if (workspace) return { ...rest, kind: 'workspace', file: workspace.file, topic: rest.topic ?? '' }
+    for (const o of listMaps()) {
+        const folder = o.project === project && o.session && sessionFolder(o.session)
+        if (folder && fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory()) return { ...rest, kind: 'folder', path: folder, topic: rest.topic ?? '' }
+    }
+    throw new Error(`no folder or workspace is known for ${project}`)
 }
 
 /** The mode of the outline that links to each session (the newest, when several do): a resumed session keeps it. */

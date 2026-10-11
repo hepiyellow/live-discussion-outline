@@ -18,8 +18,9 @@ function Mark({ state, radio }: { state: BoxState; radio: boolean }) {
 
 /**
  * A node's or topic's checkbox: open, a claim (blue tick: the agent says what it thinks, and nothing is wrong), done
- * (filled yellow tick: an action the agent carried out), pending (green outlined tick, fading in and out until the agent
- * records it), approved (the same tick, still) or mixed.
+ * (yellow outlined tick: an action the agent carried out), pending (green outlined tick, fading in and out until the agent
+ * records it in file mode, or acknowledges it in server mode), approved (the same tick, still) or mixed. A box whose
+ * tick the user took back fades the same way until the agent acknowledges that (`waiting`).
  */
 export function StatusBox({ box, onToggle }: { box: Box; onToggle?: () => void }) {
     const radio = box.shape === 'radio'
@@ -27,7 +28,7 @@ export function StatusBox({ box, onToggle }: { box: Box; onToggle?: () => void }
     const className = cn('ck', radio && 'radio')
     if (!onToggle)
         return (
-            <span className={className} data-state={box.state} title={box.title} role={radio ? 'radio' : 'checkbox'} aria-checked={checked} aria-readonly>
+            <span className={className} data-state={box.state} data-waiting={box.waiting || undefined} title={box.title} role={radio ? 'radio' : 'checkbox'} aria-checked={checked} aria-readonly>
                 <Mark state={box.state} radio={radio} />
             </span>
         )
@@ -36,6 +37,7 @@ export function StatusBox({ box, onToggle }: { box: Box; onToggle?: () => void }
             type="button"
             className={className}
             data-state={box.state}
+            data-waiting={box.waiting || undefined}
             title={box.title}
             role={radio ? 'radio' : 'checkbox'}
             aria-checked={checked}

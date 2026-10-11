@@ -8,7 +8,7 @@ The agent used to write the outline as a markdown file, following a long skill, 
 
 - **The file stays markdown, and is storage only.** The page's reader, the node history and every existing outline keep working without a migration. No agent reads or writes it.
 - **One `change` call carries a list of operations, applied together or not at all.** There is no write of the whole outline. A refused change names the operation, the reason and what to do.
-- **An approval is state.** A tick on the page is written into the outline at once. The agent is not woken for it: it is told with the user's next prompt (a hook) and in every tool result. Only a press of Run reaches the agent right away, typed into its session terminal when it has one.
+- **An approval is state, and the agent is told of it once the user pauses.** A tick on the page is written into the outline at once. About five seconds after the user's last tick, the server types one line into the agent's session terminal for the whole run of ticks, and the prompt hook hands over what was ticked. A message the user sends within the pause takes the ticks along, and nothing is typed. A session without a session terminal is told with the user's next prompt (the hook) and in every tool result. A press of Run is typed at once. _Until October 2026 the agent was not woken for a tick at all. In use, an approval that closed a plan then sat unanswered until the user wrote about something else, so the agent could not take the step the approval opened._
 - **An approval covers the wording the user saw.** When the agent rewrites an approved node, the server makes it a claim again. The claim is kept under an approval, so taking an approval back returns a claim to a claim.
 - **A stale update is refused.** An update to a node whose text is not what the server last showed this agent comes back with the current text. After compaction or resume every node counts as unseen.
 - **Numbers stay dense.** A new node takes the next free number under its parent; a removed or moved node closes the gap behind it, and a moved node takes the next number under its new parent. The result lists the numbers that changed.
@@ -19,7 +19,8 @@ The agent used to write the outline as a markdown file, following a long skill, 
 
 - **Keep the agent writing the file, and have a hook check it after each write.** Much of the correctness for far less change, but approvals would not be state and two writers would remain.
 - **JSON as storage.** Simpler to write back, but every existing outline and the page's reader would need migrating, for something no agent sees.
-- **Waking the agent on every approval** (the channel, or a line typed into its terminal). The agent could object at once, but most approvals need no answer and each would cost a turn.
+- **Waking the agent on every single tick.** The agent could answer at once, but a run of approvals would cost a turn each. Waiting for a pause makes a run one turn.
+- **Not waking the agent for a tick at all** (the first decision here). No turn is spent on an approval that needs no answer, but the agent learns of an approval only when the user writes again, perhaps about something else. Telling it costs a turn for each run of ticks, and the skill has the agent end that turn in one line when nothing follows.
 
 ## Consequences
 

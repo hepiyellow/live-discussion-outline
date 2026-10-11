@@ -23,6 +23,25 @@ export const contentHtml = (node: OutlineNode) => {
     return node.html + node.closing.map(c => `<div class="closing">${(c.kind === 'action' && outcome) || CLOSING_PILL[c.kind]} ${c.html}</div>`).join('')
 }
 
+/** The Action tag as the button that runs the action. Its icon gives way to a turning ring while the agent has not finished. */
+const runButton = (label: string) =>
+    `<button type="button" class="pill pill-action run" data-run title="Run this action: ask the agent to do it now"><span class="run-icon">${PLAY_ICON}</span> ${label}</button>`
+
+/**
+ * `contentHtml` as the Outline tab shows it: on an action still to run, the Action tag is the button that runs it. A
+ * failed action keeps its Failed tag, and the button beside it reads "Run again". An action without an Action line gets
+ * the button on a line of its own. What the viewer has read (`readVersion`) and the node history keep the plain tags.
+ */
+export const liveHtml = (node: OutlineNode) => {
+    if (!node.tags.includes('action') || node.tags.includes('ran')) return contentHtml(node)
+    const button = runButton(node.tags.includes('failed') ? 'Run again' : 'Action')
+    const failed = node.tags.includes('failed') ? FAILED_PILL : ''
+    const lines = node.closing.map(c => `<div class="closing">${c.kind === 'action' ? failed + button : CLOSING_PILL[c.kind]} ${c.html}</div>`)
+    // Without an Action line a failed action's tag is on its title.
+    if (!node.closing.some(c => c.kind === 'action')) lines.push(`<div class="closing">${button}</div>`)
+    return node.html + lines.join('')
+}
+
 /** What a node shows: its title and its text, as HTML. */
 export interface NodeContent {
     titleHtml: string

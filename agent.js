@@ -19,6 +19,11 @@ const MAX_MESSAGES = 200
 /** Most user actions a ledger keeps for an agent that never asks. */
 const MAX_EVENTS = 200
 
+/** How long the server waits after the user's last tick before it tells the agent, so a run of ticks goes as one line. */
+const TICK_PAUSE = 5000
+/** The events that are ticks: an approval, a pick of an option, an approval taken back. */
+const TICKS = ['approved', 'picked', 'reopened']
+
 const safeName = name => typeof name === 'string' && !!name && !name.startsWith('.') && !/[/\\]/.test(name)
 
 const slug = text =>
@@ -36,6 +41,10 @@ const today = () => {
 
 /** The title of an outline opened before its conversation has a subject; the agent names it once it has one. */
 const UNTITLED = 'New outline'
+
+/** What an agent does with an outline that has no name yet: nothing is asked of the user before they write. */
+const UNNAMED_NEXT =
+    'Do not ask the user what they want to work on, and do not make up a subject: say in one line that the outline is ready, with the page link, and stop. Once the conversation has a subject, call start again with it as the title, and mirror from then on.'
 
 /** A refusal the caller reads as text: the tool's result, marked as an error. */
 class Refusal extends Error {}
@@ -79,21 +88,25 @@ export function markLedgered(root) {
  * @param onWrite (project, file, text) => called after an outline's file was written
  * @param onMessages (project, file) => called after an outline got a message
  * @param typeInto async (terminal, text) => types a line into a session terminal; throws when there is none
+ * @param tickPause how long after the user's last tick the agent is told of the ticks, in ms
+ * @param onLedger (project, file) => called after the ticks the agent has not acknowledged changed
  */
-export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onMessages = () => {}, typeInto }) {
+export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onMessages = () => {}, typeInto, tickPause = TICK_PAUSE, onLedger = () => {} }) {
     const fileOf = (project, file) => path.join(root, project, `${file}.md`)
     const ledgerOf = (project, file) => path.join(root, LEDGER_DIR, project, `${file}.json`)
 
     /**
      * An outline's ledger:
      * - events: what the user did on the page that the agent has not been told yet
+     * - unacked: node number → `{ kind, title, told }`, a tick of the user's the agent has not acknowledged: the page
+     *   shows it as pending. `told` once the agent was told of it; the agent's next change then acknowledges it
      * - shown: node number → the hash of the node as the agent last saw it (model.js `nodeHash`)
      * - messages: the agent's messages, for the inbox
      * - cwd: the working folder of the session that started it
      * - untitled: true while the outline has the placeholder title, which the agent may still replace
      */
     function readLedger(project, file) {
-        const ledger = { events: [], shown: {}, messages: [], cwd: '' }
+        const ledger = { events: [], unacked: {}, shown: {}, messages: [], cwd: '' }
         try {
             Object.assign(ledger, JSON.parse(fs.readFileSync(ledgerOf(project, file), 'utf8')))
         } catch (e) {
@@ -138,11 +151,12 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
 
     /**
      * The outline a call is about: the one it names (`project/file`), else the newest that links to the caller's
-     * session, else (an agent that does not know its session id) the newest started from its working folder that
-     * links to no session. Only outlines in server mode count: one in file mode is not the tools' to read or change, so
+     * session, else the one opened for the caller's session terminal that no session has claimed (`open`), else (an
+     * agent that does not know its session id) the newest started from its working folder that links to no session.
+     * Only outlines in server mode count: one in file mode is not the tools' to read or change, so
      * naming it is refused, and a session whose outline is in file mode has no outline here.
      */
-    function locate({ outline, session, cwd }) {
+    function locate({ outline, session, cwd, terminal }) {
         if (outline) {
             const [project, ...rest] = String(outline).split('/')
             const file = rest.join('/')
@@ -158,6 +172,11 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             if (found) return found
             // A session that keeps its outline as a file has none here, whatever else was started from its folder.
             if (all.some(o => o.headers.session === session)) return undefined
+        }
+        // The outline the server opened when the page started this session's terminal: no session has claimed it yet.
+        if (terminal) {
+            const opened = kept.find(o => o.headers.terminal === terminal && !o.headers.session)
+            if (opened) return opened
         }
         if (cwd) return kept.find(o => readLedger(o.project, o.file).cwd === cwd && (!session || !o.headers.session))
         return undefined
@@ -176,6 +195,8 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         const events = ledger.events
         ledger.events = []
         if (!events.length) return ''
+        // Told now: the agent's next change acknowledges these ticks.
+        for (const e of events) if (TICKS.includes(e.kind) && ledger.unacked[e.num]) ledger.unacked[e.num].told = true
         // A node ticked and unticked again says only where it ended up.
         const last = new Map()
         for (const e of events) last.set(e.kind === 'run' || e.kind === 'renamed' ? `${e.kind}:${e.num}` : e.num, e)
@@ -190,6 +211,43 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         return `On the page, since you were last told, the user:\n${lines.join('\n')}\nThe outline already shows this; do not record it again.`
     }
 
+    /** The ticks the agent has not been told of, as the line typed into its session: numbers only, the prompt hook adds the titles. */
+    function ticksLine(ledger) {
+        // A node ticked and unticked again says only where it ended up.
+        const last = new Map()
+        for (const e of ledger.events) if (TICKS.includes(e.kind)) last.set(e.num, e)
+        const nums = kind => [...last.values()].filter(e => e.kind === kind).map(e => e.num).join(', ')
+        const parts = [nums('approved') && `approved ${nums('approved')}`, nums('picked') && `picked ${nums('picked')}`, nums('reopened') && `took back ${nums('reopened')}`].filter(Boolean)
+        return parts.length ? `Ticked in the outline: ${parts.join('; ')}.` : ''
+    }
+
+    const telling = new Map()
+
+    /**
+     * Tells the agent of the user's ticks once the user has paused (docs/adr/0003): one line typed into its session
+     * terminal for the whole run of ticks, so the agent can take the step they open. The prompt hook then hands over
+     * what was ticked. A message the user sent meanwhile took the ticks along, and nothing is typed. Without a session
+     * terminal, or with one that is not running, the ticks wait for the user's next prompt.
+     */
+    function tellSoon(project, file) {
+        if (!typeInto) return
+        const key = `${project}/${file}`
+        clearTimeout(telling.get(key))
+        const timer = setTimeout(async () => {
+            telling.delete(key)
+            try {
+                const { terminal } = readModel(project, file).headers
+                const line = terminal ? ticksLine(readLedger(project, file)) : ''
+                if (line) await typeInto(terminal, line)
+            } catch {
+                // The session is not running, or the outline is gone.
+            }
+        }, tickPause)
+        // A tick still to be told does not keep the server from ending.
+        timer.unref?.()
+        telling.set(key, timer)
+    }
+
     function waitingText(model) {
         const waiting = waitingNotQueued(model)
         if (!waiting.length) return ''
@@ -200,13 +258,31 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
 
     const sections = (...parts) => parts.filter(Boolean).join('\n\n')
 
+    const resumeOf = sessionId => (sessionId && config.resumeTemplate ? config.resumeTemplate.replaceAll('{session}', sessionId) : '')
+    const cleanTitle = title => String(title).replace(/\s+/g, ' ').trim().slice(0, 300)
+
+    /**
+     * Writes a new, empty outline in server mode with its ledger, and returns `{ project, file }`. Its file is named
+     * after its title; without one, after an id, since the title it gets later would not rename the file.
+     */
+    function create({ project, cwd, name, resume, agentModel = '', terminal, session }) {
+        const folder = safeName(project) ? project : path.basename(cwd || '') || 'outlines'
+        if (!safeName(folder)) throw new Refusal(`${JSON.stringify(folder)} cannot be a project name.`)
+        const base = `${today()}-${(name && slug(name)) || crypto.randomBytes(4).toString('hex')}`
+        let file = base
+        for (let i = 2; fs.existsSync(fileOf(folder, file)); i++) file = `${base}-${i}`
+        writeModel(folder, file, { headers: { title: name || UNTITLED, resume, model: String(agentModel).slice(0, 100), terminal, session, mode: 'server' }, intro: '', nodes: [], queue: [] })
+        writeLedger(folder, file, { events: [], shown: {}, messages: [], cwd, untitled: !name })
+        return { project: folder, file }
+    }
+
     /** start: opens an outline for the session, or reattaches to the one it has. */
     function start({ session = '', terminal = '', cwd = '', project = '', title = '', model: agentModel = '', outline = '' }) {
         const sessionId = isSessionId(session) ? session : ''
         const term = isSessionName(terminal) ? terminal : ''
-        const found = locate({ outline, session: sessionId, cwd })
-        const resume = sessionId && config.resumeTemplate ? config.resumeTemplate.replaceAll('{session}', sessionId) : ''
-        const name = String(title).replace(/\s+/g, ' ').trim().slice(0, 300)
+        const found = locate({ outline, session: sessionId, cwd, terminal: term })
+        const resume = resumeOf(sessionId)
+        const name = cleanTitle(title)
         if (found) {
             const model = readModel(found.project, found.file)
             const ledger = readLedger(found.project, found.file)
@@ -232,30 +308,46 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 text: sections(
                     named
                         ? `The outline is now named "${name}". It is filed under the project "${found.project}".\nPage: ${urlOf(found)}`
-                        : `Reattached to the outline "${model.headers.title || found.file}", filed under the project "${found.project}".${ledger.untitled ? ' It is not named yet: call start with a title once the conversation has a subject.' : " Its name is the user's to change: keep it."}\nPage: ${urlOf(found)}`,
-                    map ? `Map:\n${map}` : 'It has no nodes yet: add them with change.',
+                        : ledger.untitled
+                          ? `Attached to this session's outline, which is not named yet. It is filed under the project "${found.project}".\nPage: ${urlOf(found)}\n${UNNAMED_NEXT}`
+                          : `Reattached to the outline "${model.headers.title || found.file}", filed under the project "${found.project}". Its name is the user's to change: keep it.\nPage: ${urlOf(found)}`,
+                    map ? `Map:\n${map}` : ledger.untitled ? '' : 'It has no nodes yet: add them with change.',
                     model.queue.length ? `Queue:\n${queueText(model)}` : '',
                     events,
                     map ? 'Read a node before you update it: you have not seen its text in this context.' : '',
                 ),
             }
         }
-        const folder = safeName(project) ? project : path.basename(cwd || '') || 'outlines'
-        if (!safeName(folder)) throw new Refusal(`${JSON.stringify(folder)} cannot be a project name.`)
-        const base = `${today()}-${slug(name || UNTITLED) || 'outline'}`
-        let file = base
-        for (let i = 2; fs.existsSync(fileOf(folder, file)); i++) file = `${base}-${i}`
-        const created = { project: folder, file }
-        writeModel(folder, file, { headers: { title: name || UNTITLED, resume, model: String(agentModel).slice(0, 100), terminal: term, session: sessionId, mode: 'server' }, intro: '', nodes: [], queue: [] })
-        writeLedger(folder, file, { events: [], shown: {}, messages: [], cwd, untitled: !name })
-        const where = `It is filed under the project "${folder}", which the session it started from decides: say nothing else about where it is.`
+        const created = create({ project, cwd, name, resume, agentModel, terminal: term, session: sessionId })
+        const where = `It is filed under the project "${created.project}", which the session it started from decides: say nothing else about where it is.`
         return {
-            outline: `${folder}/${file}`,
+            outline: `${created.project}/${created.file}`,
             url: urlOf(created),
             text: name
                 ? `Opened the outline "${name}".\nPage: ${urlOf(created)}\n${where}\nIt is empty: build it from the conversation so far with one change, then give the user the page link.`
-                : `Opened an outline that is not named yet.\nPage: ${urlOf(created)}\n${where}\nGive the user the page link and ask what they want to work on. Once the conversation has a subject, call start again with it as the title, and mirror from then on.`,
+                : `Opened an outline that is not named yet.\nPage: ${urlOf(created)}\n${where}\n${UNNAMED_NEXT}`,
         }
+    }
+
+    /**
+     * What the page does when it starts a session in server mode (New session): the session gets its outline at once,
+     * before its agent has said a word, so the page shows the outline, empty, and the user writes to the agent from
+     * there. A resumed session that already has an outline keeps it, now with this session terminal. The agent's own
+     * `start` then finds the outline by its session, or by its session terminal. Returns `{ project, file }`.
+     */
+    function open({ project = '', cwd = '', terminal = '', session = '', title = '' }) {
+        const sessionId = isSessionId(session) ? session : ''
+        const term = isSessionName(terminal) ? terminal : ''
+        const found = sessionId ? locate({ session: sessionId }) : undefined
+        if (found) {
+            const model = readModel(found.project, found.file)
+            if (term && model.headers.terminal !== term) {
+                model.headers.terminal = term
+                writeModel(found.project, found.file, model)
+            }
+            return { project: found.project, file: found.file }
+        }
+        return create({ project, cwd, name: cleanTitle(title), resume: resumeOf(sessionId), terminal: term, session: sessionId })
     }
 
     /** read: the whole outline, or one node and its descendants. */
@@ -316,8 +408,21 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             for (const m of result.messages) ledger.messages.push({ id: `m:${crypto.randomUUID()}`, at: at_, num: m.num, text: m.text })
             ledger.messages = ledger.messages.slice(-MAX_MESSAGES)
         }
+        // A change made after the agent was told of a tick acknowledges it, whatever the change holds. The ticks this
+        // call's own result tells of are not acknowledged by it: the agent had not seen them when it made the call.
+        const unacked = {}
+        for (const [num, tick] of Object.entries(ledger.unacked)) {
+            if (tick.told || result.removed.includes(num)) continue
+            const now = result.renumbered.get(num) ?? num
+            if (live.has(now)) unacked[now] = tick
+        }
+        const acknowledged = Object.keys(unacked).length !== Object.keys(ledger.unacked).length
+        ledger.unacked = unacked
+        // What the user did is told by the numbers the nodes have now.
+        for (const e of ledger.events) e.num = result.renumbered.get(e.num) ?? e.num
         const events = takeEvents(ledger)
         writeLedger(at.project, at.file, ledger)
+        if (acknowledged) onLedger(at.project, at.file)
         if (result.messages.length) onMessages(at.project, at.file)
 
         const notes = [...result.notes]
@@ -375,7 +480,10 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         }
     }
 
-    /** The user's ticks on the page (`set`: `{ num, approved }` per node) or a press of Run (`run`: a node number). */
+    /**
+     * The user's ticks on the page (`set`: `{ num, approved }` per node) or a press of Run (`run`: a node number). Run
+     * reaches the agent at once, ticks once the user has paused (`tellSoon`).
+     */
     async function act(project, file, { set, run }) {
         const model = readModel(project, file)
         const ledger = readLedger(project, file)
@@ -384,7 +492,12 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             const events = applyUserSet(model, set)
             normalize(model)
             writeModel(project, file, model)
-            for (const e of events) ledger.events.push({ at, ...e })
+            for (const e of events) {
+                ledger.events.push({ at, ...e })
+                // Pending on the page from this moment, until the agent acknowledges it.
+                ledger.unacked[e.num] = { kind: e.kind, title: e.title, told: false }
+            }
+            if (events.length) tellSoon(project, file)
         }
         let typed = false
         if (run !== undefined) {
@@ -404,7 +517,27 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         }
         ledger.events = ledger.events.slice(-MAX_EVENTS)
         writeLedger(project, file, ledger)
+        if (set !== undefined) onLedger(project, file)
         return { typed }
+    }
+
+    /** The nodes whose tick the user changed and the agent has not acknowledged: the page shows them as pending. */
+    const unacknowledged = (project, file) => Object.keys(readLedger(project, file).unacked)
+
+    /**
+     * The turn-end hook: the ticks the agent was told of and has not acknowledged, for the hook to hold the turn open
+     * with; or nothing. Ticks the agent has not been told of yet are not its to acknowledge.
+     */
+    function ending(where) {
+        const at = locate(where)
+        if (!at) return { text: '' }
+        const told = Object.entries(readLedger(at.project, at.file).unacked).filter(([, tick]) => tick.told)
+        if (!told.length) return { text: '' }
+        const refs = kind => told.filter(([, tick]) => tick.kind === kind).map(([num, tick]) => `${num} ${tick.title}`).join('; ')
+        const lines = [refs('approved') && `- approved ${refs('approved')}`, refs('picked') && `- picked ${refs('picked')}`, refs('reopened') && `- took their approval back from ${refs('reopened')}`].filter(Boolean)
+        return {
+            text: `[outline "${headersOf(at).title || at.file}"] You were told that on the page the user:\n${lines.join('\n')}\nYou have not acknowledged it, and the page shows these as pending until you do. Before you end the turn, take the step they open and make one change call; when nothing follows from them, make a change call that holds the acknowledge operation alone.`,
+        }
     }
 
     /** Something the user did to the outline outside its nodes (renaming it), for the agent to be told. */
@@ -428,5 +561,5 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         }
     }
 
-    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, act, userEvent, messages }
+    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, messages, unacknowledged }
 }

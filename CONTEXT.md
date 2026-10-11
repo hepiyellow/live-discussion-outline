@@ -13,7 +13,7 @@ What is kept for an outline session and the page shows: its title, its nodes and
 _Avoid_: Mirror, notes, file (the file is how an outline is stored, in both modes)
 
 **Operation**:
-One change an agent asks of an outline in server mode: add, update, move or remove a node, record what the user decided in chat, finish an action, post a message, or replace the queue.
+One change an agent asks of an outline in server mode: add, update, move or remove a node, record what the user decided in chat, finish an action, acknowledge the user's ticks, post a message, or replace the queue.
 _Avoid_: Edit, command, patch
 
 **Map**:
@@ -21,11 +21,11 @@ An outline without its text: each node's number, title and what it is. In server
 _Avoid_: Summary (that is a node's closing sentence), index
 
 **Mode**:
-Who writes an outline, fixed when its outline session starts: in **file mode** the agent writes the outline itself, following a skill; in **server mode** the server writes it and the agent sends operations.
+Who writes an outline, fixed when its outline session starts: in **file mode** the agent writes the outline itself, following a skill; in **server mode** the server writes it and the agent sends operations. File mode is experimental, kept only while server mode replaces it.
 _Avoid_: MCP mode (MCP is only how operations travel), markdown mode (both modes store markdown), legacy
 
 **Title**:
-The name of an outline session; the agent gives it when it starts the outline, and the user can rename it from the page.
+The name of an outline session. The user gives it as the topic when starting the outline session, or else the agent gives it once the work has a subject; until then the outline has no title of its own and shows a placeholder. The user can rename it from the page.
 _Avoid_: Name, heading (a heading is a node)
 
 **Node**:
@@ -41,7 +41,7 @@ A plain list item inside a node's text; it has no number and no status.
 _Avoid_: Node, item
 
 **Status**:
-Where a node stands: **open** (no tag), an **agent claim**, or claim for short (the agent states it as settled or certain), or **user-approved** (the user approved it; only the user can make it so). The agent's wording of an answer the user gave is a claim until the user approves it: answering a question is not approving what the agent wrote down. An approval covers the wording the user saw: in server mode, when the agent rewrites an approved node, it is a claim again. In file mode a node the user approved on the page is **pending** until the agent records the approval in the outline; in server mode an approval on the page is recorded at once, and nothing is pending. A node whose descendants all share a status takes that status too.
+Where a node stands: **open** (no tag), an **agent claim**, or claim for short (the agent states it as settled or certain), or **user-approved** (the user approved it; only the user can make it so). The agent's wording of an answer the user gave is a claim until the user approves it: answering a question is not approving what the agent wrote down. An approval covers the wording the user saw: in server mode, when the agent rewrites an approved node, it is a claim again. A tick the user changed on the page is **pending** until the agent has taken it in: in file mode until the agent records it in the outline; in server mode, where it is recorded at once, until the agent acknowledges it. A node whose descendants all share a status takes that status too.
 _Avoid_: Checkbox, resolved, agent-approved, done, and a bare "approved" (it does not say who approved), pending human approval (the human has approved; the agent has not recorded it)
 
 **Question**:
@@ -57,7 +57,7 @@ One sentence closing a long node that sums up that node's own text. It never ans
 _Avoid_: Answer, conclusion, bottom line
 
 **Outlines folder**:
-The one folder outlines are kept in, with one subfolder per project. In file mode the agent writes there itself; in server mode only the server does.
+The one folder outlines are kept in, with one subfolder per project. It is the Outline app's own storage, not the agent's. In file mode the agent writes there itself; in server mode only the server does.
 _Avoid_: Dir, output folder
 
 **Outline app**:
@@ -100,11 +100,15 @@ The agent's ordered list of outline items it asks the user to handle next: decis
 _Avoid_: Tasks, to-do, cue
 
 **Action**:
-An outline item proposing something to do in the session itself (run tests, change code), which the agent carries out only when the user runs it; once the agent has carried it out it is a **done** action, or a **failed** one when the agent tried and could not; a failed action can be run again.
+Something to do in the session itself (run tests, change code), kept as a node. The agent proposes it and carries it out only when the user runs it, or the user asks for it in chat and the agent carries it out at once. Once the agent has carried it out it is a **done** action, or a **failed** one when the agent tried and could not; a failed action can be run again.
 _Avoid_: Play task, step, job
 
+**Acknowledge**:
+What the agent does about a tick the user changed on the page in server mode, once it has been told of it: any operation it sends afterwards acknowledges the tick, and the tick stops being pending. It is not the agent's word for an action it carried out: an action is finished.
+_Avoid_: Confirm, record (that is for what the user decided in chat), finish (that is for actions)
+
 **Message**:
-A note from the agent about something the outline does not hold (the outcome of a request made in chat, a status, a warning); it may name the node it relates to. In server mode the agent posts it as an operation; in file mode it writes it in its chat reply, tagged `@message`.
+A note from the agent about something the outline does not hold (a status, a warning); it may name the node it relates to. The outcome of something the agent did is not a message: it belongs to that action's node. In server mode the agent posts it as an operation; in file mode it writes it in its chat reply, tagged `@message`.
 _Avoid_: Notification, reply, response
 
 **Inbox**:

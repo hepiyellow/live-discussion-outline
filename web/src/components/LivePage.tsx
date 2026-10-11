@@ -7,8 +7,9 @@ import { PaneToggle } from './PaneToggle'
 import { TerminalTab } from './TerminalTab'
 
 /**
- * A session just started from "New session": its session terminal fills the main area while the agent works. Once the
- * outline's first version is written (it has a node), the page opens that outline.
+ * A session just started from "New session" in file mode: its session terminal fills the main area while the agent
+ * works. Once the outline's first version is written (it has a node), the page opens that outline. An outline in
+ * server mode is there from the start, so the page opens it as soon as it is found.
  */
 export function LivePage({ terminal }: { terminal: string }) {
     // The list for the pane; it also says whether terminals can be shown.
@@ -25,8 +26,8 @@ export function LivePage({ terminal }: { terminal: string }) {
                 const found = await api<{ project?: string; file?: string }>(`/api/outline-for?terminal=${encodeURIComponent(terminal)}`)
                 if (found.project && found.file) {
                     const outline = await api<Outline>(`/api/outline/${encodeURIComponent(found.project)}/${encodeURIComponent(found.file)}`)
-                    // Headers alone are not the first version: stay on the terminal until a node is there.
-                    if (outline.nodes.length) {
+                    // In file mode headers alone are not the first version: stay on the terminal until a node is there.
+                    if (outline.nodes.length || outline.mode === 'server') {
                         await fetch(`/api/state/${encodeURIComponent(found.project)}/${encodeURIComponent(found.file)}`, {
                             method: 'PATCH',
                             headers: { 'content-type': 'application/json' },

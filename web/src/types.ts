@@ -72,6 +72,8 @@ export interface Outline {
     session: string
     /** The `Mode:` line: `server` when it says so, else `file`. */
     mode: Mode
+    /** Server mode: the nodes whose tick the user changed and the agent has not acknowledged yet. They show as pending. */
+    unacked: string[]
     /** The folder the linked session runs in, from its transcript. */
     folder: string
     /** Whether the Terminal tab can attach: the outline names a tmux session and the server can run terminals. */
@@ -108,7 +110,7 @@ export interface ViewerState {
     /** Node number → the node as the viewer last read it (`readVersion`), shown until they open the change. */
     read: Record<string, string>
     /** Node number → 1 once the viewer asked the agent to run that action. */
-    runs: Record<string, number>
+    runs: Record<string, number | string>
     /** Message id → 1 once seen in an inbox. */
     seen: Record<string, number>
     undo: UndoStep[]

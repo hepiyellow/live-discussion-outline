@@ -15,7 +15,8 @@ const PLUGIN = path.join(ROOT, 'plugin')
 function startMcp(server, env = {}) {
     const child = spawn(process.execPath, [path.join(PLUGIN, 'scripts', 'outline-mcp.js')], {
         cwd: server.home,
-        env: { ...process.env, HOME: server.home, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: path.join(server.home, 'shop'), TMUX: '', ...env },
+        // The tests may themselves run in a session the page started, which has a project of its own.
+        env: { ...process.env, HOME: server.home, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: path.join(server.home, 'shop'), TMUX: '', OUTLINE_PROJECT: '', ...env },
         stdio: ['pipe', 'pipe', 'inherit'],
     })
     const waiting = new Map()
@@ -131,6 +132,12 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.equal(outlineText(), before)
         const approved = await mcp.tool('change', { ops: [{ op: 'add', num: '2', title: 'Rollout', status: 'approved' }] })
         assert.match(approved.text, /only the user approves/)
+        // An action line is one short sentence: the details belong in the node's text.
+        const long = 'Adds a retry wrapper to client.js, runs its tests, updates the README and then rebuilds the page for everyone.'
+        const wordy = await mcp.tool('change', { ops: [{ op: 'add', num: '2', title: 'Rollout', action: long }] })
+        assert.match(wordy.text, /The action of node 2 is \d+ characters long, and an action line has at most 100/)
+        assert.match((await mcp.tool('change', { ops: [{ op: 'update', num: '1.3', action: long }] })).text, /at most 100/)
+        assert.equal(outlineText(), before)
     })
 
     test('a tick on the page is recorded at once, and the agent is told with the next prompt', async () => {
@@ -151,6 +158,19 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.match(told, /picked 1\.2\.2 \(B\) In memory/)
         // Told once.
         assert.equal(await runHook(server, { hook_event_name: 'UserPromptSubmit', prompt: 'again' }), '')
+    })
+
+    test('the turn-end hook holds a turn open once over ticks the agent was told of and has not acknowledged', async () => {
+        // The last test told the agent of the ticks on 1.1 and 1.2.2: ending the turn now is held open, with the reason.
+        const held = JSON.parse(await runHook(server, { hook_event_name: 'Stop' }))
+        assert.equal(held.decision, 'block')
+        assert.match(held.reason, /- approved 1\.1 Limit at the gateway\n- picked 1\.2\.2 \(B\) In memory\nYou have not acknowledged it/)
+        // Once per turn: a turn that goes on because the hook held it ends when the agent ends it again.
+        assert.equal(await runHook(server, { hook_event_name: 'Stop', stop_hook_active: true }), '')
+        // A change that holds the acknowledge operation alone settles it.
+        const acknowledged = await mcp.tool('change', { ops: [{ op: 'acknowledge' }] })
+        assert.equal(acknowledged.error, false, acknowledged.text)
+        assert.equal(await runHook(server, { hook_event_name: 'Stop' }), '')
     })
 
     test('new wording of an approved node is a claim again', async () => {
@@ -189,6 +209,67 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.match(notes[0].html, /The load test passed/)
     })
 
+    test('what the user asked for in chat and the agent did is an action done: added with its outcome, or finished where it stands', async () => {
+        const done = await mcp.tool('change', {
+            ops: [
+                { op: 'add', num: '2', title: 'Rollout', children: [{ title: 'Add a retry to the client', text: 'The user asked for it in chat.', outcome: 'Added, and its tests pass.' }, { title: 'Write the runbook' }] },
+                { op: 'finish', num: '2.2', outcome: 'Written to docs/runbook.md.' },
+                { op: 'add', num: '2.3', title: 'Deploy to staging', outcome: 'The deploy timed out.', failed: true },
+            ],
+        })
+        assert.equal(done.error, false, done.text)
+        assert.match(done.text, /2\.1 Add a retry to the client \[open, action done\]/)
+        assert.match(done.text, /2\.3 Deploy to staging \[open, action failed\]/)
+        const text = outlineText()
+        assert.match(text, /^## 2\.1 @action-done Add a retry to the client\n\nThe user asked for it in chat\.\n\nAdded, and its tests pass\.$/m)
+        assert.match(text, /^## 2\.2 @action-done Write the runbook\n\nWritten to docs\/runbook\.md\.$/m)
+        assert.match(text, /^## 2\.3 @current @action-failed Deploy to staging\n\nThe deploy timed out\.$/m)
+        // A question is answered by a pick, not finished; and an outcome has to say something.
+        const question = await mcp.tool('change', { ops: [{ op: 'finish', num: '1.2', outcome: 'Done.' }] })
+        assert.match(question.text, /1\.2 is a question: the user answers it by picking an option/)
+        const empty = await mcp.tool('change', { ops: [{ op: 'add', num: '2.4', title: 'Tag the release', outcome: '' }] })
+        assert.match(empty.text, /without its outcome/)
+        assert.equal(outlineText(), text)
+        assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: '2' }] })).error, false)
+    })
+
+    test('a node is not finished as done while actions under it are unsettled', async () => {
+        const built = await mcp.tool('change', {
+            ops: [
+                {
+                    op: 'add',
+                    num: '2',
+                    title: 'Ship the retry',
+                    action: 'Ships the retry.',
+                    children: [
+                        { title: 'Why it is needed', status: 'claim' },
+                        { title: 'Run the tests', action: 'Runs the tests.' },
+                        { title: 'Which rollout', text: 'Pick one of the options below.', options: [{ title: 'All at once', action: 'Rolls out to all.' }, { title: 'Canary first', action: 'Rolls out to a canary.' }] },
+                    ],
+                },
+            ],
+        })
+        assert.equal(built.error, false, built.text)
+        const before = outlineText()
+        const refused = await mcp.tool('change', { ops: [{ op: 'finish', num: '2', outcome: 'Shipped.' }] })
+        assert.equal(refused.error, true)
+        // The claim and the options nobody picked are the user's; the action under it is the agent's to settle.
+        assert.match(refused.text, /2 has an action under it that is not settled: 2\.2 Run the tests \(not run\)\./)
+        assert.match(refused.text, /finish it with its outcome if you carried it out/)
+        assert.equal(outlineText(), before)
+        // An option the user picked is waiting to run, too.
+        assert.equal((await act({ set: [{ num: '2.3.2', approved: true }] })).status, 200)
+        const picked = await mcp.tool('change', { ops: [{ op: 'finish', num: '2.2', outcome: 'They fail.', failed: true }, { op: 'finish', num: '2', outcome: 'Shipped.' }] })
+        assert.match(picked.text, /2 has actions under it that are not settled: 2\.2 Run the tests \(failed\); 2\.3\.2 \(B\) Canary first \(not run\)\./)
+        // Settled in the same change: one finished, one given up. A finish as failed is never held back.
+        const done = await mcp.tool('change', {
+            ops: [{ op: 'finish', num: '2.2', outcome: 'They pass.' }, { op: 'update', num: '2.3.2', action: '', text: 'Not needed: the retry went out with the release.' }, { op: 'finish', num: '2', outcome: 'Shipped.' }],
+        })
+        assert.equal(done.error, false, done.text)
+        assert.match(outlineText(), /^# 2\. @current @action-done Ship the retry$/m)
+        assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: '2' }] })).error, false)
+    })
+
     test('removing a node renumbers those after it, and read shows one node with its descendants', async () => {
         const removed = await mcp.tool('change', { ops: [{ op: 'remove', num: '1.1' }] })
         assert.match(removed.text, /Numbers changed[^\n]*1\.2 -> 1\.1; 1\.2\.1 -> 1\.1\.1; 1\.2\.2 -> 1\.1\.2; 1\.3 -> 1\.2/)
@@ -203,6 +284,9 @@ describe('an agent keeps an outline through the MCP tools', () => {
             assert.equal(opened.error, false, opened.text)
             assert.match(opened.text, /Opened an outline that is not named yet\./)
             assert.match(opened.text, /filed under the project "other-project"/)
+            // Nothing is asked of the user before they write, and the file is named after an id, not a placeholder title.
+            assert.match(opened.text, /Do not ask the user what they want to work on/)
+            assert.match(opened.text, /Page: \S+\/\d{4}-\d\d-\d\d-[0-9a-f]{8}\n/)
             const target = path.join(server.dir, 'other-project', `${/Page: \S+\/(\S+)/.exec(opened.text)[1]}.md`)
             assert.match(fs.readFileSync(target, 'utf8'), /^Title: New outline\n/)
             const named = await other.tool('start', { title: 'Understand project design' })

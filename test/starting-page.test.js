@@ -5,7 +5,8 @@ import path from 'node:path'
 import { after, afterEach, before, describe, test } from 'node:test'
 import { launchBrowser, openPage, startServer, until } from './helpers.js'
 
-// A session started from New shows in the outlines pane at once, kept on its tmux session until its outline appears.
+// A session started from New in server mode has its outline at once, empty, written by the server. In file mode it shows
+// in the outlines pane at once, kept on its tmux session until its agent writes its outline.
 // It needs tmux: the test runs its own tmux server (TMUX_TMPDIR), never the user's, with a stand-in for claude.
 
 const hasTmux = (() => {
@@ -53,14 +54,61 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
     })
 
     const pane = () => page.locator('nav[aria-label="Outlines"]')
-    /** Starts a session in the folder `proj` the way the dialog does, and returns its tmux session. */
-    const start = topic =>
-        page.evaluate(
-            async ({ path, topic }) => (await (await fetch('/api/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'folder', path, topic }) })).json()).terminal,
-            { path: path.join(scratch, 'proj'), topic },
-        )
+    /** Starts a session in file mode in the folder `proj` the way the dialog does, and returns its tmux session. */
+    const start = async topic => (await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic, mode: 'file' })).terminal
+    /** The agent's `start` tool, as the plugin's MCP process calls the server. */
+    const agentStart = body =>
+        fetch(`${server.url}/api/agent/start`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-outline-agent': '1' }, body: JSON.stringify(body) }).then(r => r.json())
 
-    test('shows at once, under its project, and turns into its outline when the outline names its terminal', async () => {
+    test('in server mode the session has its outline at once, empty, and the page opens it', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        const { terminal, outline } = await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic: 'Opened at once', mode: 'server' })
+        assert.equal(outline.project, 'proj')
+        assert.match(outline.file, /^\d{4}-\d\d-\d\d-opened-at-once$/)
+        const file = path.join(server.dir, 'proj', `${outline.file}.md`)
+        assert.match(fs.readFileSync(file, 'utf8'), new RegExp(`^Title: Opened at once\nTerminal: ${terminal}\nMode: server\n`))
+        // It is an outline in the list, not a session still starting.
+        const list = await (await fetch(`${server.url}/api/outlines`)).json()
+        assert.equal(list.starting.some(s => s.terminal === terminal), false)
+        assert.equal(list.outlines.some(o => o.file === outline.file && o.terminal === terminal), true)
+        // The page shows it empty, with the input box to write to the agent.
+        await page.goto(`${server.url}/proj/${outline.file}`)
+        assert.match(await page.locator('[data-empty]').textContent(), /This outline is empty, and its agent is starting\. Write below to begin\./)
+        await page.getByRole('textbox', { name: 'Message the session' }).waitFor()
+        // The session's agent attaches to that outline by its session terminal, and the title the user gave stays.
+        const session = 'dddddddd-1111-4222-8333-444444444444'
+        const attached = await agentStart({ session, terminal, cwd: path.join(scratch, 'proj'), project: 'proj', title: 'What the agent would call it' })
+        assert.equal(attached.outline, `proj/${outline.file}`)
+        assert.match(attached.text, /Reattached to the outline "Opened at once"/)
+        assert.match(fs.readFileSync(file, 'utf8'), new RegExp(`^Session: ${session}$`, 'm'))
+        await page.locator('[data-empty]').filter({ hasText: 'This outline is empty. Write to the agent below to begin.' }).waitFor()
+        // Another session in a terminal of the same name later does not take it over.
+        const other = await agentStart({ session: 'eeeeeeee-1111-4222-8333-444444444444', terminal, cwd: path.join(scratch, 'elsewhere'), project: 'elsewhere', title: 'Another' })
+        assert.match(other.outline, /^elsewhere\//)
+        fs.rmSync(path.join(server.dir, 'elsewhere'), { recursive: true })
+        fs.rmSync(file)
+    })
+
+    test('without a topic the outline has no name yet: its file is named after an id, and the agent is told not to ask for a subject', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        const { terminal, outline } = await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic: '', mode: 'server' })
+        assert.match(outline.file, /^\d{4}-\d\d-\d\d-[0-9a-f]{8}$/)
+        const file = path.join(server.dir, 'proj', `${outline.file}.md`)
+        assert.match(fs.readFileSync(file, 'utf8'), /^Title: New outline\n/)
+        const session = 'ffffffff-1111-4222-8333-444444444444'
+        const attached = await agentStart({ session, terminal, cwd: path.join(scratch, 'proj'), project: 'proj' })
+        assert.equal(attached.outline, `proj/${outline.file}`)
+        assert.match(attached.text, /Attached to this session's outline, which is not named yet\./)
+        assert.match(attached.text, /Do not ask the user what they want to work on/)
+        assert.doesNotMatch(attached.text, /add them with change/)
+        // Once the conversation has a subject the agent names it; the file keeps its name.
+        const named = await agentStart({ session, terminal, title: 'Rate limiting' })
+        assert.match(named.text, /The outline is now named "Rate limiting"/)
+        assert.match(fs.readFileSync(file, 'utf8'), /^Title: Rate limiting\n/)
+        fs.rmSync(file)
+    })
+
+    test('in file mode it shows at once, under its project, and turns into its outline when the outline names its terminal', async () => {
         page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1280, height: 800 } })
         await pane().locator('[data-pane-outline="demo/sample"]').waitFor()
         const terminal = await start('Brand new topic')
@@ -86,7 +134,7 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         await until(async () => (await pane().locator(`[data-pane-starting="${terminal}"]`).count()) === 0, { timeout: 8000, what: 'the row to go' })
     })
 
-    test('shows the terminal in the main area, then opens the outline once its first version has a node', async () => {
+    test('in file mode the main area shows the terminal, then opens the outline once its first version has a node', async () => {
         page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
         const terminal = await start('Watch me')
         await page.goto(`${server.url}/live?t=${encodeURIComponent(terminal)}`)
@@ -158,8 +206,11 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         assert.match(file, new RegExp(` --resume ${byHand} `))
         assert.match(file, / -- \/outline-only:outline-file$/)
         assert.doesNotMatch(file, /allowedTools/)
-        const server_ = await resumed(kept, 'file')
-        assert.match(server_, / --allowedTools mcp__plugin_outline-only_outline -- \/outline-only:outline$/)
+        const inServer = await post({ kind: 'resume', id: kept, mode: 'file' })
+        assert.match(commandOf(inServer.terminal), / --allowedTools mcp__plugin_outline-only_outline -- \/outline-only:outline$/)
+        // The outline the server keeps for it is the one the page opens, now with the new session terminal.
+        assert.deepEqual(inServer.outline, { project: 'proj', file: 'kept' })
+        assert.match(fs.readFileSync(path.join(server.dir, 'proj', 'kept.md'), 'utf8'), new RegExp(`^Terminal: ${inServer.terminal}$`, 'm'))
         assert.match(await resumed(none, 'file'), / -- \/outline-only:outline-file$/)
         fs.rmSync(path.join(server.dir, 'proj'), { recursive: true })
     })
