@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { CornerDownLeft, Square, X } from 'lucide-react'
+import { CornerDownLeft, Square, Trash2, X } from 'lucide-react'
 import { Command, CommandItem, CommandList } from '@/components/ui/command'
 import { sendToSession, stopSession } from '@/lib/send'
 import { cn } from '@/lib/utils'
@@ -27,7 +27,8 @@ const chipNum = (c: Chip) => /^(\d+(?:\.\d+)*)\.?\s/.exec(c.label)?.[1]
 
 /**
  * The input box at the bottom: types a message into the linked session's terminal. References added from the outline
- * wait in it as chips, sent as `Re: outline …` lines before the text. Its draft and chips live in the viewer state, so
+ * wait in it as chips, sent as `Re: outline …` lines before the text. A node's trash button adds a chip with a trash
+ * icon, sent as `Removed from the outline: …`, and the box then asks why. Its draft and chips live in the viewer state, so
  * every window on the outline shares them. `/` at the start lists the session's commands.
  *
  * At the end of the box, the Enter key in a circle sends. While the agent works, a dot blinks at its corner, and with
@@ -173,6 +174,7 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
     }
 
     const empty = !text.trim() && !chips.length
+    const removing = chips.some(c => c.kind === 'remove')
     // Nothing to send while the agent works: the button stops it.
     const stops = busy && empty
     return (
@@ -214,12 +216,14 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
                                     // A new key each time it is added again, so the pulse plays again.
                                     key={c.ref === added.ref ? `${c.ref}\u0001${added.n}` : c.ref}
                                     data-chip={c.label}
+                                data-chip-kind={c.kind}
                                     data-added={c.ref === added.ref || undefined}
                                     title={c.ref}
                                     onClick={e => num && !(e.target as Element).closest('button') && onReveal(num)}
                                     className={cn('inline-flex max-w-full items-center gap-0.5 rounded-[10px] bg-muted py-px pr-0.5 pl-2.5 text-xs', num && 'cursor-pointer hover:bg-accent')}
                                 >
-                                    <span className="truncate">{c.label}</span>
+                                    {c.kind === 'remove' && <Trash2 className="mr-1 size-3 shrink-0 text-danger" aria-label="Remove" />}
+                                <span className="truncate">{c.label}</span>
                                     <button
                                         type="button"
                                         title="Remove"
@@ -243,7 +247,7 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
                         rows={1}
                         value={text}
                         aria-label="Message the session"
-                        placeholder="Message the session · Enter sends, Shift+Enter adds a line"
+                        placeholder={removing ? 'Why should it be removed? · Enter sends, Shift+Enter adds a line' : 'Message the session · Enter sends, Shift+Enter adds a line'}
                         title={`Typed into tmux ${outline.terminal}`}
                         className="max-h-[40vh] min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-[3px] leading-[1.45] outline-none"
                         onChange={e => {

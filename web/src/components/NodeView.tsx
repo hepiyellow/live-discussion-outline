@@ -1,5 +1,5 @@
 import { createContext, useContext, type KeyboardEvent, type MouseEvent } from 'react'
-import { ChevronDown, Copy, History, Reply } from 'lucide-react'
+import { ChevronDown, Copy, History, Reply, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Statuses } from '@/lib/status'
 import { DONE_PILL, FAILED_PILL, contentHtml, type NodeContent } from '@/lib/content'
@@ -24,6 +24,8 @@ export interface OutlineContext {
     onTopicCheck: (topic: OutlineNode) => void
     onRun: (node: OutlineNode) => void
     onReference: (node: OutlineNode) => void
+    /** The trash button: asks the agent to take the node out of the outline, once the user has said why. */
+    onRemove: (node: OutlineNode) => void
     /** Opens the node's history: its changes, and the node as it was at each. */
     onHistory: (node: OutlineNode) => void
     /** Nodes changed since the viewer read them: what they read, shown until they open the change. */
@@ -146,7 +148,28 @@ function HistoryButton({ node }: { node: OutlineNode }) {
     )
 }
 
-/** A parent's buttons on hover: the reference, the history, and the diff of everything changed under it. */
+/** Asks to take the node out of the outline, on hover: linked to a session, it waits in the input box for the user's reason. */
+function RemoveButton({ node }: { node: OutlineNode }) {
+    const { linked, onRemove } = useOutlineCtx()
+    const label = linked ? 'Remove this item: adds it to the message box, for you to say why' : 'Remove this item: copies the request to paste into the chat'
+    return (
+        <button
+            type="button"
+            className="ask"
+            data-remove
+            title={label}
+            aria-label={`Remove ${node.num}`}
+            onClick={e => {
+                e.stopPropagation()
+                onRemove(node)
+            }}
+        >
+            <Trash2 className="size-3.5" />
+        </button>
+    )
+}
+
+/** A parent's buttons on hover: the reference, the history, the trash, and the diff of everything changed under it. */
 function Asks({ node }: { node: OutlineNode }) {
     const { unreadUnder, onOpenUnreadUnder } = useOutlineCtx()
     const under = unreadUnder(node.num).length
@@ -154,6 +177,7 @@ function Asks({ node }: { node: OutlineNode }) {
         <span className="asks">
             <Ask node={node} />
             <HistoryButton node={node} />
+            <RemoveButton node={node} />
             {under > 0 && (
                 <button
                     type="button"
@@ -291,6 +315,7 @@ function Leaf({ node }: { node: OutlineNode }) {
             <span className="asks">
                 <Ask node={node} />
                 <HistoryButton node={node} />
+                <RemoveButton node={node} />
             </span>
             <Messages node={node} />
             <Html className="node-html" html={shown.html} />

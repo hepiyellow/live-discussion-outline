@@ -103,7 +103,7 @@ export interface ViewerState {
     undo: UndoStep[]
     /** The input box's text. */
     draft: string
-    /** References waiting in the input box, sent as `Re: outline …` lines before its text. */
+    /** References and removals waiting in the input box, sent as lines before its text. */
     chips: Chip[]
     /** The tab shown. */
     tab: TabName
@@ -112,10 +112,14 @@ export interface ViewerState {
 /** The page's tabs: Outline, Markdown, Transcript and Terminal. */
 export type TabName = 'outline' | 'md' | 'transcript' | 'term'
 
-/** A reference in the input box: its label (the node's number and title) and the line it sends. */
+/**
+ * A reference in the input box: its label (the node's number and title) and the line it sends. A `remove` chip is the
+ * trash button's: it asks the agent to take the node out, and the box asks the user why.
+ */
 export interface Chip {
     label: string
     ref: string
+    kind?: 'remove'
 }
 
 /** An `@message` paragraph of the agent's chat reply, from the outline's stream (transcript.js). */

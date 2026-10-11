@@ -19,11 +19,11 @@ export const STATE_DIR = '.state'
  * - seen: message id → 1 once the viewer saw it in an inbox
  * - undo: the viewer's undo steps, newest last
  * - draft: the input box's text
- * - chips: the references waiting in the input box, `{ label, ref }`
+ * - chips: the references waiting in the input box, `{ label, ref }`; a node to remove also has `kind: 'remove'`
  * - tab: the tab shown (outline, md, transcript or term)
  */
 const MAPS = ['open', 'overrides', 'sent', 'backTo', 'read', 'runs', 'seen']
-const isChip = c => c && typeof c.label === 'string' && typeof c.ref === 'string' && c.label.length <= 500 && c.ref.length <= 2000
+const isChip = c => c && typeof c.label === 'string' && typeof c.ref === 'string' && c.label.length <= 500 && c.ref.length <= 2000 && (c.kind === undefined || c.kind === 'remove')
 const OTHERS = {
     undo: Array.isArray,
     draft: v => typeof v === 'string' && v.length <= 20000,

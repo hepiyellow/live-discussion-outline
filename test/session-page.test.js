@@ -112,6 +112,27 @@ describe('inbox, input box and spinner', () => {
         await page.locator('[role="status"][data-busy]').waitFor()
     })
 
+    test('the trash button adds a removal to the box, which asks why', async () => {
+        await node('3.2').evaluate(e => e.scrollIntoView({ block: 'center' }))
+        await node('3.2').hover()
+        await node('3.2').getByRole('button', { name: 'Remove 3.2' }).click()
+        const chip = page.locator('[data-chip="3.2 Time to live"][data-chip-kind="remove"]')
+        await chip.waitFor()
+        assert.equal(await chip.locator('svg[aria-label="Remove"]').count(), 1)
+        assert.match(await box().getAttribute('placeholder'), /^Why should it be removed\?/)
+        // A reference to the same node is another chip, with no trash.
+        await node('3.2').hover()
+        await node('3.2').locator('.ask').first().click()
+        await page.locator('[data-chip="3.2 Time to live"]:not([data-chip-kind])').waitFor()
+        await page.getByRole('button', { name: 'Remove 3.2 Time to live' }).last().click()
+        assert.equal(await page.locator('[data-chip]').count(), 1)
+        await box().fill('We settled this in 3.1.')
+        await box().press('Enter')
+        assert.equal(await waitSent(1), 'Removed from the outline: 3. Invalidation › 3.2 Time to live\nWe settled this in 3.1.')
+        await page.locator('[data-chip]').waitFor({ state: 'detached' })
+        assert.match(await box().getAttribute('placeholder'), /^Message the session/)
+    })
+
     test('while the agent works the button stops it, until a new message is typed', async () => {
         // Idle with nothing typed: a send button that cannot be pressed, and no dot.
         assert.equal(await page.getByRole('button', { name: 'Send' }).isDisabled(), true)

@@ -169,12 +169,17 @@ export function settledPatch(outline: Outline, v: ViewerState): StatePatch | nul
     return patch
 }
 
-/** A reference to a node to paste into the chat: `Re: outline "<title>" › 3. Topic › 3.1.2 Node`. */
-export function referenceTo(outline: Outline, node: OutlineNode) {
+/** A node's path and name: `3. Topic › 3.1.2 Node`. */
+function pathTo(outline: Outline, node: OutlineNode) {
     const topicNum = node.num.split('.')[0]
     const topic = outline.nodes.find(n => n.num === topicNum)
-    const head = `Re: outline "${outline.title || outline.file}" › `
     const topicLabel = (t: OutlineNode) => `${t.num}. ${t.title}`
-    if (node.level === 1) return head + topicLabel(node)
-    return head + (topic ? `${topicLabel(topic)} › ` : '') + nodeLabel(node)
+    if (node.level === 1) return topicLabel(node)
+    return (topic ? `${topicLabel(topic)} › ` : '') + nodeLabel(node)
 }
+
+/** A reference to a node to paste into the chat: `Re: outline "<title>" › 3. Topic › 3.1.2 Node`. */
+export const referenceTo = (outline: Outline, node: OutlineNode) => `Re: outline "${outline.title || outline.file}" › ${pathTo(outline, node)}`
+
+/** What the trash button sends about a node, before the user's reason: `Removed from the outline: 3. Topic › 3.1.2 Node`. */
+export const removalOf = (outline: Outline, node: OutlineNode) => `Removed from the outline: ${pathTo(outline, node)}`

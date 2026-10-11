@@ -308,7 +308,7 @@
 .ask:hover { color: var(--foreground); background: color-mix(in srgb, var(--border) 40%, transparent); }
 .ask:focus-visible, :is(.row, .topic-head):hover .ask { opacity: 1; }
 .row.leaf > .ask { grid-area: ask; align-self: start; position: relative; margin: 8px 10px 0 0; }
-/* A parent's hover buttons: the reference, and the diff of what changed under it. */
+/* A node's hover buttons: the reference, the history and the trash, and for a parent the diff of what changed under it. */
 .asks { display: inline-flex; align-items: center; }
 .row.parent > .asks { grid-area: ask; margin-left: 6px; }
 .topic-head > .asks { margin-left: 4px; }
@@ -446,7 +446,8 @@ button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; 
     line-height: 14px;
     text-align: center;
 }
-.row.leaf > .msgs { position: absolute; right: 40px; top: 8px; z-index: 2; }
+/* Left of the node's three hover buttons (the reference, the history and the trash). */
+.row.leaf > .msgs { position: absolute; right: 82px; top: 8px; z-index: 2; }
 .row.parent > .msgs { grid-area: msg; margin-right: 8px; }
 .topic-head > .msgs { margin-left: auto; }
 .topic-head > .msgs + .extras { margin-left: 0; }

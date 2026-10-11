@@ -4,13 +4,13 @@ import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useApprovals } from '@/hooks/useApprovals'
 import { messagesAbout, type SessionFeed } from '@/hooks/useSession'
 import type { Transcript } from '@/hooks/useTranscript'
-import { referenceTo } from '@/lib/approvals'
+import { referenceTo, removalOf } from '@/lib/approvals'
 import { useUnread } from '@/hooks/useUnread'
 import { useOutline } from '@/hooks/useOutline'
 import { allNodes, currentPath, duplicateNums, isParent, nodeLabel, pathNums } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import { scrollToNode } from '@/lib/sticky'
-import type { Outline, OutlineNode, QueueItem, StatePatch, TabName, ViewerState } from '@/types'
+import type { Chip, Outline, OutlineNode, QueueItem, StatePatch, TabName, ViewerState } from '@/types'
 import { InboxButton } from './Inbox'
 import { InputBox } from './InputBox'
 import { useNotify } from './Notice'
@@ -21,6 +21,9 @@ import { StatusBar } from './StatusBar'
 import { TopBar } from './TopBar'
 import { TerminalTab } from './TerminalTab'
 import { TranscriptTab } from './TranscriptTab'
+
+/** What a node's chip in the input box reads: its number and title. */
+const chipLabel = (node: OutlineNode) => (node.level === 1 ? `${node.num}. ${node.title}` : nodeLabel(node))
 
 /** One outline: its tabs, kept up to date as the agent edits the file, without reloading. */
 export function OutlinePage({ project, file }: { project: string; file: string }) {
@@ -76,19 +79,26 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
     }, [opened, followTranscript])
     const notify = useNotify()
     const approvals = useApprovals(outline, viewer, patch, session.working)
-    const { clickNode, clickTopic, run, reference, undo, linked } = approvals
+    const { clickNode, clickTopic, run, reference, remove, undo, linked } = approvals
     // The reference last added to the input box, and how many were: the box takes the focus and its chip pulses once.
     const [added, setAdded] = useState({ ref: '', n: 0 })
+    /** Adds a chip to the input box, once, and gives the box the focus. */
+    const addChip = useCallback(
+        (chip: Chip) => {
+            if (!viewer.chips.some(c => c.ref === chip.ref)) patch({ chips: [...viewer.chips, chip] })
+            setAdded(a => ({ ref: chip.ref, n: a.n + 1 }))
+        },
+        [viewer.chips, patch],
+    )
     /** Linked to a session, a reference waits in the input box as a chip; otherwise it is copied. */
     const onReference = useCallback(
-        (node: OutlineNode) => {
-            if (!linked) return reference(node)
-            const label = node.level === 1 ? `${node.num}. ${node.title}` : nodeLabel(node)
-            const ref = referenceTo(outline, node)
-            if (!viewer.chips.some(c => c.ref === ref)) patch({ chips: [...viewer.chips, { label, ref }] })
-            setAdded(a => ({ ref, n: a.n + 1 }))
-        },
-        [linked, reference, outline, viewer.chips, patch],
+        (node: OutlineNode) => (linked ? addChip({ label: chipLabel(node), ref: referenceTo(outline, node) }) : reference(node)),
+        [linked, reference, outline, addChip],
+    )
+    /** The trash button: the node waits in the input box as a removal, for the user to say why; otherwise it is copied. */
+    const onRemove = useCallback(
+        (node: OutlineNode) => (linked ? addChip({ label: chipLabel(node), ref: removalOf(outline, node), kind: 'remove' }) : remove(node)),
+        [linked, remove, outline, addChip],
     )
     const messagesFor = useCallback((num: string) => messagesAbout(num, session.messages), [session.messages])
     const onSeen = useCallback((ids: string[]) => patch({ seen: Object.fromEntries(ids.map(id => [id, 1])) }), [patch])
@@ -100,6 +110,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
             onTopicCheck: clickTopic,
             onRun: run,
             onReference,
+            onRemove,
             unread,
             opening,
             onOpenUnread: openUnread,
@@ -110,7 +121,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
             onSeen,
             onReveal: (num: string) => revealRef.current(num),
         }),
-        [linked, clickNode, clickTopic, run, onReference, unread, opening, openUnread, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen],
+        [linked, clickNode, clickTopic, run, onReference, onRemove, unread, opening, openUnread, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen],
     )
     const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
     const duplicates = useMemo(() => duplicateNums(outline.nodes), [outline])

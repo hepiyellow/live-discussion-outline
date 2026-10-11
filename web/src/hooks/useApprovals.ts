@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useNotify } from '@/components/Notice'
 import { isOpenIn } from '@/components/OutlineTab'
-import { Approvals, approvalText, batchNums, diffDraft, draftOf, pendingNums, referenceTo, settledPatch, snapshot, undoStep, type Retracted } from '@/lib/approvals'
+import { Approvals, approvalText, batchNums, diffDraft, draftOf, pendingNums, referenceTo, removalOf, settledPatch, snapshot, undoStep, type Retracted } from '@/lib/approvals'
 import { allNodes, nodeLabel, pathNums } from '@/lib/outline'
 import { flyTo } from '@/lib/fly'
 import { copyText, sendToSession } from '@/lib/send'
@@ -171,8 +171,14 @@ export function useApprovals(outline: Outline, viewer: ViewerState, patch: (p: S
         [linked, copyPending, notify],
     )
 
+    /** The trash button without a linked session: copies the removal to paste into the chat, for the user to add why. */
+    const remove = useCallback(
+        (node: OutlineNode) => copyText(`${removalOf(latest.current.outline, node)} — `).then(ok => notify(ok ? 'Copied to clipboard: paste it into the chat and say why' : 'The clipboard is not available', !ok)),
+        [notify],
+    )
+
     const drop = useCallback((nums: string[]) => patch({ overrides: Object.fromEntries(nums.map(n => [n, null])) }), [patch])
 
     const pending = linked ? [] : pendingNums(outline, draftOf(viewer))
-    return { linked, clickNode, clickTopic, undo, run, reference, pending, drop, copyPending }
+    return { linked, clickNode, clickTopic, undo, run, reference, remove, pending, drop, copyPending }
 }
