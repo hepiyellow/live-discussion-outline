@@ -71,11 +71,11 @@ function extractQueue(source) {
  * it, down to `######`. A node's text is everything up to the next heading, rendered as ordinary markdown (bullets
  * included). Status and the other tags sit on the heading line, right after the number.
  */
-const HEAD_RE = /^(\d+(?:\.\d+)*)\.?(?:\s+|$)([\s\S]*)$/
+export const HEAD_RE = /^(\d+(?:\.\d+)*)\.?(?:\s+|$)([\s\S]*)$/
 // A longer name comes before the name it starts with (`action-done` before `action`), or the shorter one would match.
-const TAG_RE = /^@(user-approved|approved|agent-claim|claim|option[_-][a-z]|options|recommended|current|action-done|action-failed|action|ran)\b\s*/i
+export const TAG_RE = /^@(user-approved|approved|agent-claim|claim|option[_-][a-z]|options|recommended|current|action-done|action-failed|action|ran)\b\s*/i
 /** `@option_A`: the node is option A of the question above it. The letter is in the tag, where it cannot be mistyped into the title. */
-const OPTION_RE = /^option[_-]([a-z])$/i
+export const OPTION_RE = /^option[_-]([a-z])$/i
 /**
  * The tags as outlines write them say who or what: `@user-approved`, `@agent-claim`, `@action-done`, `@action-failed`.
  * Outlines written before those names say `@approved`, `@claim` and `@action @ran`. Both read as the same tags here.
@@ -83,7 +83,7 @@ const OPTION_RE = /^option[_-]([a-z])$/i
 const TAG_NAMES = { 'user-approved': ['approved'], 'agent-claim': ['claim'], 'action-done': ['action', 'ran'], 'action-failed': ['action', 'failed'] }
 const REC_MARK = /@recommendation\./i
 /** Tags that open a node's closing lines, after its prose: `@Summary.`, `@Recommendation.`, `@Action.` (in any order). */
-const TRAIL_MARK = /@(summary|recommendation|action)\.\s*/gi
+export const TRAIL_MARK = /@(summary|recommendation|action)\.\s*/gi
 const HAS_TRAIL = /@(summary|recommendation|action)\./i
 /** The order closing lines are shown in. */
 const CLOSING_KINDS = ['summary', 'recommendation', 'action']

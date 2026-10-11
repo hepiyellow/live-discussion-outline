@@ -1,0 +1,7 @@
+{
+    "name": "outline-only",
+    "version": "0.2.0",
+    "description": "Mirrors a conversation into a numbered outline the user reads, approves and replies to on a local page. The outline server owns the outline; the agent changes it through three tools.",
+    "author": { "name": "Erez Makavy" },
+    "license": "MIT"
+}

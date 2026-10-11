@@ -77,9 +77,9 @@ export interface Outline {
     markdown: string
 }
 
-/** One undo step: every node a click changed, as it was before (its override, and its status in the file). */
+/** One undo step: every node whose tick a click changed, with its status in the outline before it. */
 export interface UndoStep {
-    nodes: { num: string; had: boolean; was: boolean; file: Status }[]
+    nodes: { num: string; file: Status }[]
     /** Nodes the click collapsed by completing them, opened again on undo. */
     collapsed: string[]
 }
@@ -88,12 +88,6 @@ export interface UndoStep {
 export interface ViewerState {
     /** Node number → whether the viewer opened (true) or closed (false) it. */
     open: Record<string, boolean>
-    /** Node number → the approval the viewer wants and the file does not show yet. */
-    overrides: Record<string, boolean>
-    /** Node number → the override already sent to the session. */
-    sent: Record<string, boolean>
-    /** Node number → 1 when an undo reopens a former claim, sent as "Back to claim". */
-    backTo: Record<string, number>
     /** Node number → the node as the viewer last read it (`readVersion`), shown until they open the change. */
     read: Record<string, string>
     /** Node number → 1 once the viewer asked the agent to run that action. */
@@ -122,7 +116,7 @@ export interface Chip {
     kind?: 'remove'
 }
 
-/** An `@message` paragraph of the agent's chat reply, from the outline's stream (transcript.js). */
+/** A message of the agent's: a `message` operation (agent.js), or an `@message` paragraph of its chat reply (transcript.js). */
 export interface Message {
     id: string
     /** ISO time. */

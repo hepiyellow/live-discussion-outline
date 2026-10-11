@@ -11,6 +11,8 @@ import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolde
 import { slashCommands } from './commands.js'
 import { STATE_DIR, createStateStore } from './state.js'
 import { installLogging } from './log.js'
+import { LEDGER_DIR, createAgentApi } from './agent.js'
+import { OpError } from './model.js'
 
 installLogging()
 const config = loadConfig()
@@ -40,8 +42,8 @@ const TRASH = '.trash'
 let debounce
 const viewerState = createStateStore(ROOT)
 const history = createHistory(ROOT)
-// Writes to the viewer state, the trash and the node history are not outline changes.
-const IGNORED = new Set([STATE_DIR, TRASH, HISTORY_DIR])
+// Writes to the viewer state, the trash, the node history and the ledgers are not outline changes.
+const IGNORED = new Set([STATE_DIR, TRASH, HISTORY_DIR, LEDGER_DIR])
 // Outline files that changed since the last recording of their history: `project/file`.
 const touched = new Set()
 const changed = () => {
@@ -102,6 +104,36 @@ function baselineHistory() {
     }
 }
 baselineHistory()
+
+/**
+ * The agent's side of the outlines (agent.js): the server writes every outline, and each write goes to the node history
+ * and to the open pages at once, without waiting for the folder's watcher.
+ */
+const agent = createAgentApi({
+    root: ROOT,
+    config,
+    // The settings file's link base when it names one (the Outline app's own scheme), else this server's address.
+    linkBase: () => (config.linkBase === `http://localhost:${config.port}` ? `http://localhost:${PORT}` : config.linkBase),
+    onWrite(project, file, text) {
+        try {
+            history.record(project, file, text)
+        } catch (e) {
+            console.error(`history of ${project}/${file}: ${e.message}`)
+        }
+        pushOutlines()
+        pushList()
+    },
+    onMessages: (project, file) => pushNotes(project, file),
+    typeInto: sendToTerminal,
+})
+
+/** Sends the open pages of an outline the agent's messages kept in its ledger (the `message` operation). */
+function pushNotes(project, file) {
+    const streams = outlineStreams.get(JSON.stringify([project, file]))
+    if (!streams?.size) return
+    const event = `event: notes\ndata: ${JSON.stringify(agent.messages(project, file))}\n\n`
+    for (const res of streams.keys()) res.write(event)
+}
 
 /**
  * Open streams the outline list goes out on, each with the list it last sent and its event name: the list's own stream
@@ -275,15 +307,17 @@ async function stateApi(req, res, parts) {
  */
 function outlineApi(req, res, parts, url) {
     const [project, file, events] = parts
-    if (parts.length > 3 || (events !== undefined && events !== 'events' && events !== 'history')) return send(res, 404, 'text/plain', 'not found')
+    if (parts.length > 3 || (events !== undefined && events !== 'events' && events !== 'history' && events !== 'act')) return send(res, 404, 'text/plain', 'not found')
     const outline = readOutline(project, file)
     if (!outline) return send(res, 404, 'text/plain', 'no such outline')
+    if (events === 'act') return actApi(req, res, project, file)
     // A node's history: its entries, oldest first (`?num=2.1`).
     if (events === 'history') return send(res, 200, 'application/json', JSON.stringify(history.read(project, file, url.searchParams.get('num') ?? '')))
     const data = JSON.stringify(outline)
     if (!events) return send(res, 200, 'application/json', data)
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
     res.write(`retry: 1000\n\ndata: ${data}\n\nevent: state\ndata: ${JSON.stringify(viewerState.read(project, file))}\n\n`)
+    res.write(`event: notes\ndata: ${JSON.stringify(agent.messages(project, file))}\n\n`)
     const key = JSON.stringify([project, file])
     if (!outlineStreams.has(key)) outlineStreams.set(key, new Map())
     outlineStreams.get(key).set(res, data)
@@ -299,6 +333,41 @@ function outlineApi(req, res, parts, url) {
         linked.get(res)?.stop()
         linked.delete(res)
     })
+}
+
+/**
+ * POST /api/outline/<project>/<file>/act: what the user did on the page, recorded in the outline at once. `set` lists
+ * the nodes whose tick changed (`{ num, approved }`); `run` names an action the user pressed play on.
+ */
+async function actApi(req, res, project, file) {
+    if (req.method !== 'POST') return send(res, 405, 'text/plain', 'method not allowed')
+    if (!fromLocalPage(req, PORT, { write: true }) || !/^application\/json\b/.test(req.headers['content-type'] || '')) return send(res, 403, 'text/plain', 'forbidden')
+    try {
+        json(res, 200, await agent.act(project, file, await readJson(req)))
+    } catch (e) {
+        json(res, e instanceof OpError || e instanceof SyntaxError ? 400 : 500, { error: e.message })
+    }
+}
+
+/**
+ * An agent's call: from this machine, to this server by its loopback name, and not from a web page (a page cannot send
+ * the header without the server's leave, and sends an Origin).
+ */
+const fromAgent = req => fromLocalPage(req, PORT, { write: false }) && req.headers['x-outline-agent'] === '1' && !req.headers.origin
+
+/**
+ * /api/agent/<tool>: the MCP tools `start`, `read` and `change`, and what the hooks ask for (`pending`, `reload`), each
+ * a POST of JSON answered with `{ ok, text }`.
+ */
+async function agentApi(req, res, name) {
+    if (!fromAgent(req)) return send(res, 403, 'text/plain', 'forbidden')
+    if (req.method !== 'POST' || !Object.hasOwn(agent, name) || ['act', 'userEvent', 'messages'].includes(name)) return send(res, 404, 'text/plain', 'not found')
+    try {
+        json(res, 200, agent[name](await readJson(req)))
+    } catch (e) {
+        console.error(`agent ${name}: ${e.stack || e.message}`)
+        json(res, e instanceof SyntaxError ? 400 : 500, { ok: false, text: `The outline server failed: ${e.message}` })
+    }
 }
 
 const STATUS_KEYS = ['✅', '❓', '🔥']
@@ -398,6 +467,7 @@ function renameOutline({ project, file, title }) {
     if (i < 0) throw new Error('This outline has no Title line.')
     lines[i] = `Title: ${name}${lines[i].endsWith('\r') ? '\r' : ''}`
     fs.writeFileSync(full, lines.join('\n'))
+    agent.userEvent(project, file, { kind: 'renamed', title: name })
     return { title: name }
 }
 
@@ -515,6 +585,8 @@ const server = http.createServer((req, res) => {
             .catch(e => send(res, 409, 'text/plain', e.message))
         return
     }
+
+    if (pathname.startsWith('/api/agent/')) return agentApi(req, res, pathname.slice('/api/agent/'.length))
 
     if (pathname.startsWith('/api/outline/')) {
         if (!fromLocalPage(req, PORT, { write: false })) return send(res, 403, 'text/plain', 'forbidden')

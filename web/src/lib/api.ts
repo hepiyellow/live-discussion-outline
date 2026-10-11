@@ -15,6 +15,9 @@ export async function api<T>(url: string, body?: unknown): Promise<T> {
     return data as T
 }
 
+/** An outline's path in the server's API. */
+export const outlineApiPath = (project: string, file: string) => `${encodeURIComponent(project)}/${encodeURIComponent(file)}`
+
 /** The page for a session just started: its terminal in the main area, until the outline's first version is written. */
 export const liveHref = (terminal: string) => `/live?t=${encodeURIComponent(terminal)}`
 

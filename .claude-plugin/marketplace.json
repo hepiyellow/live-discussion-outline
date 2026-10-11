@@ -1,0 +1,11 @@
+{
+    "name": "live-discussion-outline",
+    "owner": { "name": "Erez Makavy" },
+    "plugins": [
+        {
+            "name": "outline-only",
+            "source": "./plugin",
+            "description": "Mirrors a conversation into a numbered outline on a local page."
+        }
+    ]
+}

@@ -27,6 +27,8 @@ export function useOutline(project: string, file: string) {
     const pending = useRef<StatePatch[]>([])
     const server = useRef<ViewerState>(emptyState())
     const [messages, setMessages] = useState<Message[]>([])
+    // The agent's `message` operations, kept by the server: the whole list each time.
+    const [notes, setNotes] = useState<Message[]>([])
     const [busy, setBusy] = useState(false)
     const [transcript, setTranscript] = useState<Transcript>(emptyTranscript)
     const [outlines, setOutlines] = useState<OutlineList | null>(null)
@@ -45,6 +47,7 @@ export function useOutline(project: string, file: string) {
             session.current = ''
             setState({ status: 'loading' })
             setStateLoaded(false)
+            setNotes([])
         }
         const custom = { current: false }
         const es = new EventSource(`/api/outline/${apiPath(project, file)}/events${withTranscript ? '?transcript=1' : ''}`)
@@ -67,6 +70,7 @@ export function useOutline(project: string, file: string) {
             setTranscript(emptyTranscript)
         })
         es.addEventListener('messages', e => setMessages(m => [...m, ...(JSON.parse((e as MessageEvent).data) as Message[])]))
+        es.addEventListener('notes', e => setNotes(JSON.parse((e as MessageEvent).data) as Message[]))
         es.addEventListener('activity', e => setBusy(JSON.parse((e as MessageEvent).data) === 'busy'))
         es.addEventListener('transcript', e => setTranscript(t => addEntries(t, JSON.parse((e as MessageEvent).data) as TranscriptEntry[], custom)))
         es.addEventListener('transcript-missing', () => setTranscript({ ...emptyTranscript, status: 'missing' }))
@@ -104,7 +108,9 @@ export function useOutline(project: string, file: string) {
     const working = useCallback(() => {
         if (session.current) setBusy(true)
     }, [])
-    const feed = useMemo<SessionFeed>(() => ({ messages, busy, working }), [messages, busy, working])
+    // One inbox: both kinds of message, oldest first.
+    const inbox = useMemo(() => (notes.length ? [...notes, ...messages].sort((a, b) => a.at.localeCompare(b.at)) : messages), [notes, messages])
+    const feed = useMemo<SessionFeed>(() => ({ messages: inbox, busy, working }), [inbox, busy, working])
 
     return { state, viewer, stateLoaded, patch, session: feed, transcript, followTranscript, outlines }
 }

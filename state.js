@@ -11,9 +11,6 @@ export const STATE_DIR = '.state'
  * The sections of an outline's state. Map sections hold one entry per node (or message) and merge key by key; the
  * others are replaced whole.
  * - open: node number → whether the viewer opened (true) or closed (false) it
- * - overrides: node number → the approval the viewer wants and the file does not show yet
- * - sent: node number → the override already sent to the session
- * - backTo: node number → 1 when undoing reopens a former claim ("Back to claim")
  * - read: node number → the node as the viewer last read it (its title and text as HTML), shown until they open the change
  * - runs: node number → 1 once the viewer asked the agent to run that action
  * - seen: message id → 1 once the viewer saw it in an inbox
@@ -22,7 +19,8 @@ export const STATE_DIR = '.state'
  * - chips: the references waiting in the input box, `{ label, ref }`; a node to remove also has `kind: 'remove'`
  * - tab: the tab shown (outline, md, transcript or term)
  */
-const MAPS = ['open', 'overrides', 'sent', 'backTo', 'read', 'runs', 'seen']
+// Approvals are not viewer state: a tick is recorded in the outline at once (agent.js `act`).
+const MAPS = ['open', 'read', 'runs', 'seen']
 const isChip = c => c && typeof c.label === 'string' && typeof c.ref === 'string' && c.label.length <= 500 && c.ref.length <= 2000 && (c.kind === undefined || c.kind === 'remove')
 const OTHERS = {
     undo: Array.isArray,
@@ -32,7 +30,7 @@ const OTHERS = {
 }
 export const SECTIONS = [...MAPS, ...Object.keys(OTHERS)]
 
-const empty = () => ({ open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline' })
+const empty = () => ({ open: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline' })
 
 /** Keys are node numbers or message ids: short, and never anything an object treats specially. */
 const KEY = /^[\w.:-]{1,200}$/

@@ -17,7 +17,6 @@ import { useNotify } from './Notice'
 import { OutlineTab, type NodeActions } from './OutlineTab'
 import { QueueColumn } from './QueueColumn'
 import { OutlinesPane } from './OutlinesPane'
-import { StatusBar } from './StatusBar'
 import { TopBar } from './TopBar'
 import { TerminalTab } from './TerminalTab'
 import { TranscriptTab } from './TranscriptTab'
@@ -123,7 +122,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
         }),
         [linked, clickNode, clickTopic, run, onReference, onRemove, unread, opening, openUnread, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen],
     )
-    const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
+    const statuses = useMemo(() => new Statuses(outline.nodes), [outline])
     const duplicates = useMemo(() => duplicateNums(outline.nodes), [outline])
 
     const onToggle = useCallback((node: OutlineNode, value: boolean) => patch({ open: { [node.num]: value } }), [patch])
@@ -241,7 +240,6 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                     <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} onSent={session.working} onReveal={reveal} added={added} />
                 </>
             )}
-            {tab === 'outline' && <StatusBar outline={outline} viewer={viewer} pending={approvals.pending} onDrop={approvals.drop} onCopy={() => approvals.copyPending()} />}
         </Tabs>
     )
 }
