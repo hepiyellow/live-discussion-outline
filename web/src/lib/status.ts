@@ -128,7 +128,7 @@ export class Statuses {
             ? 'Done: the agent carried out this action — click to queue your approval'
             : option
             ? pendingOn
-                ? 'Pending choice — filled once the agent records it'
+                ? 'Pending choice — it stops fading once the agent records it'
                 : pendingOff
                   ? 'Pending un-choose — cleared once the agent records it'
                   : agent
@@ -137,7 +137,7 @@ export class Statuses {
                       ? 'Chosen'
                       : 'Choose this option'
             : pendingOn
-              ? 'Pending approval — filled once the agent records it'
+              ? 'Pending approval — it stops fading once the agent records it'
               : pendingOff
                 ? 'Pending reopen — cleared once the agent records it'
                 : agent

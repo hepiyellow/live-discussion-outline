@@ -168,10 +168,17 @@ describe('approvals, picks, runs and undo', () => {
         await box('4.1').click()
         await nextSent()
         assert.equal(await state('4.1'), 'pending')
+        // A green outlined tick, fading in and out until the agent records the approval.
+        const drawn = () => node('4.1').locator('> .ck').evaluate(e => (({ animationName, borderColor, backgroundColor }) => ({ animationName, borderColor, backgroundColor }))(getComputedStyle(e)))
+        const pending = await drawn()
+        assert.equal(pending.animationName, 'ckpending')
         assert.deepEqual((await viewerState()).overrides, { 4.1: true })
         server.swap('demo/sample', 'demo/sample-edited')
         await node('3.4').waitFor()
         assert.equal(await state('4.1'), 'approved')
+        // Recorded: the same tick, still, and not filled.
+        assert.deepEqual(await drawn(), { ...pending, animationName: 'none' })
+        assert.equal(pending.backgroundColor, 'rgba(0, 0, 0, 0)')
         await until(async () => Object.keys((await (await fetch(`${server.url}/api/state/demo/sample`)).json()).overrides).length === 0, { what: 'overrides to clear' })
     })
 

@@ -239,9 +239,14 @@
 }
 .ck.radio { border-radius: 50%; }
 .ck svg { width: 11px; height: 11px; }
-.ck[data-state='approved'] { border-color: var(--approved); background: var(--approved); color: #fff; }
+/* The user's approval: a green outlined tick, never a filled one. Until the agent records it, it fades to half and back. */
+.ck:is([data-state='approved'], [data-state='pending']) { border-color: var(--approved); color: var(--approved); }
+.ck[data-state='pending'] { animation: ckpending 1.8s ease-in-out infinite; }
+@keyframes ckpending { 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+    .ck[data-state='pending'] { animation: none; opacity: 0.6; }
+}
 .ck[data-state='claim'] { border-color: var(--claim); color: var(--claim); }
-.ck[data-state='pending'] { border-color: var(--approved); color: var(--approved); }
 /* An action the agent has carried out: filled, in the yellow of its Done tag. */
 .ck[data-state='done'] { border-color: var(--done); background: var(--done); color: var(--background); }
 .ck[data-state='mixed'] { color: var(--muted-foreground); }
