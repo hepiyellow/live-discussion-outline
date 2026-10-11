@@ -88,6 +88,43 @@ function Trash({ project, file }: { project: string; file: string }) {
     )
 }
 
+/** The plus on a group's line: starts a session in that workspace or folder at once, and opens it. When it cannot, the line below says why. */
+function NewInProject({ project, workspace }: { project: string; workspace: boolean }) {
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState('')
+    const label = `New session in ${project}`
+    return (
+        <>
+            <button
+                type="button"
+                disabled={busy}
+                aria-label={label}
+                title={label}
+                onClick={async () => {
+                    setBusy(true)
+                    setError('')
+                    try {
+                        const { terminal, outline } = await api<{ terminal: string; outline?: { project: string; file: string } }>('/api/start', { kind: 'project', project, topic: '', mode: 'server' })
+                        location.href = outline ? outlineHref(outline.project, outline.file) : liveHref(terminal)
+                    } catch (e) {
+                        setError((e as Error).message)
+                        setBusy(false)
+                    }
+                }}
+                data-new-in={workspace ? 'workspace' : 'folder'}
+                className={cn('shrink-0 rounded-md p-0.5 hover:bg-sidebar-accent hover:text-foreground', error && 'text-danger')}
+            >
+                {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+            </button>
+            {error && (
+                <span role="alert" data-new-error className="basis-full pl-[18px] font-normal text-danger">
+                    {error}
+                </span>
+            )}
+        </>
+    )
+}
+
 /** A row of the pane: the outline's title (renamed with its pencil, removed with its trash, both on hover), or a starting session. */
 function PaneRow({ row: o, on, marked }: { row: Row; on: boolean; marked: RefObject<HTMLAnchorElement | null> }) {
     const when = new Date(o.mtime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -311,7 +348,7 @@ export function OutlinesPane({ list, current, starting, home }: Props) {
                     const isCollapsed = collapsed.includes(g.project) && !g.rows.some(o => o.key === currentKey)
                     return (
                         <section key={g.project} data-project={g.project} data-workspace={g.workspace || undefined} data-collapsed={isCollapsed || undefined} className="mt-3">
-                            <h2 className="flex items-center gap-1.5 px-2 pb-1 text-xs font-medium text-muted-foreground">
+                            <h2 className="flex flex-wrap items-center gap-x-1.5 px-2 pb-1 text-xs font-medium text-muted-foreground">
                                 <button
                                     type="button"
                                     aria-expanded={!isCollapsed}
@@ -323,6 +360,7 @@ export function OutlinesPane({ list, current, starting, home }: Props) {
                                     {g.workspace ? <Layers className="size-3 shrink-0" aria-hidden="true" /> : <Folder className="size-3 shrink-0" aria-hidden="true" />}
                                     <span className="truncate">{g.project}</span>
                                 </button>
+                                <NewInProject project={g.project} workspace={g.workspace} />
                             </h2>
                             {!isCollapsed && (
                                 <ul>
