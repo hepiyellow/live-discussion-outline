@@ -85,9 +85,12 @@ export interface Outline {
     markdown: string
 }
 
-/** One undo step: every node whose tick a click changed, with its status in the outline before it. */
+/**
+ * One undo step: every node whose tick a click changed, with its status in the outline before it. In file mode a node
+ * also has its override as it was before the click (`had`: whether there was one, `was`: its value).
+ */
 export interface UndoStep {
-    nodes: { num: string; file: Status }[]
+    nodes: { num: string; had?: boolean; was?: boolean; file: Status }[]
     /** Nodes the click collapsed by completing them, opened again on undo. */
     collapsed: string[]
 }
@@ -96,6 +99,12 @@ export interface UndoStep {
 export interface ViewerState {
     /** Node number → whether the viewer opened (true) or closed (false) it. */
     open: Record<string, boolean>
+    /** File mode: node number → the approval the viewer wants and the file does not show yet. */
+    overrides: Record<string, boolean>
+    /** File mode: node number → the override already sent to the session. */
+    sent: Record<string, boolean>
+    /** File mode: node number → 1 when an undo reopens a former claim, sent as "Back to claim". */
+    backTo: Record<string, number>
     /** Node number → the node as the viewer last read it (`readVersion`), shown until they open the change. */
     read: Record<string, string>
     /** Node number → 1 once the viewer asked the agent to run that action. */

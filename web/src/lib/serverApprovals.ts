@@ -1,9 +1,10 @@
-import { allNodes, nodeLabel } from '@/lib/outline'
+import { allNodes } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import type { Outline, OutlineNode, StatePatch, UndoStep, ViewerState } from '@/types'
 
-// The user's approvals, picks and undos. A click works out which nodes' ticks change; the page sends those to the server,
-// which records them in the outline at once (POST /api/outline/<project>/<file>/act) and tells the agent.
+// The user's approvals, picks and undos in server mode. A click works out which nodes' ticks change; the page sends
+// those to the server, which records them in the outline at once (POST /api/outline/<project>/<file>/act) and tells the
+// agent. File mode's are in fileApprovals.ts.
 
 /** What a click changes: node number → whether the user wants it approved (or chosen), for the nodes that differ from the outline. */
 export interface Draft {
@@ -97,18 +98,3 @@ export function settledPatch(outline: Outline, v: ViewerState): StatePatch | nul
     const ran = Object.keys(v.runs).filter(k => !waiting.has(k))
     return ran.length ? { runs: Object.fromEntries(ran.map(k => [k, null])) } : null
 }
-
-/** A node's path and name: `3. Topic › 3.1.2 Node`. */
-function pathTo(outline: Outline, node: OutlineNode) {
-    const topicNum = node.num.split('.')[0]
-    const topic = outline.nodes.find(n => n.num === topicNum)
-    const topicLabel = (t: OutlineNode) => `${t.num}. ${t.title}`
-    if (node.level === 1) return topicLabel(node)
-    return (topic ? `${topicLabel(topic)} › ` : '') + nodeLabel(node)
-}
-
-/** A reference to a node to paste into the chat: `Re: outline "<title>" › 3. Topic › 3.1.2 Node`. */
-export const referenceTo = (outline: Outline, node: OutlineNode) => `Re: outline "${outline.title || outline.file}" › ${pathTo(outline, node)}`
-
-/** What the trash button sends about a node, before the user's reason: `Removed from the outline: 3. Topic › 3.1.2 Node`. */
-export const removalOf = (outline: Outline, node: OutlineNode) => `Removed from the outline: ${pathTo(outline, node)}`

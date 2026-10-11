@@ -28,7 +28,7 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     const [historyOf, setHistoryOf] = useState<OutlineNode | null>(null)
     const ctx = useMemo<OutlineContext>(() => {
         const isOpen = isOpenIn(viewer.open)
-        const statuses = new Statuses(outline.nodes)
+        const statuses = new Statuses(outline.nodes, viewer.overrides, outline.mode)
         return {
             ...actions,
             onHistory: setHistoryOf,
@@ -45,7 +45,7 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
             current: currentPath(outline.nodes),
             runs: viewer.runs,
         }
-    }, [outline, viewer.open, viewer.runs, actions, onToggle])
+    }, [outline, viewer.open, viewer.overrides, viewer.runs, actions, onToggle])
 
     // The header stack follows scrolling, resizing, and every change of the content.
     useLayoutEffect(() => {

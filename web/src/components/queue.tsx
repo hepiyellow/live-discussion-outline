@@ -35,7 +35,7 @@ function handled(item: QueueItem, statuses: Statuses, runs: Record<string, numbe
     if (!node) return { missing: true, done: false }
     if (item.kind === 'action' && node.level > 1) return { missing: false, done: !node.tags.includes('action') || node.tags.includes('ran') || !!runs[node.num] }
     const kinds = node.level === 1 ? node.children.flatMap(c => statuses.kindsOf(c)) : statuses.kindsOf(node)
-    return { missing: false, done: kinds.length > 0 && kinds.every(k => k === 'approved') }
+    return { missing: false, done: kinds.length > 0 && kinds.every(k => k === 'approved' || k === 'pending') }
 }
 
 /**

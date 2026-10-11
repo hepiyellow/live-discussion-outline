@@ -1,8 +1,8 @@
 import type { StatePatch, ViewerState } from '@/types'
 
-export const emptyState = (): ViewerState => ({ open: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline' })
+export const emptyState = (): ViewerState => ({ open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline' })
 
-const MAPS = new Set(['open', 'read', 'runs', 'seen'])
+const MAPS = new Set(['open', 'overrides', 'sent', 'backTo', 'read', 'runs', 'seen'])
 
 /** The same merge as the server's (state.js): map entries one by one, null deleting; other sections replaced. */
 export function applyPatch(state: ViewerState, patch: StatePatch): ViewerState {

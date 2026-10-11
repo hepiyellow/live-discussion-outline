@@ -4,7 +4,7 @@ import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useApprovals } from '@/hooks/useApprovals'
 import { messagesAbout, type SessionFeed } from '@/hooks/useSession'
 import type { Transcript } from '@/hooks/useTranscript'
-import { referenceTo, removalOf } from '@/lib/approvals'
+import { referenceTo, removalOf } from '@/lib/references'
 import { useUnread } from '@/hooks/useUnread'
 import { useOutline } from '@/hooks/useOutline'
 import { allNodes, currentPath, duplicateNums, isParent, nodeLabel, pathNums } from '@/lib/outline'
@@ -17,6 +17,7 @@ import { useNotify } from './Notice'
 import { OutlineTab, type NodeActions } from './OutlineTab'
 import { QueueColumn } from './QueueColumn'
 import { OutlinesPane } from './OutlinesPane'
+import { StatusBar } from './StatusBar'
 import { TopBar } from './TopBar'
 import { TerminalTab } from './TerminalTab'
 import { TranscriptTab } from './TranscriptTab'
@@ -48,7 +49,8 @@ export function OutlinePage({ project, file }: { project: string; file: string }
     return (
         <>
             <OutlinesPane list={outlines} current={{ project, file }} />
-            <Loaded outline={outline} gone={state.status === 'gone'} viewer={viewer} stateLoaded={stateLoaded} patch={patch} session={session} transcript={transcript} followTranscript={followTranscript} />
+            {/* Keyed on the mode: which implementation of the user's ticks runs (useApprovals) is fixed for a mounted outline. */}
+            <Loaded key={outline.mode} outline={outline} gone={state.status === 'gone'} viewer={viewer} stateLoaded={stateLoaded} patch={patch} session={session} transcript={transcript} followTranscript={followTranscript} />
         </>
     )
 }
@@ -122,7 +124,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
         }),
         [linked, clickNode, clickTopic, run, onReference, onRemove, unread, opening, openUnread, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen],
     )
-    const statuses = useMemo(() => new Statuses(outline.nodes), [outline])
+    const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
     const duplicates = useMemo(() => duplicateNums(outline.nodes), [outline])
 
     const onToggle = useCallback((node: OutlineNode, value: boolean) => patch({ open: { [node.num]: value } }), [patch])
@@ -240,6 +242,8 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                     <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} onSent={session.working} onReveal={reveal} added={added} />
                 </>
             )}
+            {/* File mode only: in server mode a tick is recorded at once, and nothing waits to be copied. */}
+            {tab === 'outline' && 'pending' in approvals && <StatusBar outline={outline} viewer={viewer} pending={approvals.pending} onDrop={approvals.drop} onCopy={() => approvals.copyPending()} />}
         </Tabs>
     )
 }

@@ -69,6 +69,8 @@ describe('approvals, picks, runs and undo in server mode', () => {
     })
 
     test('a click on a claim approves it, and the claim stays under the approval', async () => {
+        // Nothing is queued in server mode, and the box says so.
+        assert.equal(await box('2.3').getAttribute('title'), 'Claim — click to approve it')
         await box('2.3').click()
         await shows('2.3', 'approved')
         assert.equal(heading('2.3'), '## 2.3 @user-approved @agent-claim Cache key')
@@ -155,8 +157,9 @@ describe('approvals, picks, runs and undo in server mode', () => {
         await shows('4.1', 'approved')
         const drawn = await node('4.1').locator('> .ck').evaluate(e => (({ animationName, backgroundColor }) => ({ animationName, backgroundColor }))(getComputedStyle(e)))
         assert.deepEqual(drawn, { animationName: 'none', backgroundColor: 'rgba(0, 0, 0, 0)' })
-        // Approvals are the outline's, not the viewer's.
-        assert.equal('overrides' in (await (await fetch(`${server.url}/api/state/demo/sample`)).json()), false)
+        // Approvals are the outline's, not the viewer's: the viewer state's file-mode sections stay empty.
+        const { overrides, sent, backTo } = await (await fetch(`${server.url}/api/state/demo/sample`)).json()
+        assert.deepEqual({ overrides, sent, backTo }, { overrides: {}, sent: {}, backTo: {} })
     })
 
     test('a decide item stays one only while the agent recommends nothing for it', async () => {

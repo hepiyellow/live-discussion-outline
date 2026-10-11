@@ -8,7 +8,9 @@ import { FIXTURES, launchBrowser, openPage, startServer } from './helpers.js'
 const sample = outlinePayload(fs.readFileSync(path.join(FIXTURES, 'outlines/demo/sample.md'), 'utf8'))
 const all = nodes => nodes.flatMap(n => [n, ...all(n.children)])
 
-describe('the Outline tab', () => {
+// Reading and showing an outline is one code path whoever writes it, so each test runs on an outline in file mode and on
+// one in server mode.
+for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mode`, () => {
     let server, browser, page
     before(async () => {
         server = await startServer()
@@ -19,7 +21,7 @@ describe('the Outline tab', () => {
         await server?.stop()
     })
     beforeEach(async () => {
-        server.swap('demo/sample', 'demo/sample')
+        server.swap('demo/sample', 'demo/sample', mode)
         server.resetState()
         page = await openPage(browser, `${server.url}/demo/sample`, { viewport: { width: 1200, height: 900 } })
         await page.locator('[data-topbar] [data-title]').waitFor()
@@ -166,7 +168,7 @@ describe('the Outline tab', () => {
         await node('3.1').click()
         await node('1').click()
         assert.equal(await visible('3.1.1'), false)
-        server.swap('demo/sample', 'demo/sample-edited')
+        server.swap('demo/sample', 'demo/sample-edited', mode)
         await node('3.4').waitFor()
         assert.equal(await page.evaluate(() => window.notReloaded), true)
         assert.equal(await box('4.1').getAttribute('data-state'), 'approved')

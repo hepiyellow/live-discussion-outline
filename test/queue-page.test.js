@@ -4,9 +4,10 @@ import path from 'node:path'
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
 import { launchBrowser, startServer, until } from './helpers.js'
 
-// The queue column in the Outline tab's left margin: where it sits, what does not fit, and what arrives.
+// The queue column in the Outline tab's left margin: where it sits, what does not fit, and what arrives. It is the same
+// column whoever writes the outline, so each test runs on an outline in file mode and on one in server mode.
 
-describe('the queue column', () => {
+for (const mode of ['file', 'server']) describe(`the queue column, in ${mode} mode`, () => {
     let server, browser, page
     before(async () => {
         server = await startServer()
@@ -17,7 +18,7 @@ describe('the queue column', () => {
         await server?.stop()
     })
     beforeEach(() => {
-        server.swap('demo/sample', 'demo/sample')
+        server.swap('demo/sample', 'demo/sample', mode)
         server.resetState()
     })
     afterEach(async () => {

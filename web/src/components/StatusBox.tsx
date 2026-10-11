@@ -18,7 +18,8 @@ function Mark({ state, radio }: { state: BoxState; radio: boolean }) {
 
 /**
  * A node's or topic's checkbox: open, a claim (blue tick: the agent says what it thinks, and nothing is wrong), done
- * (filled yellow tick: an action the agent carried out), approved (green outlined tick) or mixed.
+ * (filled yellow tick: an action the agent carried out), pending (green outlined tick, fading in and out until the agent
+ * records it), approved (the same tick, still) or mixed.
  */
 export function StatusBox({ box, onToggle }: { box: Box; onToggle?: () => void }) {
     const radio = box.shape === 'radio'
