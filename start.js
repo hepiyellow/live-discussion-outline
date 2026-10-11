@@ -311,7 +311,7 @@ export async function startSession(request, { workspaceDirs, claudeCommand: conf
     } else throw new Error('unknown kind')
 
     if (topic && request.kind !== 'resume') args.push('--name', topic)
-    const prompt = request.kind === 'resume' ? '/live-discussion-outline' : `/live-discussion-outline ${topic}`.trim()
+    const prompt = request.kind === 'resume' ? '/outline-only' : `/outline-only ${topic}`.trim()
 
     let name = slug(label)
     for (let i = 2; hasTmuxSession(name); i++) name = `${slug(label).slice(0, 36)}-${i}`
