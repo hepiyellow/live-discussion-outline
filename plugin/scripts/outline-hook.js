@@ -3,13 +3,26 @@
 // told; after compaction or resume it gets the outline's map again. What this prints is added to the agent's context.
 // When the agent ends a turn without acknowledging ticks it was told of, the turn is held open once, with the reason.
 // A session without an outline, or with no server running, gets nothing, and never an error.
-import { call, findServer } from './lib.js'
+import fs from 'node:fs'
+import path from 'node:path'
+import { call, findServer, outlinesDir } from './lib.js'
+
+/**
+ * Spike: a permission dialog is about to show. Keeps what the event carries (the tool, its input, the permission
+ * mode) in the outlines folder's `.spike/` and answers nothing, so the dialog shows as it always did.
+ */
+function logPermissionRequest(event) {
+    const dir = path.join(outlinesDir(), '.spike')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.appendFileSync(path.join(dir, 'permission-requests.jsonl'), `${JSON.stringify({ at: Date.now(), event })}\n`)
+}
 
 async function main() {
     let input = ''
     for await (const chunk of process.stdin) input += chunk
     const event = JSON.parse(input || '{}')
     const name = event.hook_event_name
+    if (name === 'PermissionRequest') return logPermissionRequest(event)
     // At the end of a turn: the ticks the agent was told of and has not acknowledged. Once per turn: a turn that goes on
     // because this hook held it open (`stop_hook_active`) ends when the agent ends it again.
     const ending = name === 'Stop' && !event.stop_hook_active
