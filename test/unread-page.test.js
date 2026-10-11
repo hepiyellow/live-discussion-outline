@@ -55,6 +55,24 @@ describe('unread changes', () => {
         assert.equal(await page.locator('[aria-label="Your queue"] li:first-child [data-unread]').getAttribute('data-unread'), '2.3')
     })
 
+    test('nodes renumbered after a removed one are not changes to read', async () => {
+        await open()
+        await firstVisit()
+        // 2.3 goes; 2.4 and 2.5 take the numbers before theirs.
+        const file = path.join(server.dir, 'demo', 'sample.md')
+        const text = fs.readFileSync(file, 'utf8')
+        const titles = { 2.4: await node('2.4').locator('.title-html').textContent(), 2.5: await node('2.5').locator('.title-html').textContent() }
+        const edited = text.replace(/## 2\.3 [\s\S]*?(?=## 2\.4 )/, '').replace('## 2.4 ', '## 2.3 ').replace('## 2.5 ', '## 2.4 ')
+        assert.notEqual(edited, text)
+        fs.writeFileSync(file, edited)
+        await node('2.5').waitFor({ state: 'detached' })
+        assert.equal(await node('2.3').locator('.title-html').textContent(), titles[2.4])
+        assert.equal(await node('2.4').locator('.title-html').textContent(), titles[2.5])
+        assert.equal(await page.locator('.outline-tab .env').count(), 0)
+        assert.equal(await page.locator('[data-unread]').count(), 0)
+        await until(async () => !('2.5' in (await readState())), { what: 'the last number to be forgotten' })
+    })
+
     test('the diff button shows the new text (reduced motion: at once)', async () => {
         await open({ reducedMotion: 'reduce' })
         await firstVisit()
