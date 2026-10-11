@@ -47,7 +47,7 @@ describe('the plugin, for file mode', () => {
     })
 
     test('the start script prints the settings file’s resume template and link base', async () => {
-        const settings = path.join(server.home, '.config', 'live-discussion-outline', 'config.json')
+        const settings = path.join(server.home, '.config', 'outline-only', 'config.json')
         const before = fs.readFileSync(settings, 'utf8')
         fs.writeFileSync(settings, JSON.stringify({ ...JSON.parse(before), resumeTemplate: 'claude --resume {session}', linkBase: 'outline-only://open' }))
         try {

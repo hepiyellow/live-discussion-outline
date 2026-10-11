@@ -23,7 +23,7 @@ describe('the app', () => {
     })
     after(() => server?.stop())
 
-    for (const route of ['/', '/demo/sample', '/live?t=ldo-new']) {
+    for (const route of ['/', '/demo/sample', '/live?t=outline-only-new']) {
         test(`${route} serves the app shell`, async () => {
             const res = await fetch(server.url + route)
             assert.equal(res.status, 200)
@@ -49,7 +49,7 @@ describe('the app', () => {
             ['/app', '/'],
             ['/app/', '/'],
             ['/app/demo/sample', '/demo/sample'],
-            ['/app/live?t=ldo-new', '/live?t=ldo-new'],
+            ['/app/live?t=outline-only-new', '/live?t=outline-only-new'],
         ]) {
             const res = await fetch(server.url + from, { redirect: 'manual' })
             assert.equal(res.status, 301, from)

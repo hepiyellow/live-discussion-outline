@@ -9,7 +9,7 @@ import { eventStream, rawGet, startServer } from './helpers.js'
 describe('the state store', () => {
     let root, store
     before(() => {
-        root = fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-state-'))
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-state-'))
         store = createStateStore(root)
     })
     after(() => fs.rmSync(root, { recursive: true, force: true }))

@@ -13,7 +13,7 @@ test('npm install builds the app', () => {
 })
 
 test('the build writes the shell and the assets it links', () => {
-    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-build-'))
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-build-'))
     try {
         execFileSync(process.execPath, [path.join(ROOT, 'node_modules/vite/bin/vite.js'), 'build', '--config', 'web/vite.config.ts', '--outDir', out, '--logLevel', 'error'], { cwd: ROOT })
         const html = fs.readFileSync(path.join(out, 'index.html'), 'utf8')

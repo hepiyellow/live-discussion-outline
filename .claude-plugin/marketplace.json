@@ -1,5 +1,5 @@
 {
-    "name": "live-discussion-outline",
+    "name": "outline-only",
     "owner": { "name": "Erez Makavy" },
     "plugins": [
         {

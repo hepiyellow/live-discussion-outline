@@ -12,7 +12,7 @@ import { writeSettings } from '../config.js'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const commands = [
     ['claude', 'plugin', 'marketplace', 'add', root],
-    ['claude', 'plugin', 'install', 'outline-only@live-discussion-outline'],
+    ['claude', 'plugin', 'install', 'outline-only@outline-only'],
 ]
 
 if (process.argv.includes('--print')) {
@@ -33,10 +33,8 @@ for (const [command, ...args] of commands) {
 
 // The skill before the plugin was linked into the skills folder. File mode's skill now comes with the plugin, as
 // /outline-only:outline-file, so that link would show it a second time, and from a file this checkout no longer has.
-const skills = path.join(os.homedir(), '.claude', 'skills')
-for (const name of ['outline-only', 'live-discussion-outline']) {
-    const link = path.join(skills, name, 'SKILL.md')
-    if (!fs.lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() || !fs.readlinkSync(link).startsWith(root)) continue
+const link = path.join(os.homedir(), '.claude', 'skills', 'outline-only', 'SKILL.md')
+if (fs.lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() && fs.readlinkSync(link).startsWith(root)) {
     fs.rmSync(link)
     if (fs.readdirSync(path.dirname(link)).length === 0) fs.rmdirSync(path.dirname(link))
     console.log(`removed ${link}`)

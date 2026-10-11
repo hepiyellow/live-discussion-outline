@@ -88,7 +88,7 @@ describe('the outline list', () => {
         // No workspace files in the test's home: the dialog starts on Folder, in the home folder.
         await page.waitForFunction(() => document.querySelector('[aria-label="Folder"]')?.value.length > 0)
         assert.equal(await dialog.getByRole('tab', { name: 'Folder' }).getAttribute('aria-selected'), 'true')
-        assert.match(await dialog.getByRole('textbox', { name: 'Folder' }).inputValue(), /ldo-test-/)
+        assert.match(await dialog.getByRole('textbox', { name: 'Folder' }).inputValue(), /outline-only-test-/)
         await dialog.getByRole('button', { name: 'outlines' }).click()
         await page.waitForFunction(() => document.querySelector('[aria-label="Folder"]').value.endsWith('/outlines'))
         await dialog.getByRole('tab', { name: 'Resume a session' }).click()

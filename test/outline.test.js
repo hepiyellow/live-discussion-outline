@@ -15,7 +15,7 @@ test('header lines', () => {
     assert.equal(sample.title, 'Caching for the search service')
     assert.equal(sample.resume, `claude --resume ${SESSION}`)
     assert.equal(sample.model, 'Claude Opus 5.5, high')
-    assert.equal(sample.terminal, 'ldo-sample')
+    assert.equal(sample.terminal, 'outline-only-sample')
     assert.equal(sample.session, SESSION)
     assert.match(sample.intro, /^<p>The search service answers in 900 ms/)
 })

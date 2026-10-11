@@ -152,7 +152,7 @@ describe('inbox, input box and spinner', () => {
         await box().fill('')
         await page.getByRole('button', { name: 'Stop' }).click()
         await until(() => stopped.length === 1, { what: 'the stop to be sent' })
-        assert.deepEqual(stopped, ['ldo-sample'])
+        assert.deepEqual(stopped, ['outline-only-sample'])
         assert.deepEqual(sent, ['Go on'])
     })
 

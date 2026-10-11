@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 // An app opened from the Finder gets launchd's short PATH, without Homebrew's folder or ~/.local/bin, so the server
 // would not find tmux or claude. The login shell knows the PATH the user's terminals have.
 
-const MARK = '__LDO_PATH__'
+const MARK = '__OUTLINE_ONLY_PATH__'
 const USUAL = ['/opt/homebrew/bin', '/usr/local/bin']
 
 /** The PATH a login shell printed between our marks (a shell's startup files print around it), or empty. */

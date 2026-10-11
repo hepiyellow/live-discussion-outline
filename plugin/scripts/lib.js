@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 /** The settings file (config.js): where the server listens and keeps outlines, and where its checkout is when this plugin is a copy. */
 export function settings() {
     try {
-        const value = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config', 'live-discussion-outline', 'config.json'), 'utf8'))
+        const value = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.config', 'outline-only', 'config.json'), 'utf8'))
         return value && typeof value === 'object' ? value : {}
     } catch {
         return {}
@@ -58,7 +58,7 @@ export async function findServer({ start = false } = {}) {
     if (!start) return 0
     const root = checkout()
     if (!root) return 0
-    const log = fs.openSync(path.join(os.tmpdir(), 'live-discussion-outline.log'), 'a')
+    const log = fs.openSync(path.join(os.tmpdir(), 'outline-only.log'), 'a')
     // tmux refuses to attach from a server that thinks it is inside tmux (terminal.js): it does not need to know.
     const env = { ...process.env }
     spawn(process.execPath, [path.join(root, 'server.js')], { detached: true, stdio: ['ignore', log, log], env, cwd: root }).unref()
@@ -71,7 +71,7 @@ export async function findServer({ start = false } = {}) {
 
 /** The outlines folder, as config.js works it out: the settings file's `dir`, else the default. */
 export function outlinesDir() {
-    const dir = settings().dir || '~/live-discussion-outlines'
+    const dir = settings().dir || '~/outlines'
     return path.resolve(dir === '~' || dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(1)) : dir)
 }
 

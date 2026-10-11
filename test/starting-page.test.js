@@ -30,7 +30,7 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         }, request)
     before(async () => {
         // A short path: a tmux socket's path is limited to about 100 characters.
-        scratch = fs.mkdtempSync('/tmp/ldo-start-')
+        scratch = fs.mkdtempSync('/tmp/outline-only-start-')
         const fake = path.join(scratch, 'claude')
         fs.writeFileSync(fake, '#!/bin/sh\nexec sleep 600\n', { mode: 0o755 })
         fs.mkdirSync(path.join(scratch, 'proj'))

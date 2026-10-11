@@ -15,7 +15,7 @@ describe('the settings file', () => {
     }
     before(() => {
         realHome = process.env.HOME
-        home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-config-')))
+        home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-config-')))
         process.env.HOME = home
     })
     after(() => {
@@ -25,12 +25,12 @@ describe('the settings file', () => {
     beforeEach(() => fs.rmSync(path.join(home, '.config'), { recursive: true, force: true }))
 
     test('it is at a fixed path under the home folder', () => {
-        assert.equal(settingsFile(), path.join(home, '.config', 'live-discussion-outline', 'config.json'))
+        assert.equal(settingsFile(), path.join(home, '.config', 'outline-only', 'config.json'))
     })
 
     test('without the file, the defaults', () => {
         const config = loadConfig()
-        assert.equal(config.dir, path.join(home, 'live-discussion-outlines'))
+        assert.equal(config.dir, path.join(home, 'outlines'))
         assert.equal(config.port, 4577)
         assert.equal(config.appPort, 0)
         assert.equal(config.linkBase, 'http://localhost:4577')
@@ -40,7 +40,7 @@ describe('the settings file', () => {
     test('without `dir`, the default outlines folder beside the other keys', () => {
         write({ port: 5000, resumeTemplate: 'claude --resume {session}' })
         const config = loadConfig()
-        assert.equal(config.dir, path.join(home, 'live-discussion-outlines'))
+        assert.equal(config.dir, path.join(home, 'outlines'))
         assert.equal(config.port, 5000)
         assert.equal(config.linkBase, 'http://localhost:5000')
         assert.equal(config.resumeTemplate, 'claude --resume {session}')
@@ -80,7 +80,7 @@ describe('the settings file', () => {
     test('a file that is not JSON is ignored', t => {
         t.mock.method(console, 'error', () => {})
         write('{ "dir": ')
-        assert.equal(loadConfig().dir, path.join(home, 'live-discussion-outlines'))
+        assert.equal(loadConfig().dir, path.join(home, 'outlines'))
         assert.equal(console.error.mock.callCount(), 1)
     })
 

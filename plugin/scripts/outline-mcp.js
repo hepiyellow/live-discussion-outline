@@ -97,7 +97,7 @@ const TOOLS = [
 ]
 
 const NO_SERVER =
-    'The outline server is not running and could not be started. Ask the user to open the Outline Only app, or to run `npm start` in the live-discussion-outline checkout, then try again.'
+    'The outline server is not running and could not be started. Ask the user to open the Outline Only app, or to run `npm start` in the outline-only checkout, then try again.'
 
 async function callTool(name, args) {
     if (!TOOLS.some(t => t.name === name)) throw new Error(`unknown tool: ${name}`)

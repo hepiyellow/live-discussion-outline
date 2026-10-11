@@ -6,7 +6,7 @@ import { findServer, outlinesDir, settings, tmuxSession } from './lib.js'
 
 const port = await findServer({ start: true })
 if (!port) {
-    console.error('The outline server is not running and could not be started. Open the Outline Only app, or run `npm start` in the live-discussion-outline checkout, then try again.')
+    console.error('The outline server is not running and could not be started. Open the Outline Only app, or run `npm start` in the outline-only checkout, then try again.')
     process.exit(1)
 }
 const { linkBase, resumeTemplate } = settings()

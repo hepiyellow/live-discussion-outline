@@ -11,7 +11,7 @@ describe('the outlines pane', () => {
     let server, browser, page, workspaces
     before(async () => {
         // A workspace named "ws", where New looks for workspace files.
-        workspaces = fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-ws-'))
+        workspaces = fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-ws-'))
         fs.writeFileSync(path.join(workspaces, 'ws.code-workspace'), JSON.stringify({ folders: [{ path: '.' }] }))
         server = await startServer({ env: { OUTLINE_WORKSPACE_DIRS: workspaces } })
         browser = await launchBrowser()

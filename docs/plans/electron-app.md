@@ -1,6 +1,6 @@
 # Plan — The Outline app
 
-**Depends on:** [viewer-spa.md](viewer-spa.md) (done: the page is the React app) · **Decisions:** the "Electron Plan v1" outline (`~/.claude/outlines/live-discussion-outline/2026-10-09-heading-format-and-electron.md`, topic 1), summarized below · **Terms:** [CONTEXT.md](../../CONTEXT.md)
+**Depends on:** [viewer-spa.md](viewer-spa.md) (done: the page is the React app) · **Decisions:** the "Electron Plan v1" outline (`~/.claude/outlines/outline-only/2026-10-09-heading-format-and-electron.md`, topic 1), summarized below · **Terms:** [CONTEXT.md](../../CONTEXT.md)
 
 ## Goal
 
@@ -19,8 +19,8 @@ A Mac application, the **Outline app**, that runs the server while it is open an
 From the outline, by node number:
 
 - **The app owns the server** (1.2, 1.3). It is the only thing that starts it, and quitting the app stops it. It is not a login item. The agent only writes files, so it never needs the server: `bin/ensure.js` and `/health` go.
-- **One settings file** (1.3.2.2, 1.4): `~/.config/live-discussion-outline/config.json`, at a fixed path. The skill, the server and the app all read it. No environment variable overrides the folder, the port or the file's path: an app opened from the Finder does not see the shell profile's variables while the agent does, so they would disagree.
-- **One default folder** (1.3.2.2.1): without the file, or without its `dir`, the outlines folder is `~/live-discussion-outlines`, for the skill, the server and the app alike.
+- **One settings file** (1.3.2.2, 1.4): `~/.config/outline-only/config.json`, at a fixed path. The skill, the server and the app all read it. No environment variable overrides the folder, the port or the file's path: an app opened from the Finder does not see the shell profile's variables while the agent does, so they would disagree.
+- **One default folder** (1.3.2.2.1): without the file, or without its `dir`, the outlines folder is `~/outlines`, for the skill, the server and the app alike.
 - **The app has its own window** (1.6.2), **one window** (1.10.4), laid out like the Claude desktop app: outlines pane on the left, the outline in the main area. The window is a page the server serves (1.10.4.4); the app adds the window, the link scheme and the menus, and a browser shows the same page.
 - **Links open the app** (1.7.2): agents print links in the app's own scheme when the app wrote the settings file, and `http://localhost:…` links otherwise.
 - **Changing the folder offers to move the outlines** (1.8.1), naming those whose session still runs.
@@ -53,7 +53,7 @@ From the outline, by node number:
 
 ### 1. One settings file
 
-- `config.js` reads only `~/.config/live-discussion-outline/config.json` (through `os.homedir()`), and no longer reads `OUTLINE_DIR`, `OUTLINE_CONFIG` or `OUTLINE_PORT`. It returns `appPort` and `linkBase` too.
+- `config.js` reads only `~/.config/outline-only/config.json` (through `os.homedir()`), and no longer reads `OUTLINE_DIR`, `OUTLINE_CONFIG` or `OUTLINE_PORT`. It returns `appPort` and `linkBase` too.
 - A `writeSettings(patch)` beside it merges keys into the file and creates its folder; the app uses it from step 3 on.
 - `test/helpers.js` stops passing those variables: it writes a settings file into the temporary `HOME` it already sets (`dir`, a free `port`).
 - `bin/ensure.js` keeps working on the new `config.js` until step 7.
@@ -75,7 +75,7 @@ From the outline, by node number:
 - At launch, `app/path.js` reads PATH from the login shell (`$SHELL -ilc`, as `start.js` does to find `claude`, with a timeout), falling back to the current PATH plus `/opt/homebrew/bin:/usr/local/bin`.
 - `utilityProcess.fork('server.js', ['--port', appPort])` with that PATH; when no `appPort` is saved, `--port 0`. The reported port is saved as `appPort` when it differs.
 - One `BrowserWindow` on `http://127.0.0.1:<port>/`, opened once the server reports its port. Closing it quits the app; quitting ends the server process.
-- If the server process dies, the app restarts it once on the same port, and shows an error with the end of `~/.config/live-discussion-outline/server.log` if it dies again.
+- If the server process dies, the app restarts it once on the same port, and shows an error with the end of `~/.config/outline-only/server.log` if it dies again.
 - The default menus, plus **Open in Browser** (the current page's URL in the default browser).
 - `app.requestSingleInstanceLock()`: a second launch focuses the first window.
 - `node-pty` 1.1 is built on Node-API (`node-addon-api`) and ships prebuilt binaries, which Electron should load as they are. Check that first; add `@electron/rebuild` only if they do not load. A rebuild in the repo's `node_modules` would break `npm start` and the tests under plain Node, so it belongs to step 4's packaged copy.
@@ -94,7 +94,7 @@ From the outline, by node number:
 
 ### 5. First run and the folder setting
 
-- `app/settings.js`: without a settings file, the app asks before starting the server: use `~/live-discussion-outlines`, or choose another folder. It writes `dir`.
+- `app/settings.js`: without a settings file, the app asks before starting the server: use `~/outlines`, or choose another folder. It writes `dir`.
 - **Settings › Change Outlines Folder…** chooses a folder, writes `dir`, and offers to move the outlines: "Move N outlines to the new folder?" Before asking, it names the outlines whose session is still running (their `Session:` id among `runningSessions()` from `start.js`), since those sessions will keep writing at the old path.
 - Moving takes the whole folder's content: the project folders, and the `.state` (per-viewer state) and `.trash` folders, so read marks and unsent approvals move with their outlines.
 - The app restarts the server on the same port to watch the new folder.
@@ -114,18 +114,18 @@ From the outline, by node number:
 
 ### 7. The skill reads the settings file
 
-- `skill/SKILL.md` Start step: read `~/.config/live-discussion-outline/config.json` for `dir` (default `~/live-discussion-outlines`), `linkBase` (default `http://localhost:<port or 4577>`) and `resumeTemplate`; read the session id from `$CLAUDE_CODE_SESSION_ID`, the tmux session with `tmux display-message -p '#S'` when `$TMUX` is set, and the project from `$OUTLINE_PROJECT`. The link the skill replies with is `<linkBase>/<project>/<file>`.
+- `skill/SKILL.md` Start step: read `~/.config/outline-only/config.json` for `dir` (default `~/outlines`), `linkBase` (default `http://localhost:<port or 4577>`) and `resumeTemplate`; read the session id from `$CLAUDE_CODE_SESSION_ID`, the tmux session with `tmux display-message -p '#S'` when `$TMUX` is set, and the project from `$OUTLINE_PROJECT`. The link the skill replies with is `<linkBase>/<project>/<file>`.
 - The skill rewrites the `Terminal:` line when its tmux session changed (a resumed session runs in a new one, step 8).
 - Delete `bin/ensure.js`, the `/health` route and `npm run ensure`; update the README's setup, the comment in `terminal.js` about `ensure.js`, and the hint in `web/src/components/TranscriptTab.tsx` that names it.
 - Last on purpose: until steps 3 to 6, `ensure.js` is what starts the server for agents.
 
 **Checks:** nothing imports or mentions `ensure.js`; `/health` is a 404.
-**Review:** a new Claude Code session, with the app closed, writes its outline into your folder and replies with an `outline-only://` link; with no settings file, into `~/live-discussion-outlines` with an `http://` link.
+**Review:** a new Claude Code session, with the app closed, writes its outline into your folder and replies with an `outline-only://` link; with no settings file, into `~/outlines` with an `http://` link.
 
 ### 8. The input box at the bottom
 
 - `OutlinePage.tsx` renders the input box on every tab when the outline is linked; in the Terminal tab it is disabled, with a note that the terminal takes typing.
-- An outline with a `Session:` line whose session is not running gets the box with a "Resume and send" button. Sending resumes the session (`startSession({ kind: 'resume', id })`, which starts it in a new tmux session with `/live-discussion-outline` as its first prompt), holds the message until that first turn ends, then types it in. An outline with no `Session:` line keeps the box disabled.
+- An outline with a `Session:` line whose session is not running gets the box with a "Resume and send" button. Sending resumes the session (`startSession({ kind: 'resume', id })`, which starts it in a new tmux session with `/outline-only` as its first prompt), holds the message until that first turn ends, then types it in. An outline with no `Session:` line keeps the box disabled.
 - The outlines pane's queue row sits above the input box (the "Outline UX Rework" outline); check its state before changing the bottom row.
 
 **Checks:** page tests: the box is disabled in the Terminal tab; a fixture outline with a stopped session shows "Resume and send", and sending calls the start API with `kind: 'resume'`.

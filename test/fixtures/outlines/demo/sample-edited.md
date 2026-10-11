@@ -1,7 +1,7 @@
 Title: Caching for the search service
 Resume: claude --resume 3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f
 Model: Claude Opus 5.5, high
-Terminal: ldo-sample
+Terminal: outline-only-sample
 Session: 3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f
 
 The search service answers in 900 ms at p95. This outline decides how to cache its results.

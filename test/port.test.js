@@ -64,7 +64,7 @@ describe('--port on a taken port', () => {
         await new Promise((resolve, reject) => holder.on('error', reject).listen(0, '127.0.0.1', resolve))
         taken = holder.address().port
         // The server's tmux is one of our own (TMUX_TMPDIR), on a short path: a tmux socket's path is limited.
-        scratch = fs.mkdtempSync('/tmp/ldo-port-')
+        scratch = fs.mkdtempSync('/tmp/outline-only-port-')
         tmuxEnv = { TMUX: '', TMUX_TMPDIR: scratch }
         server = await startServer({ args: ['--port', String(taken)], env: tmuxEnv })
     })
@@ -99,9 +99,9 @@ describe('--port on a taken port', () => {
     test('the terminal is reached from the page on that port only', { skip: !hasTmux && 'no tmux' }, async t => {
         const outline = await (await fetch(`${server.url}/api/outline/demo/sample`)).json()
         if (!outline.terminalTab) return t.skip('no terminal tab')
-        execFileSync('tmux', ['new-session', '-d', '-s', 'ldo-port', 'sleep 600'], { env: { ...process.env, ...tmuxEnv }, stdio: 'ignore' })
-        assert.equal(await upgrades(server.url, '/term?s=ldo-port', old()), false)
-        assert.equal(await upgrades(server.url, '/term?s=ldo-port', server.url), true)
+        execFileSync('tmux', ['new-session', '-d', '-s', 'outline-only-port', 'sleep 600'], { env: { ...process.env, ...tmuxEnv }, stdio: 'ignore' })
+        assert.equal(await upgrades(server.url, '/term?s=outline-only-port', old()), false)
+        assert.equal(await upgrades(server.url, '/term?s=outline-only-port', server.url), true)
     })
 })
 

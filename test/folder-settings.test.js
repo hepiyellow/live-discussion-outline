@@ -27,7 +27,7 @@ describe('moving the outlines folder', () => {
     const isRunning = ({ session }) => session === SESSION
 
     beforeEach(() => {
-        scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-move-')))
+        scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-move-')))
         from = path.join(scratch, 'old')
         to = path.join(scratch, 'new')
         // The fixture outlines (demo/sample.md links a session), another project, and what the server keeps beside them.
@@ -58,7 +58,7 @@ describe('moving the outlines folder', () => {
     })
 
     test('an outline is running when its tmux session is, too', () => {
-        const plan = movePlan({ from, to, isRunning: ({ terminal }) => terminal === 'ldo-sample' })
+        const plan = movePlan({ from, to, isRunning: ({ terminal }) => terminal === 'outline-only-sample' })
         assert.ok(plan.running.some(o => o.file === 'sample'))
         assert.ok(!plan.running.some(o => o.project === 'Other-Project'))
     })
@@ -136,7 +136,7 @@ describe('the folder in the settings file', () => {
     let home, realHome
     beforeEach(() => {
         realHome = process.env.HOME
-        home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-first-')))
+        home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-first-')))
         process.env.HOME = home
     })
     afterEach(() => {

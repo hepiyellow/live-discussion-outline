@@ -57,7 +57,7 @@ describe('approvals, picks, runs and undo in file mode', () => {
             if (Date.now() > until) throw new Error(`no message; sent so far: ${JSON.stringify(sent)}`)
             await page.waitForTimeout(50)
         }
-        assert.equal(sent[read].terminal, 'ldo-sample')
+        assert.equal(sent[read].terminal, 'outline-only-sample')
         return sent[read++].text
     }
     const viewerState = async () => (await fetch(`${server.url}/api/state/demo/sample`)).json()

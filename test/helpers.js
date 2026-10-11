@@ -32,13 +32,13 @@ export const freePort = () =>
  * `env` adds to the server's environment. Call `stop()` when done.
  */
 export async function startServer({ args = [], env = {} } = {}) {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-test-'))
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-test-'))
     const dir = path.join(home, 'outlines')
     fs.cpSync(path.join(FIXTURES, 'outlines'), dir, { recursive: true })
     fs.cpSync(path.join(FIXTURES, 'transcripts'), path.join(home, '.claude', 'projects', '-home-dev-search'), { recursive: true })
     const port = await freePort()
     // The settings file is at a fixed path under HOME, so the temporary HOME gets one of its own.
-    const settings = path.join(home, '.config', 'live-discussion-outline', 'config.json')
+    const settings = path.join(home, '.config', 'outline-only', 'config.json')
     fs.mkdirSync(path.dirname(settings), { recursive: true })
     fs.writeFileSync(settings, JSON.stringify({ dir, port }))
     const child = spawn(process.execPath, [path.join(ROOT, 'server.js'), ...args], {

@@ -104,9 +104,9 @@ describe('/api/outline', () => {
     test('/stop takes only this machine’s own page, and says when there is no terminal to stop', async () => {
         const post = (headers, body) => fetch(`${server.url}/stop`, { method: 'POST', headers, body: JSON.stringify(body) })
         // No Origin of ours: another site's page may not stop the agent.
-        assert.equal((await post({ 'content-type': 'application/json' }, { terminal: 'ldo-sample' })).status, 403)
-        const res = await post({ 'content-type': 'application/json', origin: server.url }, { terminal: 'ldo-no-such-session' })
+        assert.equal((await post({ 'content-type': 'application/json' }, { terminal: 'outline-only-sample' })).status, 403)
+        const res = await post({ 'content-type': 'application/json', origin: server.url }, { terminal: 'outline-only-no-such-session' })
         assert.equal(res.status, 409)
-        assert.match(await res.text(), /no tmux session ldo-no-such-session/)
+        assert.match(await res.text(), /no tmux session outline-only-no-such-session/)
     })
 })

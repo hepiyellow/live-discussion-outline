@@ -6,10 +6,10 @@ import path from 'node:path'
  * The settings file, at a fixed path: the skill, the server and the Outline app all read it, and no environment
  * variable moves it, since an app opened from the Finder does not see the shell profile's variables.
  */
-export const settingsFile = () => path.join(os.homedir(), '.config', 'live-discussion-outline', 'config.json')
+export const settingsFile = () => path.join(os.homedir(), '.config', 'outline-only', 'config.json')
 
 /** The outlines folder when the settings file is missing or has no `dir`: the same for the skill, the server and the app. */
-export const DEFAULT_DIR = '~/live-discussion-outlines'
+export const DEFAULT_DIR = '~/outlines'
 
 export const expandHome = p => (p === '~' || p.startsWith('~/') ? path.join(os.homedir(), p.slice(1)) : p)
 

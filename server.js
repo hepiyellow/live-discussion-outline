@@ -657,7 +657,7 @@ server.on('error', e => {
 
 server.on('listening', () => {
     PORT = server.address().port
-    console.log(`live-discussion-outline on http://localhost:${PORT} watching ${ROOT}`)
+    console.log(`outline-only on http://localhost:${PORT} watching ${ROOT}`)
     // The parent learns the port from us: as a message in the Outline app's utility process, as a line otherwise.
     if (process.parentPort) process.parentPort.postMessage({ port: PORT })
     else console.log(`port=${PORT}`)

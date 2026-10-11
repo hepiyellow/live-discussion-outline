@@ -17,13 +17,13 @@ describe('the PATH from the login shell', () => {
         fs.writeFileSync(file, `#!/bin/sh\n${script}\n`, { mode: 0o755 })
         return file
     }
-    before(() => (scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-shell-'))))
+    before(() => (scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-shell-'))))
     after(() => fs.rmSync(scratch, { recursive: true, force: true }))
 
     test('is found between what the shell’s startup files print', () => {
-        assert.equal(parseShellPath('Last login: today\n__LDO_PATH__/opt/homebrew/bin:/usr/bin__LDO_PATH__\n% '), '/opt/homebrew/bin:/usr/bin')
+        assert.equal(parseShellPath('Last login: today\n__OUTLINE_ONLY_PATH__/opt/homebrew/bin:/usr/bin__OUTLINE_ONLY_PATH__\n% '), '/opt/homebrew/bin:/usr/bin')
         assert.equal(parseShellPath('no marks here'), '')
-        assert.equal(parseShellPath('__LDO_PATH____LDO_PATH__'), '')
+        assert.equal(parseShellPath('__OUTLINE_ONLY_PATH____OUTLINE_ONLY_PATH__'), '')
     })
 
     test('the fallback adds Homebrew’s folders once', () => {
@@ -127,7 +127,7 @@ describe('the app’s server', () => {
     })
 
     test('the end of the log is its last lines', () => {
-        const file = path.join(os.tmpdir(), `ldo-log-${process.pid}.log`)
+        const file = path.join(os.tmpdir(), `outline-only-log-${process.pid}.log`)
         fs.writeFileSync(file, Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n') + '\n')
         try {
             assert.equal(tailOf(file, 3), 'line 38\nline 39\nline 40')

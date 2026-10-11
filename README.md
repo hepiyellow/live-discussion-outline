@@ -95,8 +95,8 @@ The example in [`examples/demo/rate-limiting.md`](examples/demo/rate-limiting.md
 Requires Node 20.19+ (or 22.12+). The Terminal tab, and typing from the Transcript tab, also need tmux (`brew install tmux`). `npm install` also builds the page (a React app in `web/`, see below) into `web/dist` with Vite; node-pty ships prebuilt binaries for macOS and Windows (other platforms compile it, and if that fails the Terminal tab is just not offered).
 
 ```bash
-git clone https://github.com/hepiyellow/live-discussion-outline
-cd live-discussion-outline
+git clone https://github.com/hepiyellow/outline-only
+cd outline-only
 npm install
 ```
 
@@ -155,7 +155,7 @@ The outline's file is plain markdown (a `Title:` line, numbered headings as node
 npm run app    # builds "Outline Only.app", installs it in /Applications, and installs the plugin
 ```
 
-The Outline app, named **Outline Only** in the Dock, runs the server while it is open and shows the page in one window; closing the window quits it and stops the server. It listens on a port of its own (`appPort` in the settings file, picked on the first launch and kept), so it and `npm start` do not compete for one. On its first run, when there is no settings file yet, it asks where outlines are kept, proposing `~/live-discussion-outlines`. **Settings › Change Outlines Folder…** (in the app's own menu) picks another folder and offers to move the outlines there, with the trash and what the page remembers for each outline; it first names the outlines whose session is still running, since those sessions keep writing to the old folder. Once installed, it writes `linkBase` into the settings file, and links of the form `outline-only://open/<project>/<file>` open it on that outline, starting it if needed; only the installed app takes them, not `npm run app:dev`. It is built for this Mac only: signed ad hoc, not notarized, with no updater, so run `npm run app` again after a `git pull` (quit the app first). `npm run app -- --build-only` leaves the app in `dist/` without installing it, and `npm run icon` rebuilds its icon from `app/icon/icon.svg`.
+The Outline app, named **Outline Only** in the Dock, runs the server while it is open and shows the page in one window; closing the window quits it and stops the server. It listens on a port of its own (`appPort` in the settings file, picked on the first launch and kept), so it and `npm start` do not compete for one. On its first run, when there is no settings file yet, it asks where outlines are kept, proposing `~/outlines`. **Settings › Change Outlines Folder…** (in the app's own menu) picks another folder and offers to move the outlines there, with the trash and what the page remembers for each outline; it first names the outlines whose session is still running, since those sessions keep writing to the old folder. Once installed, it writes `linkBase` into the settings file, and links of the form `outline-only://open/<project>/<file>` open it on that outline, starting it if needed; only the installed app takes them, not `npm run app:dev`. It is built for this Mac only: signed ad hoc, not notarized, with no updater, so run `npm run app` again after a `git pull` (quit the app first). `npm run app -- --build-only` leaves the app in `dist/` without installing it, and `npm run icon` rebuilds its icon from `app/icon/icon.svg`.
 
 ### Viewing
 
@@ -180,7 +180,7 @@ The browser tests run headless Chromium through Playwright: install it once with
 
 ## Configuration
 
-Settings come from one settings file, `~/.config/live-discussion-outline/config.json`, then defaults:
+Settings come from one settings file, `~/.config/outline-only/config.json`, then defaults:
 
 ```json
 { "dir": "~/Documents/outlines", "port": 4577, "resumeTemplate": "myagent --resume {session}" }
@@ -188,7 +188,7 @@ Settings come from one settings file, `~/.config/live-discussion-outline/config.
 
 | Setting | Key | Default |
 | ------- | --- | ------- |
-| Outlines folder | `dir` | `~/live-discussion-outlines` |
+| Outlines folder | `dir` | `~/outlines` |
 | Server port | `port` | `4577` |
 | Bind address | `host` (or the `OUTLINE_HOST` environment variable) | `127.0.0.1` |
 | Template for the resume link or command the agent writes into each outline; `{session}` is replaced by the chat's session id | `resumeTemplate` | none |
@@ -215,11 +215,11 @@ Web-only chat products (ChatGPT, Grok, …) can neither write files nor run the 
 
 If the template is empty, the agent writes a `Resume:` line only when it knows its own way to reopen a chat, and otherwise leaves it out.
 
-To apply new settings, stop the server (`pkill -f live-discussion-outline/server.js`) and start it again with `npm start` (or the next `/outline-only:outline` or `/outline-only:outline-file` starts it).
+To apply new settings, stop the server (`pkill -f outline-only/server.js`) and start it again with `npm start` (or the next `/outline-only:outline` or `/outline-only:outline-file` starts it).
 
 ## Notes
 
-- Binds to localhost only. Raw HTML in the markdown is escaped. The server log is `~/.config/live-discussion-outline/server.log`: everything the server prints, crashes, commands that timed out and stalls of over a second, however the server was started.
+- Binds to localhost only. Raw HTML in the markdown is escaped. The server log is `~/.config/outline-only/server.log`: everything the server prints, crashes, commands that timed out and stalls of over a second, however the server was started.
 - Topics and nodes with children become collapsible. The markdown stays readable in any viewer.
 - The 📋 button only copies to the clipboard. Injecting text into an existing chat through an editor URI handler did not work when tried; the Terminal and Transcript tabs are the way to type into a discussion from the page.
 

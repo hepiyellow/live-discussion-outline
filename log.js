@@ -6,7 +6,7 @@ import { format } from 'node:util'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 
 // The server's own log. Its terminal is not always there to read, so everything the server prints also lands here.
-export const LOG_FILE = path.join(os.homedir(), '.config', 'live-discussion-outline', 'server.log')
+export const LOG_FILE = path.join(os.homedir(), '.config', 'outline-only', 'server.log')
 
 // A tmux or ps that hangs would otherwise block the one thread the server runs on, for good.
 const COMMAND_TIMEOUT = 5000

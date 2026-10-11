@@ -15,7 +15,7 @@ const run = (file, args) => execFileSync(file, args, { stdio: ['ignore', 'ignore
 run('sips', ['-s', 'format', 'png', svg, '--out', png])
 
 // The sizes an .icns holds, each also at twice the pixels.
-const iconset = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ldo-icon-')), 'icon.iconset')
+const iconset = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-icon-')), 'icon.iconset')
 fs.mkdirSync(iconset)
 for (const size of [16, 32, 128, 256, 512])
     for (const scale of [1, 2]) {

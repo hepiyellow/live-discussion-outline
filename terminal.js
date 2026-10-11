@@ -35,8 +35,8 @@ export async function sendToTerminal(name, text) {
     if (!isSessionName(name) || !hasSession(name)) throw new Error(`no tmux session ${name}`)
     // `=name:` is the session's active pane (a bare `=name` only names a session).
     const pane = `=${name}:`
-    execFileSync('tmux', ['set-buffer', '-b', 'ldo-send', '--', text])
-    execFileSync('tmux', ['paste-buffer', '-p', '-d', '-b', 'ldo-send', '-t', pane])
+    execFileSync('tmux', ['set-buffer', '-b', 'outline-only-send', '--', text])
+    execFileSync('tmux', ['paste-buffer', '-p', '-d', '-b', 'outline-only-send', '-t', pane])
     // Give the agent's UI a moment to take the paste before Enter submits it.
     await new Promise(r => setTimeout(r, 150))
     execFileSync('tmux', ['send-keys', '-t', pane, 'Enter'])

@@ -2,12 +2,12 @@
 
 _[ADR 0003](0003-the-server-owns-the-outline.md) changes two things said here: in server mode the agent no longer writes files, and in both modes its plugin starts the server when none is running._
 
-The agent used to start the server itself: the skill ran `bin/ensure.js`, which started the server in the background when `/health` did not answer and printed the outlines folder and the page's URL. With the Outline app, two things could start the server, and a server started by an agent outlived every window that showed it. We are making the app the only thing that starts the server, stopped when the app quits, and having the agent read one settings file, `~/.config/live-discussion-outline/config.json`, to learn where to write outlines and which link to print. The agent only writes files, so it never needs the server, and it keeps writing outlines while nothing serves them.
+The agent used to start the server itself: the skill ran `bin/ensure.js`, which started the server in the background when `/health` did not answer and printed the outlines folder and the page's URL. With the Outline app, two things could start the server, and a server started by an agent outlived every window that showed it. We are making the app the only thing that starts the server, stopped when the app quits, and having the agent read one settings file, `~/.config/outline-only/config.json`, to learn where to write outlines and which link to print. The agent only writes files, so it never needs the server, and it keeps writing outlines while nothing serves them.
 
 ## Decisions
 
 - **One settings file at a fixed path.** The skill, the server and the app all read it. No environment variable overrides the outlines folder, the ports, the resume template or the file's path: an app opened from the Finder does not see the shell profile's variables while the agent does, so the two would disagree about where outlines go.
-- **One default outlines folder**, `~/live-discussion-outlines`, for the skill, the server and the app alike when the file or its `dir` is missing.
+- **One default outlines folder**, `~/outlines`, for the skill, the server and the app alike when the file or its `dir` is missing.
 - **Whoever writes the file keeps the keys it does not own.** The app writes `dir`, `appPort` and `linkBase`; the user writes the rest by hand.
 - **The link is a setting.** The skill prints `<linkBase>/<project>/<file>`. The app writes a link base in its own URL scheme, so a link opens the app; without the key the link is `http://localhost:<port>`.
 - **`npm start` stays** for the setup without the app: the user starts the server, and the skill behaves the same.

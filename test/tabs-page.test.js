@@ -44,7 +44,7 @@ describe('the Transcript and Terminal tabs', () => {
         await page.getByLabel('View').selectOption({ label: 'Terminal' })
         const term = page.locator('[data-terminal]')
         await term.locator('.xterm').waitFor()
-        await page.waitForFunction(() => /not attached to tmux session ldo-sample/.test(document.querySelector('[data-terminal] .xterm-rows')?.textContent ?? ''))
+        await page.waitForFunction(() => /not attached to tmux session outline-only-sample/.test(document.querySelector('[data-terminal] .xterm-rows')?.textContent ?? ''))
         // The terminal takes typing itself: no input box.
         assert.equal(await page.getByRole('textbox', { name: 'Message the session' }).count(), 0)
     })
