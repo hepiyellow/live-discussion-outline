@@ -450,6 +450,15 @@ button.ck[data-state='claim']:hover { border-color: var(--approved); color: var(
 .qicon[data-queue-kind='approve'] { cursor: pointer; border-radius: 50%; transition: background-color 0.1s, box-shadow 0.1s; }
 .qicon[data-queue-kind='approve']:hover { background: color-mix(in srgb, var(--approved) 20%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--approved) 20%, transparent); }
 .qicon[data-queue-kind='approve']:focus-visible { outline: 2px solid var(--approved); outline-offset: 2px; }
+/* A read item's eye is clicked to mark the node read. It pulses when the queue item pointed at it. */
+.qicon[data-queue-kind='read'] { cursor: pointer; border-radius: 50%; transition: background-color 0.1s, box-shadow 0.1s; }
+.qicon[data-queue-kind='read']:hover { background: color-mix(in srgb, var(--foreground) 16%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--foreground) 16%, transparent); }
+.qicon[data-queue-kind='read']:focus-visible { outline: 2px solid var(--claim); outline-offset: 2px; }
+.qicon[data-pulse] { animation: qpoint 0.5s ease-in-out 3; }
+@keyframes qpoint { 50% { background: color-mix(in srgb, var(--foreground) 24%, transparent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--foreground) 24%, transparent); } }
+@media (prefers-reduced-motion: reduce) {
+    .qicon[data-pulse] { animation: none; box-shadow: 0 0 0 3px var(--foreground); }
+}
 .row.leaf > .qicon { align-self: start; margin-top: 13px; }
 /* A topic has no indent: its icon sits in the page's margin, as far left of the topic as a node's is of the node. */
 .topic-head > .qicon { position: absolute; left: -18px; top: 50%; margin: 0; transform: translateY(-50%); }

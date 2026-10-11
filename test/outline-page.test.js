@@ -76,8 +76,12 @@ for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mod
             '4.1': 'claim',
         }
         for (const [num, state] of Object.entries(states)) assert.equal(await box(num).getAttribute('data-state'), state, num)
-        // A mixed topic shows each kind below it once.
-        assert.deepEqual(await node('2').locator('.extras .ck').evaluateAll(els => els.map(e => e.dataset.state)), ['open', 'claim', 'done', 'approved'])
+        // A mixed topic shows each kind below it once, lowest first: nothing, a claim, an approval, an action done.
+        assert.deepEqual(await node('2').locator('.extras .ck').evaluateAll(els => els.map(e => e.dataset.state)), ['open', 'claim', 'approved', 'done'])
+        // A topic whose nodes are all claims is settled: it starts collapsed, and shows that one kind with nothing beside it.
+        assert.equal(await node('4').getAttribute('aria-expanded'), 'false')
+        assert.equal(await node('4').locator('.extras .ck').count(), 0)
+        assert.equal(await node('2').getAttribute('aria-expanded'), 'true')
         // Options are radio buttons.
         assert.equal(await box('2.1.2').getAttribute('role'), 'radio')
         assert.equal(await box('2.3').getAttribute('role'), 'checkbox')

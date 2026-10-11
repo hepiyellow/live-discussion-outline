@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
-import { launchBrowser, startServer, until } from './helpers.js'
+import { SESSION, launchBrowser, startServer, until } from './helpers.js'
 
 // sample.md links a session (Terminal: and Session: lines) whose transcript is the fixture. The tests answer /send.
 
@@ -200,5 +202,79 @@ describe('inbox, input box and spinner', () => {
         await page.getByLabel('Effort').selectOption('low')
         assert.equal(await waitSent(1), '/effort low')
         assert.equal(await page.getByLabel('Effort').inputValue(), 'low')
+    })
+
+    describe('what the pickers show', () => {
+        const transcript = () => path.join(server.home, '.claude', 'projects', '-home-dev-search', `${SESSION}.jsonl`)
+        let original, n
+        beforeEach(() => {
+            original = fs.readFileSync(transcript(), 'utf8')
+            n = 0
+        })
+        // The fixture transcript is every test's: put it back, and wait until the server has read it again.
+        afterEach(() => fs.writeFileSync(transcript(), original))
+        /** The agent answers, as Claude Code writes it: with the model and effort it used. */
+        const answers = (model, effort) => {
+            const at = new Date(Date.UTC(2026, 9, 2, 10, 0, n++)).toISOString()
+            const entry = { isSidechain: false, sessionId: SESSION, uuid: `00000000-0000-4000-8000-0000000001${String(n).padStart(2, '0')}`, timestamp: at, type: 'assistant', message: { role: 'assistant', model, content: [{ type: 'text', text: 'Done.' }] }, effort }
+            fs.appendFileSync(transcript(), `${JSON.stringify(entry)}\n${JSON.stringify({ isSidechain: false, sessionId: SESSION, timestamp: at, type: 'system', subtype: 'turn_duration', durationMs: 1 })}\n`)
+        }
+        const shown = async () => [await page.getByLabel('Model').inputValue(), await page.getByLabel('Effort').inputValue()]
+        const shows = (model, effort) => until(async () => (await shown()).join() === `${model},${effort}`, { what: `the pickers to show ${model}, ${effort}` })
+
+        test('before the agent has answered, what the Model line names', async () => {
+            assert.deepEqual(await shown(), ['claude-opus-5-5', 'high'])
+        })
+
+        test('what the agent last answered with, whatever the Model line says', async () => {
+            answers('claude-sonnet-5-5', 'medium')
+            await shows('claude-sonnet-5-5', 'medium')
+            // A dated id is the model it starts with; one the list does not know shows by its id.
+            answers('claude-haiku-5-5-20261001', 'low')
+            await shows('claude-haiku-5-5', 'low')
+            answers('claude-next-9', 'ultra')
+            await shows('claude-next-9', 'ultra')
+        })
+
+        test('a pick holds when the agent rewrites the Model line, until its next answer', async () => {
+            answers('claude-sonnet-5-5', 'medium')
+            await shows('claude-sonnet-5-5', 'medium')
+            await page.getByLabel('Model').selectOption('claude-opus-5-5')
+            await page.getByLabel('Effort').selectOption('max')
+            assert.equal(await waitSent(2), '/effort max')
+            assert.deepEqual(await shown(), ['claude-opus-5-5', 'max'])
+            // The agent writes the line as it believes it: the old model, and no effort.
+            const file = path.join(server.dir, 'demo', 'sample.md')
+            fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^Model: .*$/m, 'Model: Claude Sonnet 5.5'))
+            await page.waitForTimeout(600)
+            assert.deepEqual(await shown(), ['claude-opus-5-5', 'max'])
+            // Its next answer says what the session uses: here the model was taken, and the effort was not.
+            answers('claude-opus-5-5', 'high')
+            await shows('claude-opus-5-5', 'high')
+        })
+
+        test('a pick made while the agent works waits for the turn to end, then for the next answer', async () => {
+            answers('claude-sonnet-5-5', 'medium')
+            await shows('claude-sonnet-5-5', 'medium')
+            // The agent is in a turn: the last entry is an answer, with no end of turn after it.
+            const at = '2026-10-02T11:00:00.000Z'
+            const working = model => fs.appendFileSync(transcript(), `${JSON.stringify({ isSidechain: false, sessionId: SESSION, timestamp: at, type: 'assistant', message: { role: 'assistant', model, content: [{ type: 'text', text: 'Working.' }] }, effort: 'medium' })}\n`)
+            working('claude-sonnet-5-5')
+            await page.getByRole('status', { name: 'The agent is working' }).waitFor()
+            await page.getByLabel('Model').selectOption('claude-opus-5-5')
+            assert.equal(await waitSent(1), '/model claude-opus-5-5')
+            // More of the same turn, on the old model: the pick is not dropped for it.
+            fs.appendFileSync(transcript(), `${JSON.stringify({ isSidechain: false, sessionId: SESSION, timestamp: '2026-10-02T11:00:05.000Z', type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text: 'Still working.' }] }, effort: 'medium' })}\n`)
+            await page.waitForTimeout(600)
+            assert.deepEqual(await shown(), ['claude-opus-5-5', 'medium'])
+            fs.appendFileSync(transcript(), `${JSON.stringify({ isSidechain: false, sessionId: SESSION, timestamp: '2026-10-02T11:00:06.000Z', type: 'system', subtype: 'turn_duration', durationMs: 1 })}\n`)
+            // The idle dot is hidden, so it has no role to find it by.
+            await page.waitForFunction(() => !document.querySelector('[role="status"][data-busy]'))
+            assert.deepEqual(await shown(), ['claude-opus-5-5', 'medium'])
+            // The next turn's answer is the one the pick applies to.
+            n = 30
+            answers('claude-opus-5-5', 'medium')
+            await shows('claude-opus-5-5', 'medium')
+        })
     })
 })

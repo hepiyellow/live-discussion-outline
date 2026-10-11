@@ -43,34 +43,34 @@ export class Approvals {
         for (const s of this.statuses().parent(node)?.children ?? []) if (s !== node) this.setWant(s, false)
     }
 
-    /** A click on a node's checkbox (or radio). */
+    /**
+     * A click on a node's checkbox (or radio). It goes by what the user approved, not by the tick drawn: a claim, an
+     * action the agent has done and a settled parent all show a tick, and a click on one gives the user's approval
+     * rather than clearing it. A click on what the user approved takes the approval back.
+     */
     clickNode(node: OutlineNode) {
         const st = this.statuses()
-        const box = st.box(node)
-        const shownChecked = box.state !== 'open' && box.state !== 'mixed'
-        // A claim, and an action the agent has done, show a tick, but a click on it gives the user's approval rather than clearing it.
-        const want = !shownChecked || ((node.status === 'claim' || box.state === 'done') && !(node.num in this.draft.overrides))
         if (st.isGroup(node)) {
-            const kind = st.kindsOf(node)[0]
             const pick = node.children.find(c => c.tags.includes('recommended'))
-            if (kind === 'approved') node.children.forEach(c => this.setWant(c, false))
+            if (node.children.some(c => st.effective(c))) node.children.forEach(c => this.setWant(c, false))
             else if (pick) this.choose(pick)
             return
         }
         if (st.isOption(node)) {
-            if (box.state === 'open' || box.state === 'claim' || box.state === 'done') this.choose(node)
-            else this.setWant(node, false)
+            if (st.effective(node)) this.setWant(node, false)
+            else this.choose(node)
             return
         }
+        const want = !st.approvedUnder(node)
         for (const n of allNodes([node])) this.setWant(n, want)
     }
 
     /** A click on a topic's checkbox: approves (or reopens) every node under it, options and questions aside. */
     clickTopic(topic: OutlineNode) {
         const st = this.statuses()
-        const state = st.topicBox(topic).state
-        const want = state !== 'approved'
-        for (const n of allNodes(topic.children)) if (!st.isOption(n) && !st.isGroup(n)) this.setWant(n, want)
+        const plain = allNodes(topic.children).filter(n => !st.isOption(n) && !st.isGroup(n))
+        const want = topic.children.length ? !plain.every(n => st.effective(n)) : !st.effective(topic)
+        for (const n of plain) this.setWant(n, want)
         if (!topic.children.length) this.setWant(topic, want)
     }
 

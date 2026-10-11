@@ -12,6 +12,7 @@ import { slashCommands } from './commands.js'
 import { STATE_DIR, createStateStore } from './state.js'
 import { installLogging } from './log.js'
 import { LEDGER_DIR, createAgentApi, markLedgered } from './agent.js'
+import { createPermissions } from './permission.js'
 import { OpError } from './model.js'
 
 installLogging()
@@ -128,6 +129,20 @@ const agent = createAgentApi({
     onLedger: () => pushOutlines(),
     typeInto: sendToTerminal,
 })
+
+/** The permission prompts of the outlines' sessions that wait for the user (permission.js). */
+const permissions = createPermissions({
+    onChange: (project, file) => pushPermissions(project, file),
+    note: (project, file, text) => agent.note(project, file, text),
+})
+
+/** Sends the open pages of an outline the permission prompts that wait for the user. */
+function pushPermissions(project, file) {
+    const streams = outlineStreams.get(JSON.stringify([project, file]))
+    if (!streams?.size) return
+    const event = `event: permissions\ndata: ${JSON.stringify(permissions.list(project, file))}\n\n`
+    for (const res of streams.keys()) res.write(event)
+}
 
 /** Sends the open pages of an outline the agent's messages kept in its ledger (the `message` operation). */
 function pushNotes(project, file) {
@@ -257,13 +272,14 @@ const linked = new Map()
  * however much it shows: a browser allows six to one server, across all its windows, and every further request waits.
  * Called again when the outline changes, it follows the session the outline links to now.
  */
-function followLinked(res, session, transcript = linked.get(res)?.transcript ?? false) {
+function followLinked(res, session, transcript = linked.get(res)?.transcript ?? false, onCommands = linked.get(res)?.onCommands) {
     const id = isSessionId(session || '') ? session : ''
     const now = linked.get(res)
     if (now?.session === id) return
     now?.stop()
-    const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-    const entry = { session: id, transcript, stop: () => {} }
+    // A local command's output is not the page's to draw: it becomes a message of the outline, which then goes out.
+    const send = (event, data) => (event === 'commands' ? onCommands?.() : res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+    const entry = { session: id, transcript, onCommands, stop: () => {} }
     linked.set(res, entry)
     if (!id) return send('session', '')
     let told = false
@@ -311,10 +327,11 @@ async function stateApi(req, res, parts) {
  */
 function outlineApi(req, res, parts, url) {
     const [project, file, events] = parts
-    if (parts.length > 3 || (events !== undefined && events !== 'events' && events !== 'history' && events !== 'act')) return send(res, 404, 'text/plain', 'not found')
+    if (parts.length > 3 || (events !== undefined && !['events', 'history', 'act', 'permission'].includes(events))) return send(res, 404, 'text/plain', 'not found')
     const outline = readOutline(project, file)
     if (!outline) return send(res, 404, 'text/plain', 'no such outline')
     if (events === 'act') return actApi(req, res, outline)
+    if (events === 'permission') return answerPermission(req, res, outline)
     // A node's history: its entries, oldest first (`?num=2.1`).
     if (events === 'history') return send(res, 200, 'application/json', JSON.stringify(history.read(project, file, url.searchParams.get('num') ?? '')))
     const data = JSON.stringify(outline)
@@ -322,13 +339,20 @@ function outlineApi(req, res, parts, url) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
     res.write(`retry: 1000\n\ndata: ${data}\n\nevent: state\ndata: ${JSON.stringify(viewerState.read(project, file))}\n\n`)
     res.write(`event: notes\ndata: ${JSON.stringify(agent.messages(project, file))}\n\n`)
+    res.write(`event: permissions\ndata: ${JSON.stringify(permissions.list(project, file))}\n\n`)
     const key = JSON.stringify([project, file])
     if (!outlineStreams.has(key)) outlineStreams.set(key, new Map())
     outlineStreams.get(key).set(res, data)
     const list = outlineList()
     res.write(`event: outlines\ndata: ${list}\n\n`)
     listStreams.set(res, { last: list, event: 'outlines' })
-    followLinked(res, outline.session, url.searchParams.get('transcript') === '1')
+    followLinked(res, outline.session, url.searchParams.get('transcript') === '1', () => {
+        try {
+            agent.commands(project, file)
+        } catch (e) {
+            console.error(`local commands of ${project}/${file}: ${e.message}`)
+        }
+    })
     req.on('close', () => {
         listStreams.delete(res)
         const streams = outlineStreams.get(key)
@@ -359,16 +383,52 @@ async function actApi(req, res, { project, file, mode }) {
  * An agent's call: from this machine, to this server by its loopback name, and not from a web page (a page cannot send
  * the header without the server's leave, and sends an Origin).
  */
+/**
+ * POST /api/outline/<project>/<file>/permission: the user's answer to a permission prompt on the page, `{ id, answer }`
+ * with `allow`, `deny` or `dismiss`. Answers `{ ok }`: false when the prompt is no longer waiting (answered in the
+ * terminal, or in another window).
+ */
+async function answerPermission(req, res, { project, file }) {
+    if (req.method !== 'POST') return send(res, 405, 'text/plain', 'method not allowed')
+    if (!fromLocalPage(req, PORT, { write: true }) || !/^application\/json\b/.test(req.headers['content-type'] || '')) return send(res, 403, 'text/plain', 'forbidden')
+    try {
+        const { id, answer } = await readJson(req)
+        if (typeof id !== 'string' || !['allow', 'deny', 'dismiss'].includes(answer)) return json(res, 400, { error: 'An answer is { id, answer }, with allow, deny or dismiss.' })
+        json(res, 200, { ok: permissions.answer(project, file, id, answer) })
+    } catch (e) {
+        json(res, e instanceof SyntaxError ? 400 : 500, { error: e.message })
+    }
+}
+
+/**
+ * /api/agent/permission: the plugin's PermissionRequest hook asks for the user's answer to a permission prompt of its
+ * session, and is answered `{ ok, decision, message }` once there is one: `allow` or `deny` from the outline's page,
+ * or an empty decision when the prompt is the terminal's to answer (the session has no outline in server mode, the
+ * user answered or dismissed it elsewhere, or nobody answered in time). A hook that leaves takes its prompt along.
+ */
+async function askPermission(req, res) {
+    const body = await readJson(req)
+    const at = agent.outlineOf(body)
+    if (!at) return json(res, 200, { ok: true, decision: '' })
+    const prompt = permissions.ask(at.project, at.file, { session: body.session, tool: body.tool, input: body.input, mode: body.mode })
+    res.on('close', prompt.gone)
+    const answer = await prompt.done
+    if (!res.writableEnded && !res.destroyed) json(res, 200, { ok: true, decision: answer?.behavior || '', message: answer?.message || '' })
+}
+
 const fromAgent = req => fromLocalPage(req, PORT, { write: false }) && req.headers['x-outline-agent'] === '1' && !req.headers.origin
 
 /**
- * /api/agent/<tool>: the MCP tools `start`, `read` and `change`, and what the hooks ask for (`pending`, `reload`), each
+ * /api/agent/<tool>: the MCP tools `start`, `read` and `change`, and what the hooks ask for (`pending`, `reload`, `ending`,
+ * and `permission`, which answers only once the user has), each
  * a POST of JSON answered with `{ ok, text }`.
  */
 async function agentApi(req, res, name) {
     if (!fromAgent(req)) return send(res, 403, 'text/plain', 'forbidden')
-    if (req.method !== 'POST' || !Object.hasOwn(agent, name) || ['open', 'act', 'userEvent', 'messages', 'unacknowledged'].includes(name)) return send(res, 404, 'text/plain', 'not found')
+    const asked = name === 'permission' || (Object.hasOwn(agent, name) && !['open', 'act', 'userEvent', 'messages', 'unacknowledged', 'commands', 'outlineOf', 'note'].includes(name))
+    if (req.method !== 'POST' || !asked) return send(res, 404, 'text/plain', 'not found')
     try {
+        if (name === 'permission') return await askPermission(req, res)
         json(res, 200, agent[name](await readJson(req)))
     } catch (e) {
         console.error(`agent ${name}: ${e.stack || e.message}`)

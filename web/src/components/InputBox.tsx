@@ -3,6 +3,7 @@ import { CornerDownLeft, Square, Trash2, X } from 'lucide-react'
 import { Command, CommandItem, CommandList } from '@/components/ui/command'
 import { sendToSession, stopSession } from '@/lib/send'
 import { cn } from '@/lib/utils'
+import type { Using } from '@/hooks/useSession'
 import type { Chip, Outline, SlashCommand, StatePatch, ViewerState } from '@/types'
 import { ModelPicker } from './ModelPicker'
 import { useNotify } from './Notice'
@@ -12,6 +13,8 @@ interface Props {
     viewer: ViewerState
     patch: (p: StatePatch) => Promise<void>
     busy: boolean
+    /** The model and effort the agent last answered with, for the pickers. */
+    using?: Using
     /** Something was sent: the agent is in a turn. */
     onSent: () => void
     onReveal: (num: string) => void
@@ -36,7 +39,7 @@ const chipNum = (c: Chip) => /^(\d+(?:\.\d+)*)\.?\s/.exec(c.label)?.[1]
  * At the end of the box, the Enter key in a circle sends. While the agent works, a dot blinks at its corner, and with
  * nothing typed it stops the agent instead of sending; typing a new message makes it send again, the dot still blinking.
  */
-export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added, inOutline }: Props) {
+export function InputBox({ outline, viewer, patch, busy, using, onSent, onReveal, added, inOutline }: Props) {
     const notify = useNotify()
     const root = useRef<HTMLFormElement>(null)
     const box = useRef<HTMLTextAreaElement>(null)
@@ -282,7 +285,7 @@ export function InputBox({ outline, viewer, patch, busy, onSent, onReveal, added
                 </div>
                 {/* Under the box, outside it: the session's model and effort, ending where the box does. */}
                 <div className="mt-1.5 flex justify-end pr-1">
-                    <ModelPicker outline={outline} />
+                    <ModelPicker outline={outline} using={using} busy={busy} />
                 </div>
             </div>
         </form>

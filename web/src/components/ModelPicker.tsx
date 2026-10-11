@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { Using } from '@/hooks/useSession'
 import { sendToSession } from '@/lib/send'
 import type { Outline } from '@/types'
 import { useNotify } from './Notice'
@@ -18,46 +19,86 @@ function fromLine(line: string) {
     return { model, effort }
 }
 
+/** The picker's value for a model as the transcript names it: a dated or suffixed id is the model it starts with. */
+const modelOf = (id: string) => MODELS.find(([known]) => id.startsWith(known))?.[0] ?? id
+
 /**
- * The model and effort pickers: they start from the outline's Model line; changing one types /model or /effort into
- * the session. The line catches up only when the agent rewrites it, so the page shows what was sent until then.
+ * What the user picked and the session has not answered with yet. `at` is the agent's last answer when the pick
+ * could take effect: a pick made while the agent works is run by Claude Code only once the turn ends, so it has no
+ * `at` until then. The pick holds until an answer comes after `at`; that answer says what the session uses.
  */
-export function ModelPicker({ outline }: { outline: Outline }) {
+interface Pick {
+    model?: string
+    effort?: string
+    at?: string
+}
+
+// By session, outside the component: the Terminal tab takes the input box away, and the pick must outlast that.
+const picks = new Map<string, Pick>()
+
+/**
+ * The model and effort pickers. They show what the session's agent last answered with, which Claude Code writes in
+ * its transcript on every answer; before the first answer, or without a transcript, what the outline's `Model:` line
+ * names (the agent writes that line, and it can be out of date). Changing one types /model or /effort into the session
+ * and shows at once; the agent's next answer confirms it, or shows what the session uses instead.
+ */
+export function ModelPicker({ outline, using, busy }: { outline: Outline; using?: Using; busy: boolean }) {
     const notify = useNotify()
-    const [sent, setSent] = useState<{ line: string; model?: string; effort?: string }>({ line: outline.model })
-    const [busy, setBusy] = useState(false)
-    const line = fromLine(outline.model)
-    const shown = sent.line === outline.model ? { ...line, ...Object.fromEntries(Object.entries(sent).filter(([k]) => k !== 'line')) } : line
+    const key = outline.session || outline.terminal
+    const [, redraw] = useState(0)
+    const [sending, setSending] = useState(false)
+    const at = using?.at ?? ''
+
+    useEffect(() => {
+        const pick = picks.get(key)
+        if (!pick) return
+        if (pick.at === undefined) {
+            // The turn it was picked in has ended: from here on, an answer is one the pick applies to.
+            if (!busy) pick.at = at
+            return
+        }
+        if (pick.at === at) return
+        picks.delete(key)
+        redraw(n => n + 1)
+    }, [key, at, busy])
+
+    const base = using ? { model: modelOf(using.model), effort: using.effort } : fromLine(outline.model)
+    const pick = picks.get(key)
+    const shown = { model: pick?.model ?? base.model, effort: pick?.effort ?? base.effort }
     const tip = outline.terminal
         ? `Sends /model or /effort to the session (tmux ${outline.terminal}). Claude Code also saves the choice as your default for new sessions.`
         : 'Only for outlines whose session runs in tmux'
     // The choice shows at once, and goes back if it cannot be sent.
-    const pick = async (kind: 'model' | 'effort', value: string) => {
+    const choose = async (kind: 'model' | 'effort', value: string) => {
         if (!value) return
-        const before = sent
-        setSent(s => ({ ...(s.line === outline.model ? s : {}), line: outline.model, [kind]: value }))
-        setBusy(true)
+        const before = picks.get(key)
+        picks.set(key, { ...before, [kind]: value, at: busy ? undefined : at })
+        setSending(true)
         try {
             await sendToSession(outline.terminal, `/${kind} ${value}`)
         } catch (e) {
-            setSent(before)
+            if (before) picks.set(key, before)
+            else picks.delete(key)
             notify(`Not sent: ${(e as Error).message}`, true)
         }
-        setBusy(false)
+        setSending(false)
     }
     const select = 'rounded-md border bg-background px-1.5 py-[3px] text-[13px] text-foreground disabled:text-muted-foreground'
     return (
         <span className="inline-flex gap-1.5" title={tip}>
-            <select aria-label="Model" className={select} disabled={!outline.terminal || busy} value={shown.model} onChange={e => pick('model', e.target.value)}>
+            <select aria-label="Model" className={select} disabled={!outline.terminal || sending} value={shown.model} onChange={e => choose('model', e.target.value)}>
                 {!shown.model && <option value="">Model</option>}
+                {/* A model the list does not know still shows, by its id. */}
+                {shown.model && !MODELS.some(([v]) => v === shown.model) && <option value={shown.model}>{shown.model}</option>}
                 {MODELS.map(([v, l]) => (
                     <option key={v} value={v}>
                         {l}
                     </option>
                 ))}
             </select>
-            <select aria-label="Effort" className={select} disabled={!outline.terminal || busy} value={shown.effort} onChange={e => pick('effort', e.target.value)}>
+            <select aria-label="Effort" className={select} disabled={!outline.terminal || sending} value={shown.effort} onChange={e => choose('effort', e.target.value)}>
                 {!shown.effort && <option value="">Effort</option>}
+                {shown.effort && !EFFORTS.includes(shown.effort) && <option value={shown.effort}>{shown.effort}</option>}
                 {EFFORTS.map(v => (
                     <option key={v} value={v}>
                         {v}

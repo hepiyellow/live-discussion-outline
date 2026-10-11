@@ -5,7 +5,7 @@ import type { Statuses } from '@/lib/status'
 import { DONE_PILL, FAILED_PILL, liveHtml, type NodeContent } from '@/lib/content'
 import type { Message, OutlineNode, QueueItem } from '@/types'
 import { NodeMessages } from './Inbox'
-import { DIFF_ICON, KINDS } from './queue'
+import { DIFF_ICON, KINDS, readId } from './queue'
 import { Extras, StatusBox } from './StatusBox'
 
 /** What every node of the Outline tab needs: statuses, which nodes are open, the current path, and the user's actions. */
@@ -148,7 +148,7 @@ function NodeText({ node, html, className, hidden }: { node: OutlineNode; html: 
     const { runs, onRun, statuses } = useOutlineCtx()
     const sent = !!runs[node.num]
     // An option's action waits for its option to be picked: until then its Run button is off.
-    const unpicked = statuses.isOption(node) && !['approved', 'pending'].includes(statuses.box(node).state)
+    const unpicked = statuses.isOption(node) && !statuses.effective(node)
     const root = useRef<HTMLDivElement>(null)
     useLayoutEffect(() => {
         for (const button of root.current?.querySelectorAll<HTMLButtonElement>('[data-run]') ?? []) {
@@ -295,15 +295,17 @@ function Diff({ node }: { node: OutlineNode }) {
  * its text yet); an action's own icon is its play button.
  */
 function QueueMark({ node }: { node: OutlineNode }) {
-    const { queued, unread, opening } = useOutlineCtx()
+    const { queued, unread, opening, onSeen } = useOutlineCtx()
     const item = queued.get(node.num)
     if (!item || item.kind === 'action') return null
     if (unread.has(node.num) && !opening.has(node.num)) return null
     const kind = KINDS[item.kind]
     // The icon neither scrolls nor toggles the row. Of an item to approve it points at the node's own checkbox, which is
     // where the approving is done: that box pulses.
+    // A read item has nothing to tick: a click on its eye says the node is read, and the item leaves the queue.
     const point = (e: MouseEvent<HTMLButtonElement>) => {
         e.stopPropagation()
+        if (item.kind === 'read') return onSeen([readId(item, node)])
         if (item.kind !== 'approve') return
         const box = e.currentTarget.parentElement?.querySelector<HTMLElement>(':scope > .ck')
         if (box) pulseBox(box)
@@ -313,7 +315,7 @@ function QueueMark({ node }: { node: OutlineNode }) {
             type="button"
             className="qicon"
             data-queue-kind={item.kind}
-            title={item.kind === 'approve' ? `${kind.name}: ${item.label} — tick the checkbox to approve it` : `${kind.name}: ${item.label}`}
+            title={item.kind === 'approve' ? `${kind.name}: ${item.label} — tick the checkbox to approve it` : item.kind === 'read' ? `${kind.name}: ${item.label} — click to mark it read` : `${kind.name}: ${item.label}`}
             aria-label={`${kind.name}: ${item.label}`}
             style={{ color: kind.color }}
             onClick={point}

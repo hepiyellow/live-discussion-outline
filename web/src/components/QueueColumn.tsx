@@ -29,6 +29,8 @@ interface Props {
     queue: QueueItem[]
     statuses: Statuses
     runs: Record<string, number | string>
+    /** The viewer state's `seen`: the read items the user marked as read are in it. */
+    seen: Record<string, number>
     onOpen: (item: QueueItem, color: string) => void
     /** Nodes changed since the viewer read them, in outline order: listed first. */
     unread: string[]
@@ -53,7 +55,7 @@ function slideIn(el: HTMLElement, delay: number) {
  * arrive while the page is open slide in from the right edge of the window. Items that do not fit the window's height
  * are counted on an ellipsis at the end, which lists them; the count pulses when a new item lands there.
  */
-export function QueueColumn({ queue, statuses, runs, onOpen, unread, onOpenUnread, ready, footer }: Props) {
+export function QueueColumn({ queue, statuses, runs, seen, onOpen, unread, onOpenUnread, ready, footer }: Props) {
     const entries: Entry[] = [
         ...unread.map(num => {
             // A change whose new content has the Done tag is an action carried out: yellow, as the node's own diff button is.
@@ -69,7 +71,7 @@ export function QueueColumn({ queue, statuses, runs, onOpen, unread, onOpenUnrea
                 data: { 'data-unread': num, ...(done ? { 'data-done': '' } : {}) },
             }
         }),
-        ...waiting(queue, statuses, runs).map(({ item, missing }) => {
+        ...waiting(queue, statuses, runs, seen).map(({ item, missing }) => {
             const kind = KINDS[item.kind]
             return {
                 key: `${item.kind}:${item.num}`,

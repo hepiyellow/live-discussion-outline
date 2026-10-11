@@ -2,15 +2,22 @@ import type { Mode, OutlineNode } from '@/types'
 
 /**
  * What a checkbox shows. A node's own kind is its status in the file, unless the user changed it on the page and the
- * agent has not recorded that yet: then it is pending. An action the agent has carried out, and the user has not
- * approved, is done.
+ * agent has not recorded that yet: then it is pending. An action the agent has carried out is done, whether or not the
+ * user approved it: done supersedes approved.
  */
 export type Kind = 'open' | 'claim' | 'done' | 'pending' | 'approved'
-/** A parent whose descendants differ shows `mixed`, with each of their kinds beside it. */
+/** A parent with something open under it, beside other kinds, shows `mixed`, with each kind beside it. */
 export type BoxState = Kind | 'mixed'
 
-export const KIND_ORDER: Kind[] = ['open', 'claim', 'done', 'pending', 'approved']
+/**
+ * The kinds in the order a parent lists them, which is also lowest to highest: nothing yet, the agent's claim, the
+ * user's approval (pending while it is on its way), an action done.
+ */
+export const KIND_ORDER: Kind[] = ['open', 'claim', 'pending', 'approved', 'done']
 export const KIND_TITLE: Record<Kind, string> = { open: 'Open', claim: 'Claim', done: 'Done by the agent', pending: 'Pending: you approved it, and the agent has not recorded that yet', approved: 'User-approved' }
+
+/** The tooltip of an action carried out that the user approved: its tick is the done one, and this tells the two apart. */
+const DONE_APPROVED = 'Done: the agent carried out this action, and you approved it'
 
 /** The user's changes the file does not show yet: node number → whether the user wants it approved (or chosen). */
 export type Overrides = Record<string, boolean>
@@ -20,7 +27,7 @@ export interface Box {
     /** An option of an @options question gets a radio button. */
     shape: 'box' | 'radio'
     state: BoxState
-    /** Small icons beside the box: the kinds below a mixed parent, or below an option. */
+    /** Small icons beside the box: each kind found under a parent whose descendants differ, or below an option. */
     extras: Kind[]
     title: string
     /** Settled: the row is drawn muted. */
@@ -31,8 +38,13 @@ export interface Box {
 
 /**
  * The checkboxes of an outline: each node's own kind, rolled up over its descendants. A parent shows the set of its
- * descendants' kinds: one icon when they agree, else a mixed box with each kind beside it. An @options question takes
+ * descendants' kinds. When they agree it shows that kind. When they differ and none is open, everything under it is
+ * settled, and it shows the highest of them (a claim, then the user's approval, then an action done) with each kind
+ * beside it; with something open among them it shows a mixed box, with each kind beside it. An @options question takes
  * the kind of its picked option, else of its recommended one.
+ *
+ * What the user approved is a separate question from what a box shows, since a done tick may or may not stand over an
+ * approval: `effective` and `approvedUnder` answer it, and a click goes by them.
  */
 export class Statuses {
     private parents = new Map<string, OutlineNode | undefined>()
@@ -45,7 +57,10 @@ export class Statuses {
         readonly mode: Mode = 'file',
         /** Server mode: the nodes whose tick the user changed and the agent has not acknowledged yet. */
         readonly unacked: ReadonlySet<string> = new Set(),
-        /** The nodes whose change the viewer has not opened yet: an action done there is not shown as done until they do. */
+        /**
+         * The nodes whose change the viewer has not opened yet: an action done there keeps the tick it showed until
+         * they do. Its parents do not wait: they count it as done from the moment it arrives.
+         */
         readonly unread: ReadonlySet<string> = new Set(),
     ) {
         const index = (list: OutlineNode[], parent?: OutlineNode) =>
@@ -58,8 +73,8 @@ export class Statuses {
 
     parent = (node: OutlineNode) => this.parents.get(node.num)
     fileDone = (node: OutlineNode) => node.status === 'approved'
-    /** An action the agent has carried out, once the viewer has opened its change: until then its box keeps what it showed. */
-    ran = (node: OutlineNode) => node.tags.includes('ran') && !this.unread.has(node.num)
+    /** An action the agent has carried out. */
+    ran = (node: OutlineNode) => node.tags.includes('ran')
     /** Whether the node counts as approved, the user's unrecorded change included. */
     effective = (node: OutlineNode) => (node.num in this.overrides ? this.overrides[node.num] : this.fileDone(node))
     /**
@@ -76,9 +91,10 @@ export class Statuses {
     ownKind(node: OutlineNode): Kind {
         const file = this.fileDone(node)
         const on = this.effective(node)
-        if (on && !file) return 'pending'
-        if (on && file) return this.unacked.has(node.num) ? 'pending' : 'approved'
+        // The user's tick on its way to the agent shows as such, whatever it stands on.
+        if (on && (!file || this.unacked.has(node.num))) return 'pending'
         if (this.ran(node)) return 'done'
+        if (on) return 'approved'
         return node.status === 'claim' ? 'claim' : 'open'
     }
 
@@ -88,27 +104,70 @@ export class Statuses {
         if (cached) return cached
         let kinds: Kind[]
         if (!node.children.length) kinds = [this.ownKind(node)]
-        else {
+        else if (this.isGroup(node)) {
+            // A question is its picked option; unanswered, it is the agent's claim when it recommends one.
+            const picked = node.children.find(c => this.effective(c))
+            const seen = new Set(node.children.flatMap(c => this.kindsOf(c)))
+            kinds = [picked ? this.ownKind(picked) : seen.has('claim') ? 'claim' : seen.has('done') ? 'done' : 'open']
+        } else {
             const seen = new Set(node.children.flatMap(c => this.kindsOf(c)))
             // A parent the agent carried out as an action shows its own done tick among its descendants' kinds.
-            if (this.ownKind(node) === 'done' && !this.isGroup(node)) seen.add('done')
-            kinds = this.isGroup(node) ? [(['approved', 'pending', 'claim', 'done'] as Kind[]).find(k => seen.has(k)) ?? 'open'] : KIND_ORDER.filter(k => seen.has(k))
+            if (this.ownKind(node) === 'done') seen.add('done')
+            kinds = KIND_ORDER.filter(k => seen.has(k))
         }
         this.kinds.set(node.num, kinds)
         return kinds
     }
 
-    /** All approved (some maybe still pending) reads as pending or approved; differing kinds are mixed. */
+    /**
+     * What a parent's box shows for the kinds under it: the one kind they share; with something open among others,
+     * mixed; else the highest of them, since everything under it is settled.
+     */
     static aggregate(kinds: Kind[]): BoxState {
-        if (kinds.every(k => k === 'approved' || k === 'pending')) return kinds.includes('pending') ? 'pending' : 'approved'
-        return kinds.length > 1 ? 'mixed' : kinds[0]
+        if (kinds.length === 1) return kinds[0]
+        if (kinds.includes('open')) return 'mixed'
+        const highest = kinds[kinds.length - 1]
+        // An approval on its way shows as such on the parent too, unless something done stands above it.
+        return highest === 'approved' && kinds.includes('pending') ? 'pending' : highest
     }
 
-    /** Whether every descendant is approved or pending: completing a parent collapses it. */
-    isComplete(node: OutlineNode) {
-        // A question is complete once an option is picked, whatever the others show.
-        const kinds = !node.children.length ? [] : this.isGroup(node) ? this.kindsOf(node) : node.children.flatMap(c => this.kindsOf(c))
-        return kinds.length > 0 && kinds.every(k => k === 'approved' || k === 'pending')
+    /** The kinds to list beside a parent's box: each one, when they differ by more than an approval being on its way. */
+    private static beside = (kinds: Kind[]) => (kinds.length > 1 && !kinds.every(k => k === 'approved' || k === 'pending') ? kinds : [])
+
+    /** The tooltip of a parent's box. */
+    private static rolledTitle(state: BoxState, kinds: Kind[]) {
+        const list = kinds.map(k => KIND_TITLE[k].toLowerCase()).join(', ')
+        if (state === 'mixed') return `Mixed: children are ${list} — click to approve all`
+        return Statuses.beside(kinds).length ? `Settled, at most ${KIND_TITLE[state].toLowerCase()}: children are ${list} — click to approve all` : KIND_TITLE[state]
+    }
+
+    /**
+     * Whether the user approved everything the node holds: a leaf by its own tick, a question by a picked option, a
+     * parent by every node under it (and by its own tick, when it is itself an action the agent carried out).
+     */
+    approvedUnder(node: OutlineNode): boolean {
+        if (!node.children.length) return this.effective(node)
+        if (this.isGroup(node)) return node.children.some(c => this.effective(c))
+        return node.children.every(c => this.approvedUnder(c)) && (!this.ran(node) || this.effective(node))
+    }
+
+    /**
+     * Whether nothing the node holds is open: every node under it is a claim, approved or done, and a question among
+     * them is answered or has a recommendation. Such a parent collapses. A question itself is settled once an option
+     * is picked, whatever its other options show.
+     */
+    isSettled(node: OutlineNode) {
+        if (!node.children.length) return false
+        if (this.isGroup(node)) return node.children.some(c => this.effective(c))
+        return !node.children.flatMap(c => this.kindsOf(c)).includes('open')
+    }
+
+    /**
+     * Whether a node starts open; the viewer's own choices override it. A parent starts collapsed once it is settled;
+     * a node without children, once the user approved it or the agent carried it out.
+     */
+    startsOpen(node: OutlineNode) {
+        return node.children.length ? !this.isSettled(node) : node.status !== 'approved' && !node.tags.includes('ran')
     }
 
     box(node: OutlineNode): Box {
@@ -116,9 +175,7 @@ export class Statuses {
         const kinds = this.kindsOf(node)
         if (node.children.length && !option) {
             const state = Statuses.aggregate(kinds)
-            const title =
-                state === 'mixed' ? `Mixed: children are ${kinds.map(k => KIND_TITLE[k].toLowerCase()).join(', ')} — click to approve all` : KIND_TITLE[state]
-            return { shape: 'box', state, extras: state === 'mixed' ? kinds : [], title, done: kinds.length === 1 && kinds[0] === 'approved' }
+            return { shape: 'box', state, extras: Statuses.beside(kinds), title: Statuses.rolledTitle(state, kinds), done: this.approvedUnder(node) && !kinds.includes('pending') }
         }
         const file = this.fileDone(node)
         const on = this.effective(node)
@@ -129,16 +186,19 @@ export class Statuses {
         const agent = node.status === 'claim' && !outvoted
         const checked = on || (agent && !(node.num in this.overrides))
         const fromFile: Kind = !checked ? 'open' : pendingOn ? 'pending' : agent && !pendingOff ? 'claim' : 'approved'
-        // Done until the user says otherwise: a yellow outlined tick, which a click turns into their approval.
-        const ranHere = this.ran(node) && (fromFile === 'open' || fromFile === 'claim') && !(node.num in this.overrides)
         // Recorded at once in server mode, and pending all the same until the agent acknowledges it.
         const waiting = this.unacked.has(node.num)
+        // An action carried out shows a yellow outlined tick, approved or not: done supersedes approved. A click on one
+        // not approved turns it into the user's approval, which is pending until the agent has it, and then done again.
+        const ranHere = this.ran(node) && !this.unread.has(node.num) && !(node.num in this.overrides) && !(waiting && fromFile === 'approved')
         const state: Kind = ranHere ? 'done' : waiting && fromFile === 'approved' ? 'pending' : fromFile
         const approve = this.mode === 'server' ? 'click to approve it' : 'click to queue your approval'
         const title = waiting
             ? `${option ? (on ? 'Chosen' : 'No longer chosen') : on ? 'User-approved' : 'Approval taken back'} — pending until the agent acknowledges it`
             : ranHere
-            ? `Done: the agent carried out this action — ${approve}`
+            ? fromFile === 'approved'
+                ? DONE_APPROVED
+                : `Done: the agent carried out this action — ${approve}`
             : option
             ? pendingOn
                 ? 'Pending choice — it stops fading once the agent records it'
@@ -161,7 +221,9 @@ export class Statuses {
         // An option's radio is its own pick; the kinds below it show as small marks beside it.
         const extras = node.children.length ? kinds.filter(k => k !== this.ownKind(node)) : []
         const parent = this.parent(node)
-        const done = (on && file && (!node.children.length || kinds.every(k => k === 'approved'))) || (option && !!parent && this.kindsOf(parent)[0] === 'approved')
+        // An answered question's options are settled, the unpicked ones too.
+        const answered = option && !!parent && parent.children.some(c => this.fileDone(c) && this.effective(c) && !this.unacked.has(c.num))
+        const done = (on && file && (!node.children.length || this.approvedUnder(node))) || answered
         return { shape: option ? 'radio' : 'box', state, extras, title, done, waiting }
     }
 
@@ -171,7 +233,6 @@ export class Statuses {
         const seen = new Set(topic.children.flatMap(c => this.kindsOf(c)))
         const kinds = KIND_ORDER.filter(k => seen.has(k))
         const state = Statuses.aggregate(kinds)
-        const title = state === 'mixed' ? `Mixed: ${kinds.map(k => KIND_TITLE[k].toLowerCase()).join(', ')} — click to approve all` : KIND_TITLE[state]
-        return { shape: 'box', state, extras: state === 'mixed' ? kinds : [], title, done: state === 'approved' }
+        return { shape: 'box', state, extras: Statuses.beside(kinds), title: Statuses.rolledTitle(state, kinds).replace('children are ', ''), done: topic.children.every(c => this.approvedUnder(c)) && !kinds.includes('pending') }
     }
 }

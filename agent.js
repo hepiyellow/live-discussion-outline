@@ -4,7 +4,7 @@ import path from 'node:path'
 import { extractHeaders, renderPlain } from './outline.js'
 import { OpError, allNodes, applyOperations, applyUserSet, findNode, mapText, nodeHash, normalize, parseOutline, queueText, readText, serializeOutline, waitingNotQueued } from './model.js'
 import { isSessionName } from './terminal.js'
-import { isSessionId } from './transcript.js'
+import { isSessionId, localCommandsSince } from './transcript.js'
 
 // The agent's side of an outline in server mode (docs/adr/0003): `start`, `read` and `change` as the MCP tools call
 // them, what the hooks ask for, and what the user does on the page. The server is the only writer of such an outline's
@@ -16,6 +16,8 @@ export const LEDGER_DIR = '.ledger'
 
 /** Most messages a ledger keeps. */
 const MAX_MESSAGES = 200
+/** Longest reply of a turn that is kept as a message. */
+const MAX_REPLY = 20_000
 /** Most user actions a ledger keeps for an agent that never asks. */
 const MAX_EVENTS = 200
 
@@ -93,6 +95,8 @@ export function markLedgered(root) {
  */
 export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onMessages = () => {}, typeInto, tickPause = TICK_PAUSE, onLedger = () => {} }) {
     const fileOf = (project, file) => path.join(root, project, `${file}.md`)
+    /** When this server started, as the transcripts write times. */
+    const started = new Date().toISOString()
     const ledgerOf = (project, file) => path.join(root, LEDGER_DIR, project, `${file}.json`)
 
     /**
@@ -101,7 +105,11 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
      * - unacked: node number → `{ kind, title, told }`, a tick of the user's the agent has not acknowledged: the page
      *   shows it as pending. `told` once the agent was told of it; the agent's next change then acknowledges it
      * - shown: node number → the hash of the node as the agent last saw it (model.js `nodeHash`)
-     * - messages: the agent's messages, for the inbox
+     * - messages: the messages for the inbox: the agent's own, and those the server takes from the session (a reply
+     *   of a turn that changed nothing in the outline, a local command's output)
+     * - changed: true once the agent has changed the outline in the turn it is in; the turn's reply is then not a message
+     * - held: the reply of a turn the turn-end hook held open, kept for when the turn does end
+     * - commandsAt: the time of the last local command looked at; those after it are still to become messages
      * - cwd: the working folder of the session that started it
      * - untitled: true while the outline has the placeholder title, which the agent may still replace
      */
@@ -272,7 +280,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         let file = base
         for (let i = 2; fs.existsSync(fileOf(folder, file)); i++) file = `${base}-${i}`
         writeModel(folder, file, { headers: { title: name || UNTITLED, resume, model: String(agentModel).slice(0, 100), terminal, session, mode: 'server' }, intro: '', nodes: [], queue: [] })
-        writeLedger(folder, file, { events: [], shown: {}, messages: [], cwd, untitled: !name })
+        writeLedger(folder, file, { events: [], shown: {}, messages: [], cwd, untitled: !name, commandsAt: new Date().toISOString() })
         return { project: folder, file }
     }
 
@@ -408,6 +416,8 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             for (const m of result.messages) ledger.messages.push({ id: `m:${crypto.randomUUID()}`, at: at_, num: m.num, text: m.text })
             ledger.messages = ledger.messages.slice(-MAX_MESSAGES)
         }
+        // The outline now holds something of this turn, so its reply is not also a message. An acknowledgement alone holds nothing.
+        if (ops.some(op => op?.op !== 'acknowledge')) ledger.changed = true
         // A change made after the agent was told of a tick acknowledges it, whatever the change holds. The ticks this
         // call's own result tells of are not acknowledged by it: the agent had not seen them when it made the call.
         const unacked = {}
@@ -446,15 +456,44 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         }
     }
 
-    /** The prompt hook: what the user did on the page since the agent was last told, or nothing. */
+    /**
+     * Puts the local commands the outline's session ran since they were last looked at into the ledger's messages:
+     * each one's name and output. Claude Code runs them without a turn of the agent, so only the transcript shows
+     * them. An outline that has not been looked at before takes those run since this server started: what ran before
+     * is not news. Returns whether it added any.
+     */
+    function takeCommands(at, ledger) {
+        const found = localCommandsSince(headersOf(at).session || '', ledger.commandsAt ?? started)
+        if (!found.length) return false
+        for (const c of found) ledger.messages.push({ id: c.id, at: c.at, num: '', text: c.command ? `\`${c.command}\`\n\n${c.output}` : c.output })
+        ledger.messages = ledger.messages.slice(-MAX_MESSAGES)
+        ledger.commandsAt = found.at(-1).at
+        return true
+    }
+
+    /** A local command has printed its output in an outline's session (the page following it saw so): it becomes a message. */
+    function commands(project, file) {
+        const at = { project, file }
+        if (headersOf(at).mode !== 'server') return
+        const ledger = readLedger(project, file)
+        if (!takeCommands(at, ledger)) return
+        writeLedger(project, file, ledger)
+        onMessages(project, file)
+    }
+
+    /** The prompt hook: what the user did on the page since the agent was last told, or nothing. A turn begins here. */
     function pending(where) {
         const at = locate(where)
         if (!at) return { text: '' }
         const ledger = readLedger(at.project, at.file)
+        const before = JSON.stringify(ledger)
+        const added = takeCommands(at, ledger)
+        ledger.changed = false
+        delete ledger.held
         const events = takeEvents(ledger)
-        if (!events) return { text: '' }
-        writeLedger(at.project, at.file, ledger)
-        return { text: `[outline "${headersOf(at).title || at.file}"] ${events}` }
+        if (JSON.stringify(ledger) !== before) writeLedger(at.project, at.file, ledger)
+        if (added) onMessages(at.project, at.file)
+        return { text: events ? `[outline "${headersOf(at).title || at.file}"] ${events}` : '' }
     }
 
     /**
@@ -525,19 +564,43 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
     const unacknowledged = (project, file) => Object.keys(readLedger(project, file).unacked)
 
     /**
-     * The turn-end hook: the ticks the agent was told of and has not acknowledged, for the hook to hold the turn open
-     * with; or nothing. Ticks the agent has not been told of yet are not its to acknowledge.
+     * The turn-end hook. It answers with the ticks the agent was told of and has not acknowledged, for the hook to hold
+     * the turn open with; or with nothing, and the turn ends. Ticks the agent has not been told of yet are not its to
+     * acknowledge. `active` says the turn already goes on because this hook held it open: it is not held twice.
+     *
+     * A turn that ends without having changed the outline leaves its `reply` (the agent's final text, which the hook
+     * hands over) in the inbox as a message: the user reads the page, not the chat, and would not see it otherwise.
+     * The reply of a turn that is held open is kept, and is the one that counts when the turn does end: what the
+     * agent says after acknowledging is not the answer.
      */
-    function ending(where) {
+    function ending({ active = false, reply = '', ...where }) {
         const at = locate(where)
         if (!at) return { text: '' }
-        const told = Object.entries(readLedger(at.project, at.file).unacked).filter(([, tick]) => tick.told)
-        if (!told.length) return { text: '' }
-        const refs = kind => told.filter(([, tick]) => tick.kind === kind).map(([num, tick]) => `${num} ${tick.title}`).join('; ')
-        const lines = [refs('approved') && `- approved ${refs('approved')}`, refs('picked') && `- picked ${refs('picked')}`, refs('reopened') && `- took their approval back from ${refs('reopened')}`].filter(Boolean)
-        return {
-            text: `[outline "${headersOf(at).title || at.file}"] You were told that on the page the user:\n${lines.join('\n')}\nYou have not acknowledged it, and the page shows these as pending until you do. Before you end the turn, take the step they open and make one change call; when nothing follows from them, make a change call that holds the acknowledge operation alone.`,
+        const ledger = readLedger(at.project, at.file)
+        const added = takeCommands(at, ledger)
+        const text = typeof reply === 'string' ? reply.trim().slice(0, MAX_REPLY) : ''
+        const told = active ? [] : Object.entries(ledger.unacked).filter(([, tick]) => tick.told)
+        if (told.length) {
+            if (text && !ledger.changed) ledger.held = text
+            writeLedger(at.project, at.file, ledger)
+            if (added) onMessages(at.project, at.file)
+            const refs = kind => told.filter(([, tick]) => tick.kind === kind).map(([num, tick]) => `${num} ${tick.title}`).join('; ')
+            const lines = [refs('approved') && `- approved ${refs('approved')}`, refs('picked') && `- picked ${refs('picked')}`, refs('reopened') && `- took their approval back from ${refs('reopened')}`].filter(Boolean)
+            return {
+                text: `[outline "${headersOf(at).title || at.file}"] You were told that on the page the user:\n${lines.join('\n')}\nYou have not acknowledged it, and the page shows these as pending until you do. Before you end the turn, take the step they open and make one change call; when nothing follows from them, make a change call that holds the acknowledge operation alone.`,
+            }
         }
+        const answer = ledger.held || text
+        const posted = !ledger.changed && !!answer
+        if (posted) {
+            ledger.messages.push({ id: `r:${crypto.randomUUID()}`, at: new Date().toISOString(), num: '', text: answer })
+            ledger.messages = ledger.messages.slice(-MAX_MESSAGES)
+        }
+        ledger.changed = false
+        delete ledger.held
+        writeLedger(at.project, at.file, ledger)
+        if (added || posted) onMessages(at.project, at.file)
+        return { text: '' }
     }
 
     /** Something the user did to the outline outside its nodes (renaming it), for the agent to be told. */
@@ -546,6 +609,18 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         if (event.kind === 'renamed') ledger.untitled = false
         ledger.events.push({ at: Date.now(), num: '', ...event })
         writeLedger(project, file, ledger)
+    }
+
+    /** The outline of a session, as the hooks find it: `{ project, file }`, or undefined when it has none in server mode. */
+    const outlineOf = ({ session = '', cwd = '' }) => locate({ session: isSessionId(session) ? session : '', cwd })
+
+    /** A message the server leaves in an outline's inbox by itself. */
+    function note(project, file, text) {
+        const ledger = readLedger(project, file)
+        ledger.messages.push({ id: `n:${crypto.randomUUID()}`, at: new Date().toISOString(), num: '', text })
+        ledger.messages = ledger.messages.slice(-MAX_MESSAGES)
+        writeLedger(project, file, ledger)
+        onMessages(project, file)
     }
 
     /** The agent's messages of an outline, as the page's inbox reads them: `{ id, at, num, html }`. */
@@ -561,5 +636,5 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         }
     }
 
-    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, messages, unacknowledged }
+    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, messages, unacknowledged, commands, outlineOf, note }
 }

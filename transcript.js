@@ -176,6 +176,182 @@ export function streamActivity(req, res, id) {
     }, () => {})
 }
 
+/**
+ * The model and effort the agent answered with in this entry: `{ model, effort, at }`, `at` being when it answered.
+ * Claude Code writes both on each of the agent's replies. Undefined for entries that do not say (a reply Claude Code
+ * made up itself, with the model `<synthetic>`, is one).
+ */
+function usingIn(e) {
+    if (e.type !== 'assistant' || e.isSidechain) return undefined
+    const model = e.message?.model
+    if (typeof model !== 'string' || !model || model.startsWith('<')) return undefined
+    return { model, effort: typeof e.effort === 'string' ? e.effort : '', at: e.timestamp || '' }
+}
+
+// The colors and cursor moves a terminal's output is drawn with.
+const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g
+/** Most of a transcript's end that is read to find the local commands run lately. */
+const TAIL_BYTES = 1_000_000
+/** Longest output of a local command that is kept. */
+const MAX_OUTPUT = 20_000
+
+const tagged = (text, tag) => text.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`))?.[1]
+
+/** The text of a log entry that may be part of a local command: Claude Code writes those as `user` entries or as `system` ones. */
+function commandText(e) {
+    if (e.isSidechain) return ''
+    if (e.type === 'system' && e.subtype === 'local_command') return typeof e.content === 'string' ? e.content : ''
+    if (e.type !== 'user') return ''
+    const content = e.message?.content
+    return typeof content === 'string' ? content : (content || []).find(b => b.type === 'text')?.text || ''
+}
+
+const isCommandOutput = e => commandText(e).startsWith('<local-command-stdout>')
+
+/**
+ * The local commands with output in these log entries, in order: `{ id, at, command, output }`. A local command is one
+ * Claude Code runs itself, without a turn of the agent (`/context`, `/model`): the log holds its name and arguments,
+ * then its output. Where Claude Code also wrote the output as markdown for the agent, in the entry after it (as
+ * `/context` does), that is the output: the terminal's own is drawn with colors and block characters.
+ */
+export function localCommandsIn(entries) {
+    const out = []
+    let command = ''
+    entries.forEach((e, i) => {
+        const text = commandText(e)
+        if (!text) return
+        if (text.startsWith('<command-')) {
+            const name = tagged(text, 'command-name')
+            if (name !== undefined) command = `${name} ${tagged(text, 'command-args') || ''}`.trim()
+            return
+        }
+        if (!text.startsWith('<local-command-stdout>')) {
+            // A prompt of the user's: whatever was named before it was not a local command.
+            if (e.type === 'user' && !e.isMeta && !text.startsWith('<')) command = ''
+            return
+        }
+        const next = entries[i + 1]
+        const forAgent = next?.type === 'user' && next.isMeta && next.timestamp === e.timestamp ? commandText(next) : ''
+        const output = (forAgent && !forAgent.startsWith('<') ? forAgent : (tagged(text, 'local-command-stdout') || '').replace(ANSI_RE, '')).trim()
+        if (output) out.push({ id: `cmd:${e.uuid || e.timestamp}`, at: e.timestamp || '', command, output: clip(output, MAX_OUTPUT) })
+        command = ''
+    })
+    return out
+}
+
+/** The local commands with output a session ran after `since` (an ISO time), from the end of its transcript; none without a transcript. */
+export function localCommandsSince(id, since) {
+    const file = isSessionId(id) ? findTranscriptFile(id) : null
+    if (!file) return []
+    let text
+    try {
+        const size = fs.statSync(file).size
+        const from = Math.max(0, size - TAIL_BYTES)
+        const buf = Buffer.alloc(size - from)
+        const fd = fs.openSync(file, 'r')
+        fs.readSync(fd, buf, 0, buf.length, from)
+        fs.closeSync(fd)
+        // Read from the middle of the file, the first line is the rest of one.
+        text = from ? buf.toString('utf8').replace(/^[^\n]*\n/, '') : buf.toString('utf8')
+    } catch {
+        return []
+    }
+    const entries = []
+    for (const line of text.split('\n')) {
+        if (!line) continue
+        try {
+            entries.push(JSON.parse(line))
+        } catch {}
+    }
+    return localCommandsIn(entries).filter(c => c.at > since)
+}
+
+/** A value as text that does not depend on the order its keys were written in. */
+const stable = value =>
+    JSON.stringify(value, (_, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v))
+
+/**
+ * Watches a session's transcript for the outcome of a tool call that waits for the user's permission: the call of
+ * `tool` with exactly `input` that has no result yet. `onSettled()` is called once, when its result is written, which
+ * Claude Code does as soon as the permission is answered, wherever that was (allowed and run, or denied). The call is
+ * looked for at the transcript's end, and in what is written after: Claude Code may write it a moment late. Returns a
+ * function that stops watching; without a transcript it watches nothing.
+ */
+export function watchToolCall(id, tool, input, onSettled) {
+    const file = isSessionId(id || '') ? findTranscriptFile(id) : null
+    if (!file) return () => {}
+    const wanted = stable(input)
+    const open = new Set()
+    let offset = 0
+    let rest = ''
+    let decoder = new StringDecoder('utf8')
+    let stopped = false
+    let timer
+    let watcher
+    const stop = () => {
+        stopped = true
+        watcher?.close()
+        clearTimeout(timer)
+    }
+    /** Takes entries in order, and says whether a call that was waiting got its result among them. */
+    const take = entries => {
+        let settled = false
+        for (const e of entries) {
+            if (e.isSidechain) continue
+            const blocks = Array.isArray(e.message?.content) ? e.message.content : []
+            if (e.type === 'assistant') {
+                for (const b of blocks) if (b.type === 'tool_use' && b.name === tool && stable(b.input) === wanted) open.add(b.id)
+            } else if (e.type === 'user') {
+                for (const b of blocks) if (b.type === 'tool_result' && open.delete(b.tool_use_id)) settled = true
+            }
+        }
+        return settled
+    }
+    const pump = first => {
+        if (stopped) return
+        let size
+        try {
+            size = fs.statSync(file).size
+        } catch {
+            return
+        }
+        if (size <= offset) return
+        const buf = Buffer.alloc(size - offset)
+        const fd = fs.openSync(file, 'r')
+        fs.readSync(fd, buf, 0, buf.length, offset)
+        fs.closeSync(fd)
+        const lines = (rest + decoder.write(buf)).split('\n')
+        // Read from the middle of the file, the first line is the rest of one.
+        if (first && offset > 0) lines.shift()
+        offset = size
+        rest = lines.pop()
+        const entries = []
+        for (const line of lines) {
+            if (!line) continue
+            try {
+                entries.push(JSON.parse(line))
+            } catch {}
+        }
+        const settled = take(entries)
+        // Results found at the first look belong to earlier calls of the same command: the one that waits has none yet.
+        if (settled && !first) {
+            stop()
+            onSettled()
+        }
+    }
+    try {
+        offset = Math.max(0, fs.statSync(file).size - TAIL_BYTES)
+    } catch {
+        return () => {}
+    }
+    pump(true)
+    watcher = fs.watch(file, () => {
+        clearTimeout(timer)
+        timer = setTimeout(() => pump(false), 100)
+    })
+    return stop
+}
+
 const MESSAGE_RE = /^@message\b\s*(?:(\d+(?:\.\d+)*)\.?(?=\s|$))?\s*([\s\S]*)$/i
 
 /** The agent's `@message` paragraphs in one log entry: `{ id, at, num, html }`, num being the bullet it names (or ''). */
@@ -206,7 +382,9 @@ export function streamMessages(req, res, id) {
 /**
  * Everything an outline's stream carries about its linked session, from one pass over the transcript, so the page needs
  * one connection, not one per kind: `send('messages', [...])` (the agent's @message notes: the last 100 so far, then
- * each new one), `send('activity', 'busy' | 'idle')` and, when `transcript` is asked for, `send('transcript', [...])`
+ * each new one), `send('activity', 'busy' | 'idle')`, `send('using', { model, effort, at })` (what the agent last
+ * answered with, whenever it answers), `send('commands', null)` (a local command has printed its output: the caller
+ * may want to look for it) and, when `transcript` is asked for, `send('transcript', [...])`
  * (typed entries). `send('session', id)` comes first, and again if the transcript is rewritten: what was sent before it
  * no longer holds. Returns a function that stops following, or null when there is no transcript.
  */
@@ -227,6 +405,9 @@ export function followSession(id, send, { transcript = false } = {}) {
             const next = busy ? 'busy' : 'idle'
             if (next !== state) send('activity', next)
             state = next
+            const using = entries.map(usingIn).findLast(Boolean)
+            if (using) send('using', using)
+            if (entries.some(isCommandOutput)) send('commands', null)
             if (!transcript) return
             const items = entries.flatMap(transcriptEntries)
             if (items.length) send('transcript', items)

@@ -11,11 +11,17 @@ Mirror this conversation into an outline. The outline server owns the outline: y
 
 ## The user reads the outline, not the chat
 
-**The user does not see the transcript at all.** They read only the outline page, and they answer there (approvals, picks, Run, and what they type on the page). Everything you write in chat, and every tool result, is invisible to them.
+**The user does not see the transcript.** They read only the outline page, and they answer there (approvals, picks, Run, and what they type on the page). Your tool results are invisible to them, and so is what you write in chat, with one exception: the server puts the final reply of a turn in the page's inbox when that turn changed nothing in the outline.
 
-- **Put every answer, explanation, finding, question and recommendation in the outline.** If it is only in chat, the user never gets it.
-- **Spend no tokens on prose in chat.** Do not write the detailed answer, a summary of the change, or a recap of what you found. After your `change` call, end the turn with at most one short line (for example "Outline updated: 2.3, 4"). Nothing in the chat reply is needed for the user to follow.
-- **Spend the effort on the nodes instead.** Make each node's text complete and self-sufficient: the user will read nothing else.
+So every turn takes one of two shapes:
+
+- **A turn that changes the outline** carries the whole answer in its nodes. Put every explanation, finding, question and recommendation there, and end the turn with at most one short line in chat (for example "Outline updated: 2.3, 4"). That line is not shown to the user, so spend no tokens on prose there: no detailed answer, no summary of the change, no recap.
+- **A turn that changes nothing in the outline** answers in its final chat reply, which the user reads in the inbox. Use it for what belongs to no node: a question in passing, a status, a quick fact. Write that reply to stand alone, in markdown, and keep it short. Do not also post it as a message: it would show twice.
+
+Choose by where the answer belongs. What the user may decide, approve or come back to is a node. What is said once and done with is a reply. Never split one answer between the two: when the outline changes, the reply is not shown, so anything left only there is lost.
+
+- **Spend the effort on the nodes.** Make each node's text complete and self-sufficient: for what it covers, the user reads nothing else.
+- **Local commands reach the inbox without you.** The output of a command Claude Code runs itself, such as `/context` or `/model`, is put there by the server. Do not repeat it.
 
 ## Workflow
 
@@ -74,9 +80,10 @@ Mirror this conversation into an outline. The outline server owns the outline: y
 
 - **The queue is what you advise the user to handle next**, most important first, up to about seven items: open questions, then actions to run, then approvals, then reading. Replace it with a `queue` operation whenever it changes. The server works out each item's kind from its node and drops what the user handled, so you only choose and order. Mark an item `read` when nothing is to be decided or approved.
 - **Recommend before you queue a question.** A question without a recommendation tells the user the thinking is theirs. Keep that for what you have no grounds to recommend on, or what only they can answer.
-- **A message is for what the outline does not hold**: a status, a warning. One or two sentences, with the node it relates to when there is one. The outcome of something you did belongs in its node (see Requests to act), not in a message.
+- **A message is for what the outline does not hold**: a status, a warning. One or two sentences, with the node it relates to when there is one. Post one with the `message` operation when it has to name a node, or when the turn also changes the outline; otherwise the turn's reply is the message (see above). The outcome of something you did belongs in its node (see Requests to act), not in a message.
 
 ## Chat habits
 
-- **Keep the chat reply to one short line, or nothing.** The user does not read it, so do not explain, recap or repeat the outline there. The outline holds the whole answer.
+- **After a change to the outline, keep the chat reply to one short line, or nothing.** The user does not see it, so do not explain, recap or repeat the outline there. The outline holds the whole answer.
+- **Without a change to the outline, the chat reply is the answer**, and the user reads it in the inbox: write it for them, complete and short.
 - **Refer to nodes by their full-path numbers** (`2.1`, `2.2`, never a bare `1`, `2` under a parent) in the short line and in node text, so a reference means the same node everywhere. When the server renumbers nodes (after a move or a removal), use the new numbers from then on.

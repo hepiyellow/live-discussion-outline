@@ -50,6 +50,13 @@ describe('approvals, picks, runs and undo in server mode', () => {
     const node = num => page.locator(`.outline-tab [data-num="${num}"]`)
     const box = num => ({ click: () => click(node(num).locator('> .ck')), getAttribute: name => node(num).locator('> .ck').getAttribute(name) })
     const state = num => box(num).getAttribute('data-state')
+    /** Waits until a topic or parent shows open or collapsed. */
+    const expanded = (num, want) => page.waitForFunction(([n, w]) => document.querySelector(`.outline-tab [data-num="${n}"]`).getAttribute('aria-expanded') === w, [num, String(want)])
+    /** Opens a topic or parent the page shows collapsed (one whose nodes are all settled starts that way). */
+    const expand = async num => {
+        if ((await node(num).getAttribute('aria-expanded')) === 'false') await node(num).locator('.node-title').click()
+        await expanded(num, true)
+    }
     /** Waits until a node's box shows `want`. */
     const shows = (num, want) => until(async () => (await state(num)) === want, { what: `${num} to show ${want}` })
     const file = () => fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8')
@@ -110,6 +117,11 @@ describe('approvals, picks, runs and undo in server mode', () => {
         // Once the agent finishes it, the run request is forgotten.
         await until(async () => '2.4' in (await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read, { what: 'the first visit to be recorded' })
         fs.writeFileSync(path.join(server.dir, 'demo', 'sample.md'), file().replace('## 2.4 @action Measure', '## 2.4 @action-done Measure'))
+        // Nothing under the topic is open any more: it collapses as the change arrives, showing the highest of its
+        // nodes' ticks, done.
+        await expanded('2', false)
+        assert.equal(await state('2'), 'done')
+        await expand('2')
         // The node has changed: its triangle goes, and opening the change turns its Action tag into Done.
         await node('2.4').locator('> .env').waitFor()
         assert.equal(await node('2.4').locator('.play').count(), 0)
@@ -147,16 +159,29 @@ describe('approvals, picks, runs and undo in server mode', () => {
         assert.equal(heading('3'), '# 3. Invalidation')
     })
 
-    test('completing a parent collapses it, and undo opens it again', async () => {
-        await box('4.1').click()
-        await box('4.2').click()
-        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="4"]').getAttribute('aria-expanded') === 'false')
+    test('a tick that leaves nothing open in a parent collapses it, and undo opens it again', async () => {
+        // 2.4 is the one open node of its topic: the rest are claims, an answered question and a done action.
+        assert.equal(await state('2'), 'mixed')
+        await box('2.4').click()
+        await expanded('2', false)
+        // Settled, it shows the highest of its nodes' ticks: the done action's.
+        assert.equal(await state('2'), 'done')
         await page.keyboard.press('Control+z')
-        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="4"]').getAttribute('aria-expanded') === 'true')
+        await expanded('2', true)
+        await shows('2', 'mixed')
+    })
+
+    test('a parent whose nodes are all claims starts collapsed, with the claim tick; a click on it approves them', async () => {
+        assert.equal(await node('4').getAttribute('aria-expanded'), 'false')
+        assert.equal(await state('4'), 'claim')
+        await box('4').click()
+        await until(async () => heading('4.2') === '## 4.2 @user-approved @agent-claim Start with internal tenants', { what: 'the claims of 4 to be approved' })
+        assert.equal(heading('4.1'), '## 4.1 @user-approved @agent-claim Behind a feature flag per tenant')
     })
 
     test('an approval is pending, fading out and in, until the agent acknowledges it; then it is a still, green outlined tick', async () => {
         const drawn = () => node('4.1').locator('> .ck').evaluate(e => (({ animationName, backgroundColor }) => ({ animationName, backgroundColor }))(getComputedStyle(e)))
+        await expand('4')
         await box('4.1').click()
         // Recorded at once, and pending on the page all the same.
         await shows('4.1', 'pending')
@@ -232,11 +257,85 @@ describe('approvals, picks, runs and undo in server mode', () => {
         assert.equal(await node('2.1.2').isVisible(), true)
     })
 
-    test('a done action shows a yellow outlined tick, which a click turns into an approval', async () => {
+    test('a done action shows a yellow outlined tick, which a click turns into an approval; approved, it is yellow still', async () => {
+        const below = () => node('2').locator('.extras .ck').evaluateAll(els => els.map(e => e.dataset.state))
         assert.equal(await state('2.5'), 'done')
+        assert.equal((await below()).includes('done'), true)
         await box('2.5').click()
         await shows('2.5', 'pending')
         assert.equal(heading('2.5'), '## 2.5 @user-approved @action-done Add cache metrics to the dashboard')
+        // Once the agent has the approval, done supersedes approved on the node's own box, and its tooltip says both.
+        assert.equal((await change([{ op: 'acknowledge' }])).ok, true)
+        assert.equal((await change([{ op: 'acknowledge' }])).ok, true)
+        await shows('2.5', 'done')
+        assert.equal(await box('2.5').getAttribute('title'), 'Done: the agent carried out this action, and you approved it')
+        // Its topic lists done among the kinds under it all the same: done is the highest of them.
+        assert.equal((await below()).includes('done'), true)
+        // A click takes the approval back, as on any approved node.
+        await box('2.5').click()
+        await until(async () => heading('2.5') === '## 2.5 @action-done Add cache metrics to the dashboard', { what: 'the approval of 2.5 to be taken back' })
+    })
+
+    test('a local command run in the session shows in the inbox as it happens, with its name and output', async () => {
+        const transcript = path.join(server.home, '.claude', 'projects', '-home-dev-search', `${SESSION}.jsonl`)
+        const original = fs.readFileSync(transcript, 'utf8')
+        try {
+            // Claude Code runs it without a turn of the agent: only the transcript shows it.
+            const at = new Date().toISOString()
+            const entries = [
+                { type: 'system', subtype: 'local_command', uuid: 'c-1', timestamp: at, content: '<command-name>/context</command-name>\n<command-message>context</command-message>\n<command-args></command-args>' },
+                { type: 'system', subtype: 'local_command', uuid: 'c-2', timestamp: at, content: '<local-command-stdout>\u001b[1mContext Usage\u001b[22m ⛁ ⛁</local-command-stdout>' },
+                { type: 'user', isMeta: true, uuid: 'c-3', timestamp: at, message: { role: 'user', content: '## Context Usage\n\n**Tokens:** 12k / 1m' } },
+            ]
+            fs.appendFileSync(transcript, entries.map(e => `${JSON.stringify({ sessionId: SESSION, ...e })}\n`).join(''))
+            await page.getByRole('button', { name: 'Messages from the agent' }).click()
+            const message = page.locator('[data-read], [data-message], li, article').filter({ hasText: '12k / 1m' }).first()
+            await message.waitFor()
+            assert.match(await message.textContent(), /\/context/)
+            assert.match(await message.textContent(), /Context Usage/)
+        } finally {
+            fs.writeFileSync(transcript, original)
+        }
+    })
+
+    test('a permission prompt of the session pops up: Allow answers it, closing it leaves it to the terminal', async () => {
+        /** The session's PermissionRequest hook asks the server, and waits for the answer. */
+        const ask = input =>
+            fetch(`${server.url}/api/agent/permission`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-outline-agent': '1' }, body: JSON.stringify({ session: SESSION, tool: 'Bash', input, mode: 'acceptEdits' }) }).then(r => r.json())
+        const popup = page.locator('[data-permission]')
+        const first = ask({ command: 'npm run deploy', description: 'Deploy to staging' })
+        await popup.waitFor()
+        assert.match(await popup.textContent(), /Allow Bash\?/)
+        assert.match(await popup.textContent(), /npm run deploy/)
+        assert.match(await popup.locator('[data-permission-input]').textContent(), /"description": "Deploy to staging"/)
+        await popup.getByRole('button', { name: 'Allow' }).click()
+        assert.deepEqual(await first, { ok: true, decision: 'allow', message: '' })
+        await popup.waitFor({ state: 'detached' })
+
+        // Closed without an answer, the prompt is the terminal's, and the inbox says so.
+        const second = ask({ command: 'rm -rf build' })
+        await popup.waitFor()
+        await page.keyboard.press('Escape')
+        assert.deepEqual(await second, { ok: true, decision: '', message: '' })
+        await popup.waitFor({ state: 'detached' })
+        await page.getByRole('button', { name: 'Messages from the agent' }).click()
+        await page.getByText('A permission prompt is waiting in the session').first().waitFor()
+
+        // Answered in the terminal, it goes by itself: the transcript gets the tool call's result.
+        const transcript = path.join(server.home, '.claude', 'projects', '-home-dev-search', `${SESSION}.jsonl`)
+        const original = fs.readFileSync(transcript, 'utf8')
+        try {
+            await page.keyboard.press('Escape')
+            const input = { command: 'git push' }
+            fs.appendFileSync(transcript, `${JSON.stringify({ sessionId: SESSION, type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_push', name: 'Bash', input }] } })}\n`)
+            const third = ask(input)
+            await popup.waitFor()
+            fs.appendFileSync(transcript, `${JSON.stringify({ sessionId: SESSION, type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_push', content: 'pushed' }] } })}\n`)
+            assert.deepEqual(await third, { ok: true, decision: '', message: '' })
+            await popup.waitFor({ state: 'detached' })
+        } finally {
+            fs.writeFileSync(transcript, original)
+        }
     })
 
     test('queue items hide once handled here, and open their node', async () => {
@@ -261,6 +360,17 @@ describe('approvals, picks, runs and undo in server mode', () => {
         await page.locator('[data-queue="3.1.1.1.1.1"]').click()
         await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="3.1.1.1.1.1"]').hasAttribute('data-qmark'))
         assert.equal(await node('3.1.1.1.1.1').isVisible(), true)
+        // A read item has nothing to tick: a click on the eye beside its node marks it read, and it leaves the queue.
+        assert.match(await node('3.1.1.1.1.1').locator('> .qicon').getAttribute('title'), /click to mark it read/)
+        await node('3.1.1.1.1.1').locator('> .qicon').click()
+        await page.locator('[data-queue="3.1.1.1.1.1"]').waitFor({ state: 'detached' })
+        assert.equal(await node('3.1.1.1.1.1').locator('> .qicon').count(), 0)
+        // It stays read across a reload.
+        await page.reload()
+        await page.locator('[data-topbar] [data-title]').waitFor()
+        await page.locator('.outline-tab').waitFor()
+        await page.waitForTimeout(400)
+        assert.equal(await page.locator('[data-queue="3.1.1.1.1.1"]').count(), 0)
     })
 })
 

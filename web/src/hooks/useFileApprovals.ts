@@ -91,8 +91,8 @@ export function useFileApprovals(outline: Outline, viewer: ViewerState, patch: (
                 .filter(n => n.children.length)
             const was = new Statuses(outline.nodes, viewer.overrides)
             const now = new Statuses(outline.nodes, draft.overrides)
-            const isOpen = isOpenIn(viewer.open)
-            const done = chain.filter(n => !was.isComplete(n) && now.isComplete(n) && isOpen(n))
+            const isOpen = isOpenIn(viewer.open, was)
+            const done = chain.filter(n => !was.isSettled(n) && now.isSettled(n) && isOpen(n))
             if (step) {
                 step.collapsed = done.map(n => n.num)
                 p.undo = [...viewer.undo, step].slice(-UNDO_STEPS)

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyPatch, emptyState } from '@/lib/viewerState'
-import type { Message, Outline, OutlineList, StatePatch, TranscriptEntry, ViewerState } from '@/types'
-import type { SessionFeed } from './useSession'
+import type { Message, Outline, OutlineList, PermissionPrompt, StatePatch, TranscriptEntry, ViewerState } from '@/types'
+import type { SessionFeed, Using } from './useSession'
 import { addEntries, emptyTranscript, type Transcript } from './useTranscript'
 
 export type OutlineState = { status: 'loading' } | { status: 'ready'; outline: Outline } | { status: 'missing' } | { status: 'gone'; outline: Outline }
@@ -30,6 +30,9 @@ export function useOutline(project: string, file: string) {
     // The agent's `message` operations, kept by the server: the whole list each time.
     const [notes, setNotes] = useState<Message[]>([])
     const [busy, setBusy] = useState(false)
+    const [using, setUsing] = useState<Using>()
+    // The session's permission prompts that wait for the user: the whole list each time.
+    const [permissions, setPermissions] = useState<PermissionPrompt[]>([])
     const [transcript, setTranscript] = useState<Transcript>(emptyTranscript)
     const [outlines, setOutlines] = useState<OutlineList | null>(null)
     // The transcript is long, so the stream carries it only once the Transcript tab has been opened.
@@ -64,6 +67,7 @@ export function useOutline(project: string, file: string) {
         es.addEventListener('session', e => {
             const id = JSON.parse((e as MessageEvent).data) as string
             if (id !== session.current) setBusy(false)
+            setUsing(undefined)
             session.current = id
             custom.current = false
             setMessages([])
@@ -71,7 +75,9 @@ export function useOutline(project: string, file: string) {
         })
         es.addEventListener('messages', e => setMessages(m => [...m, ...(JSON.parse((e as MessageEvent).data) as Message[])]))
         es.addEventListener('notes', e => setNotes(JSON.parse((e as MessageEvent).data) as Message[]))
+        es.addEventListener('permissions', e => setPermissions(JSON.parse((e as MessageEvent).data) as PermissionPrompt[]))
         es.addEventListener('activity', e => setBusy(JSON.parse((e as MessageEvent).data) === 'busy'))
+        es.addEventListener('using', e => setUsing(JSON.parse((e as MessageEvent).data) as Using))
         es.addEventListener('transcript', e => setTranscript(t => addEntries(t, JSON.parse((e as MessageEvent).data) as TranscriptEntry[], custom)))
         es.addEventListener('transcript-missing', () => setTranscript({ ...emptyTranscript, status: 'missing' }))
         // A stream that never opened (no such outline) is closed for good; a dropped one reconnects by itself.
@@ -110,7 +116,7 @@ export function useOutline(project: string, file: string) {
     }, [])
     // One inbox: both kinds of message, oldest first.
     const inbox = useMemo(() => (notes.length ? [...notes, ...messages].sort((a, b) => a.at.localeCompare(b.at)) : messages), [notes, messages])
-    const feed = useMemo<SessionFeed>(() => ({ messages: inbox, busy, working }), [inbox, busy, working])
+    const feed = useMemo<SessionFeed>(() => ({ messages: inbox, busy, working, using }), [inbox, busy, working, using])
 
-    return { state, viewer, stateLoaded, patch, session: feed, transcript, followTranscript, outlines }
+    return { state, viewer, stateLoaded, patch, session: feed, transcript, followTranscript, outlines, permissions }
 }

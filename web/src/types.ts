@@ -145,6 +145,22 @@ export interface Message {
     html: string
 }
 
+/**
+ * A permission prompt of the outline's session that waits for the user (permission.js): Claude Code is about to use
+ * `tool` and asks first. `summary` is what it asks in a line (the command, the file), `input` the tool's whole input
+ * as JSON text.
+ */
+export interface PermissionPrompt {
+    id: string
+    /** ISO time. */
+    at: string
+    tool: string
+    summary: string
+    input: string
+    /** The session's permission mode when it asked. */
+    mode: string
+}
+
 /** A command the session can run, from GET /api/commands (commands.js). */
 export interface SlashCommand {
     name: string

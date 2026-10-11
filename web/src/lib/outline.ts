@@ -34,9 +34,6 @@ export function currentPath(nodes: OutlineNode[]): Set<string> {
 /** Whether a node has nodes under it, and so can collapse. */
 export const isParent = (node: OutlineNode) => node.children.length > 0
 
-/** A node starts open unless the user approved it or the agent carried it out; the viewer's own choices override that. */
-export const startsOpen = (node: OutlineNode) => node.status !== 'approved' && !node.tags.includes('ran')
-
 /**
  * What `runs` keeps for an action the viewer asked to run: 1, or for an action that failed before (its Failed tag
  * stays until the agent finishes it again) a mark of what the node showed then, so that a new outcome ends the run.

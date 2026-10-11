@@ -1,5 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { currentPath, startsOpen } from '@/lib/outline'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { allNodes, currentPath } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
@@ -7,10 +7,13 @@ import { NodeHistory } from './NodeHistory'
 import { OutlineCtx, Topic, type OutlineContext } from './NodeView'
 import { waiting } from './queue'
 
-/** Which topics and parents the viewer opened or closed; the rest follow `startsOpen`. */
+/** Which topics and parents the viewer opened or closed; the rest follow the statuses' `startsOpen`. */
 export type OpenNodes = Record<string, boolean>
 
-export const isOpenIn = (open: OpenNodes) => (node: OutlineNode) => (node.num in open ? open[node.num] : startsOpen(node))
+/** How long a parent the viewer had opened stays open after it becomes settled, in milliseconds. */
+const SETTLE_PAUSE = 700
+
+export const isOpenIn = (open: OpenNodes, statuses: Statuses) => (node: OutlineNode) => (node.num in open ? open[node.num] : statuses.startsOpen(node))
 
 /** The Outline tab: the title, any text before the first topic, then the topics with their nodes. */
 /** The user's actions on nodes, from useApprovals. */
@@ -37,17 +40,17 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     const root = useRef<HTMLDivElement>(null)
     const [historyOf, setHistoryOf] = useState<OutlineNode | null>(null)
     const ctx = useMemo<OutlineContext>(() => {
-        const isOpen = isOpenIn(viewer.open)
         // A change being opened counts as read: its box turns done as the animation starts.
         const unopened = new Set([...actions.unread.keys()].filter(num => !actions.opening.has(num)))
         const statuses = new Statuses(outline.nodes, viewer.overrides, outline.mode, new Set(outline.unacked), unopened)
+        const isOpen = isOpenIn(viewer.open, statuses)
         return {
             ...actions,
             onHistory: setHistoryOf,
             statuses,
             // The first item about a node, as the queue column lists them.
             queued: new Map(
-                waiting(outline.queue, statuses, viewer.runs)
+                waiting(outline.queue, statuses, viewer.runs, viewer.seen)
                     .filter(q => !q.missing)
                     .reverse()
                     .map(q => [q.item.num, q.item]),
@@ -57,7 +60,30 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
             current: currentPath(outline.nodes),
             runs: viewer.runs,
         }
-    }, [outline, viewer.open, viewer.overrides, viewer.runs, actions, onToggle])
+    }, [outline, viewer.open, viewer.overrides, viewer.runs, viewer.seen, actions, onToggle])
+
+    // A parent that becomes settled collapses, also one the viewer had opened themselves: such a parent would stay
+    // open by their choice, so it is closed here. After a pause, since a click that settles a parent closes it itself,
+    // with its own animation.
+    const settled = useRef<Set<string> | null>(null)
+    const latest = useRef({ outline, open: viewer.open, statuses: ctx.statuses, onToggle })
+    latest.current = { outline, open: viewer.open, statuses: ctx.statuses, onToggle }
+    useEffect(() => {
+        const now = new Set(allNodes(outline.nodes).filter(n => ctx.statuses.isSettled(n)).map(n => n.num))
+        const before = settled.current
+        settled.current = now
+        // On the first pass nothing became settled: it is how the outline was found.
+        if (!before) return
+        const turned = [...now].filter(num => !before.has(num) && viewer.open[num])
+        if (!turned.length) return
+        const timer = setTimeout(() => {
+            const { outline, open, statuses, onToggle } = latest.current
+            for (const n of allNodes(outline.nodes)) if (turned.includes(n.num) && open[n.num] && statuses.isSettled(n)) onToggle(n, false)
+        }, SETTLE_PAUSE)
+        return () => clearTimeout(timer)
+        // Only a change of what is settled matters: the viewer opening a node is not one.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [outline, ctx.statuses])
 
     // The header stack follows scrolling, resizing, and every change of the content.
     useLayoutEffect(() => {

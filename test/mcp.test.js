@@ -209,6 +209,70 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.match(notes[0].html, /The load test passed/)
     })
 
+    test('the turn-end hook hands over the turn\'s reply, which shows in the inbox when the turn changed nothing in the outline', async () => {
+        const notes = async () => {
+            const stream = await eventStream(`${server.url}/api/outline/shop/${path.basename(file, '.md')}/events`)
+            const list = JSON.parse((await stream.takeOf('notes')).data)
+            stream.close()
+            return list.map(m => m.html.replace(/<[^>]+>/g, '').trim())
+        }
+        const before = (await notes()).length
+        await runHook(server, { hook_event_name: 'UserPromptSubmit', prompt: 'where do we limit?' })
+        assert.equal(await runHook(server, { hook_event_name: 'Stop', last_assistant_message: 'At the gateway: it sees every request.' }), '')
+        assert.deepEqual((await notes()).slice(before), ['At the gateway: it sees every request.'])
+        // A turn that changed the outline says so there: its reply is not a message.
+        await runHook(server, { hook_event_name: 'UserPromptSubmit', prompt: 'note that' })
+        const added = await mcp.tool('change', { ops: [{ op: 'add', num: '2', title: 'Noted in passing' }] })
+        assert.equal(added.error, false, added.text)
+        assert.equal(await runHook(server, { hook_event_name: 'Stop', last_assistant_message: 'Outline updated: 2.' }), '')
+        assert.equal((await notes()).length, before + 1)
+        const removed = await mcp.tool('change', { ops: [{ op: 'remove', num: '2' }] })
+        assert.equal(removed.error, false, removed.text)
+    })
+
+    test('a permission prompt of the session shows on the page, and the answer there is the hook\'s', async () => {
+        const stream = await eventStream(`${server.url}/api/outline/shop/${path.basename(file, '.md')}/events`)
+        const answer = body => page(`/api/outline/shop/${path.basename(file, '.md')}/permission`, body)
+        /** Runs the hook for a prompt, and waits until the page is shown it. */
+        const ask = async () => {
+            const hook = runHook(server, { hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test', description: 'Run the tests' }, permission_mode: 'acceptEdits' })
+            let prompts = []
+            while (!prompts.length) prompts = JSON.parse((await stream.takeOf('permissions')).data)
+            return { hook, prompt: prompts[0] }
+        }
+        const allowed = await ask()
+        assert.deepEqual({ tool: allowed.prompt.tool, summary: allowed.prompt.summary, mode: allowed.prompt.mode }, { tool: 'Bash', summary: 'npm test', mode: 'acceptEdits' })
+        assert.deepEqual(await (await answer({ id: allowed.prompt.id, answer: 'allow' })).json(), { ok: true })
+        assert.deepEqual(JSON.parse(await allowed.hook), { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } })
+        // It is gone from the page, and cannot be answered twice.
+        assert.deepEqual(JSON.parse((await stream.takeOf('permissions')).data), [])
+        assert.deepEqual(await (await answer({ id: allowed.prompt.id, answer: 'deny' })).json(), { ok: false })
+
+        const denied = await ask()
+        await answer({ id: denied.prompt.id, answer: 'deny' })
+        assert.deepEqual(JSON.parse(await denied.hook).hookSpecificOutput.decision, { behavior: 'deny', message: 'The user denied this on the outline page.' })
+
+        // Dismissed, the prompt is the terminal's: the hook says nothing, and a message says where it waits.
+        const dismissed = await ask()
+        await answer({ id: dismissed.prompt.id, answer: 'dismiss' })
+        assert.equal(await dismissed.hook, '')
+        const notes = JSON.parse((await stream.takeOf('notes')).data)
+        assert.match(notes.at(-1).html, /A permission prompt is waiting in the session.s terminal: <strong>Bash<\/strong> <code>npm test<\/code>/)
+        assert.equal((await answer({ id: 'x', answer: 'maybe' })).status, 400)
+        stream.close()
+    })
+
+    test('a session without an outline keeps its permission prompts to its terminal', async () => {
+        const out = await new Promise(resolve => {
+            const child = spawn(process.execPath, [path.join(PLUGIN, 'scripts', 'outline-hook.js')], { env: { ...process.env, HOME: server.home }, stdio: ['pipe', 'pipe', 'inherit'] })
+            let text = ''
+            child.stdout.on('data', d => (text += d))
+            child.on('exit', () => resolve(text))
+            child.stdin.end(JSON.stringify({ hook_event_name: 'PermissionRequest', session_id: '9a9a9a9a-0000-4000-8000-000000000000', cwd: '/nowhere', tool_name: 'Bash', tool_input: { command: 'ls' } }))
+        })
+        assert.equal(out, '')
+    })
+
     test('what the user asked for in chat and the agent did is an action done: added with its outcome, or finished where it stands', async () => {
         const done = await mcp.tool('change', {
             ops: [

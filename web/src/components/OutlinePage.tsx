@@ -15,6 +15,7 @@ import { InboxButton } from './Inbox'
 import { InputBox } from './InputBox'
 import { useNotify } from './Notice'
 import { OutlineTab, type NodeActions } from './OutlineTab'
+import { PermissionPrompt } from './PermissionPrompt'
 import { QueueColumn } from './QueueColumn'
 import { OutlinesPane } from './OutlinesPane'
 import { StatusBar } from './StatusBar'
@@ -27,7 +28,7 @@ const chipLabel = (node: OutlineNode) => (node.level === 1 ? `${node.num}. ${nod
 
 /** One outline: its tabs, kept up to date as the agent edits the file, without reloading. */
 export function OutlinePage({ project, file }: { project: string; file: string }) {
-    const { state, viewer, stateLoaded, patch, session, transcript, followTranscript, outlines } = useOutline(project, file)
+    const { state, viewer, stateLoaded, patch, session, transcript, followTranscript, outlines, permissions } = useOutline(project, file)
     const outline = state.status === 'ready' || state.status === 'gone' ? state.outline : null
 
     useEffect(() => {
@@ -49,6 +50,7 @@ export function OutlinePage({ project, file }: { project: string; file: string }
     return (
         <>
             <OutlinesPane list={outlines} current={{ project, file }} />
+            <PermissionPrompt outline={outline} prompts={permissions} />
             {/* Keyed on the mode: which implementation of the user's ticks runs (useApprovals) is fixed for a mounted outline. */}
             <Loaded key={outline.mode} outline={outline} gone={state.status === 'gone'} viewer={viewer} stateLoaded={stateLoaded} patch={patch} session={session} transcript={transcript} followTranscript={followTranscript} />
         </>
@@ -153,6 +155,11 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
             void el.offsetWidth
             el.setAttribute('data-qmark', '')
             setTimeout(() => el.removeAttribute('data-qmark'), 1700)
+            // A read item is marked read on its node: the eye there pulses, as the thing to click.
+            const eye = item.kind === 'read' ? el.querySelector<HTMLElement>(':scope > .qicon') : null
+            eye?.removeAttribute('data-pulse')
+            void eye?.offsetWidth
+            eye?.setAttribute('data-pulse', '')
         }, true)
         if (!found) notify('Not in the outline', true)
     }
@@ -218,6 +225,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                     queue={outline.queue}
                     statuses={statuses}
                     runs={viewer.runs}
+                    seen={viewer.seen}
                     onOpen={openQueued}
                     unread={unreadNums}
                     onOpenUnread={openUnreadItem}
@@ -240,7 +248,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                 <>
                     {/* Room under the content for the input box. */}
                     <div aria-hidden="true" style={{ height: 'var(--composer-h, 60px)' }} />
-                    <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} onSent={session.working} onReveal={reveal} added={added} inOutline={tab === 'outline'} />
+                    <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} using={session.using} onSent={session.working} onReveal={reveal} added={added} inOutline={tab === 'outline'} />
                 </>
             )}
             {/* File mode only: in server mode a tick is recorded at once, and nothing waits to be copied. */}

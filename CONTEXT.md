@@ -108,8 +108,16 @@ What the agent does about a tick the user changed on the page in server mode, on
 _Avoid_: Confirm, record (that is for what the user decided in chat), finish (that is for actions)
 
 **Message**:
-A note from the agent about something the outline does not hold (a status, a warning); it may name the node it relates to. The outcome of something the agent did is not a message: it belongs to that action's node. In server mode the agent posts it as an operation; in file mode it writes it in its chat reply, tagged `@message`.
-_Avoid_: Notification, reply, response
+A note about something the outline does not hold; it may name the node it relates to. The agent posts one for a status or a warning. In server mode the server also posts two kinds by itself, taken from the session: the agent's reply of a turn that changed nothing in the outline, and the output of a local command. The outcome of something the agent did is not a message: it belongs to that action's node. In server mode the agent posts a message as an operation; in file mode it writes it in its chat reply, tagged `@message`.
+_Avoid_: Notification, response, and "reply" for the message itself (a reply is what the agent says in chat at the end of a turn; it may become a message)
+
+**Permission prompt**:
+Claude Code asking the user whether a tool may be used, before it uses it. The session's terminal shows it as a dialog, and in server mode the outline's page shows it as a pop-up; the user answers in either place, with **allow** or **deny**, and the first answer counts. A prompt the user dismisses on the page is left to the terminal.
+_Avoid_: Approval (that is the user's tick on a node), accept question, confirmation
+
+**Local command**:
+A command Claude Code runs itself, without a turn of the agent, such as `/context` or `/model`. The agent neither sees it run nor answers it, so only the session's transcript shows it; in server mode its output becomes a message.
+_Avoid_: Slash command (skills are slash commands too, and those go to the agent), built-in
 
 **Inbox**:
 Where the page lists messages: the last ten for the whole outline session, or those of one node and its descendants.
