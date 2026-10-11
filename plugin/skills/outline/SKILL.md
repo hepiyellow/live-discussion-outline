@@ -12,6 +12,8 @@ Mirror this conversation into an outline. The outline server owns the outline: y
 ## Workflow
 
 1. **On invocation**, call `start` with the conversation's subject as `title` (the argument, when one was given) and your model and effort as `model` when you know them. Then build the outline from the conversation so far with one `change`, and reply with the page link `start` returned.
+   - **When nothing has been discussed and no topic was given**, call `start` without a title. Do not ask which outline to use, and do not make up a subject: reply with the link and ask what the user wants to work on. Once there is a subject, call `start` again with it as `title`.
+   - **`start` decides which outline and which project.** Never list, read or write the outlines folder, and never offer other outlines to reattach to unless the user asks for one by name. Say where the outline is filed only as `start` said it.
 2. **After each answer that adds or changes something**, make one `change` call that carries all of it, and mention it in one short line. Do not repeat the link unless asked.
 3. **Read every result.** It carries what the user did on the page since you were last told (approvals, picks, a press of Run), a map of the outline, and what waits on the user outside the queue. The same news arrives with the user's prompts. It is already recorded: do not record it again.
 4. **When a tool says the session has no outline**, call `start` again: it reattaches.

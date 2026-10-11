@@ -194,6 +194,27 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.match(read.text, /^1\.1 Storage for counters \[question, answered\]\nPick one of the options below\.\n\n1\.1\.1 \(A\) Redis \[option, recommended\]\nShared\.\n\n1\.1\.2 \(B\) In memory \[option, picked\]\nPer instance\.$/)
     })
 
+    test('a session with nothing discussed yet opens an outline without a name, and names it later', async () => {
+        const other = startMcp(server, { CLAUDE_CODE_SESSION_ID: '11111111-2222-4333-8444-555555555555', OUTLINE_PROJECT: 'live-outline' })
+        try {
+            const opened = await other.tool('start', { model: 'Claude Opus 5.5' })
+            assert.equal(opened.error, false, opened.text)
+            assert.match(opened.text, /Opened an outline that is not named yet\./)
+            assert.match(opened.text, /filed under the project "live-outline"/)
+            const target = path.join(server.dir, 'live-outline', `${/Page: \S+\/(\S+)/.exec(opened.text)[1]}.md`)
+            assert.match(fs.readFileSync(target, 'utf8'), /^Title: New outline\n/)
+            const named = await other.tool('start', { title: 'Understand project design' })
+            assert.match(named.text, /The outline is now named "Understand project design"/)
+            assert.match(fs.readFileSync(target, 'utf8'), /^Title: Understand project design\n/)
+            // Named once: from here on the name is the user's.
+            const again = await other.tool('start', { title: 'Something else' })
+            assert.match(again.text, /Reattached to the outline "Understand project design", filed under the project "live-outline"\. Its name is the user's to change/)
+            assert.equal(fs.readdirSync(path.join(server.dir, 'live-outline')).length, 1)
+        } finally {
+            other.stop()
+        }
+    })
+
     test('a web page cannot call the agent’s API', async () => {
         const res = await fetch(`${server.url}/api/agent/read`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://evil.example', 'x-outline-agent': '1' }, body: '{}' })
         assert.equal(res.status, 403)

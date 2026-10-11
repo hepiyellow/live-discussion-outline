@@ -36,7 +36,7 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                title: { ...text, description: "The conversation's subject, as the name of a new outline. Ignored when the session already has an outline." },
+                title: { ...text, description: "The conversation's subject, as the outline's name. Leave it out when nothing has been discussed yet, and call start again with it once there is a subject. Ignored once the outline has a name: the user renames it on the page." },
                 model: { ...text, description: 'Your model name and reasoning effort as you know them, e.g. "Claude Opus 5.5, high". Leave out what you do not know; never guess.' },
                 outline: { ...text, description: 'Only to attach this session to an existing outline: its "project/file".' },
             },

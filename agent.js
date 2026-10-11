@@ -33,6 +33,9 @@ const today = () => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** The title of an outline opened before its conversation has a subject; the agent names it once it has one. */
+const UNTITLED = 'New outline'
+
 /** A refusal the caller reads as text: the tool's result, marked as an error. */
 class Refusal extends Error {}
 
@@ -54,6 +57,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
      * - shown: node number → the hash of the node as the agent last saw it (model.js `nodeHash`)
      * - messages: the agent's messages, for the inbox
      * - cwd: the working folder of the session that started it
+     * - untitled: true while the outline has the placeholder title, which the agent may still replace
      */
     function readLedger(project, file) {
         const ledger = { events: [], shown: {}, messages: [], cwd: '' }
@@ -161,15 +165,22 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         const term = isSessionName(terminal) ? terminal : ''
         const found = locate({ outline, session: sessionId, cwd })
         const resume = sessionId && config.resumeTemplate ? config.resumeTemplate.replaceAll('{session}', sessionId) : ''
+        const name = String(title).replace(/\s+/g, ' ').trim().slice(0, 300)
         if (found) {
             const model = readModel(found.project, found.file)
+            const ledger = readLedger(found.project, found.file)
             const before = JSON.stringify(model.headers)
+            // The placeholder title is the agent's to replace; any other title is the user's to keep.
+            const named = !!name && !!ledger.untitled
+            if (named) {
+                model.headers.title = name
+                ledger.untitled = false
+            }
             if (sessionId) model.headers.session = sessionId
             if (term) model.headers.terminal = term
             if (resume) model.headers.resume = resume
             if (agentModel) model.headers.model = String(agentModel).slice(0, 100)
             if (JSON.stringify(model.headers) !== before) writeModel(found.project, found.file, model)
-            const ledger = readLedger(found.project, found.file)
             if (cwd) ledger.cwd = cwd
             const events = takeEvents(ledger)
             writeLedger(found.project, found.file, ledger)
@@ -178,7 +189,9 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 outline: `${found.project}/${found.file}`,
                 url: urlOf(found),
                 text: sections(
-                    `Reattached to the outline "${model.headers.title || found.file}". Its name is the user's to change: keep it.\nPage: ${urlOf(found)}`,
+                    named
+                        ? `The outline is now named "${name}". It is filed under the project "${found.project}".\nPage: ${urlOf(found)}`
+                        : `Reattached to the outline "${model.headers.title || found.file}", filed under the project "${found.project}".${ledger.untitled ? ' It is not named yet: call start with a title once the conversation has a subject.' : " Its name is the user's to change: keep it."}\nPage: ${urlOf(found)}`,
                     map ? `Map:\n${map}` : 'It has no nodes yet: add them with change.',
                     model.queue.length ? `Queue:\n${queueText(model)}` : '',
                     events,
@@ -186,20 +199,21 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 ),
             }
         }
-        const name = String(title).replace(/\s+/g, ' ').trim()
-        if (!name) throw new Refusal('A new outline needs a title: call start with the subject of this conversation as its title.')
         const folder = safeName(project) ? project : path.basename(cwd || '') || 'outlines'
         if (!safeName(folder)) throw new Refusal(`${JSON.stringify(folder)} cannot be a project name.`)
-        const base = `${today()}-${slug(name) || 'outline'}`
+        const base = `${today()}-${slug(name || UNTITLED) || 'outline'}`
         let file = base
         for (let i = 2; fs.existsSync(fileOf(folder, file)); i++) file = `${base}-${i}`
         const created = { project: folder, file }
-        writeModel(folder, file, { headers: { title: name.slice(0, 300), resume, model: String(agentModel).slice(0, 100), terminal: term, session: sessionId }, intro: '', nodes: [], queue: [] })
-        writeLedger(folder, file, { events: [], shown: {}, messages: [], cwd })
+        writeModel(folder, file, { headers: { title: name || UNTITLED, resume, model: String(agentModel).slice(0, 100), terminal: term, session: sessionId }, intro: '', nodes: [], queue: [] })
+        writeLedger(folder, file, { events: [], shown: {}, messages: [], cwd, untitled: !name })
+        const where = `It is filed under the project "${folder}", which the session it started from decides: say nothing else about where it is.`
         return {
             outline: `${folder}/${file}`,
             url: urlOf(created),
-            text: `Opened the outline "${name}".\nPage: ${urlOf(created)}\nIt is empty: build it from the conversation so far with one change, then give the user the page link.`,
+            text: name
+                ? `Opened the outline "${name}".\nPage: ${urlOf(created)}\n${where}\nIt is empty: build it from the conversation so far with one change, then give the user the page link.`
+                : `Opened an outline that is not named yet.\nPage: ${urlOf(created)}\n${where}\nGive the user the page link and ask what they want to work on. Once the conversation has a subject, call start again with it as the title, and mirror from then on.`,
         }
     }
 
@@ -355,6 +369,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
     /** Something the user did to the outline outside its nodes (renaming it), for the agent to be told. */
     function userEvent(project, file, event) {
         const ledger = readLedger(project, file)
+        if (event.kind === 'renamed') ledger.untitled = false
         ledger.events.push({ at: Date.now(), num: '', ...event })
         writeLedger(project, file, ledger)
     }
