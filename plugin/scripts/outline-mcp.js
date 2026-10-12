@@ -29,6 +29,7 @@ const NODE = {
             'Makes the node a task of the outline: something for you to do in this session, which the user runs from the page (not a subagent, and not an item of a to-do list of your own). One short sentence on what you will do when the user runs it, with no file names and nothing the text already says.',
     },
     status: { enum: ['open', 'claim'], description: 'claim: settled in the conversation, or something you are certain of. Never set for what still needs the user.' },
+    ask: { type: 'boolean', description: 'true asks the user to approve this node: while it is a claim they have not approved, it is a pending action in the queue. Not for a task or an option.' },
 }
 const OPTION = { type: 'object', properties: { title: NODE.title, text: NODE.text, recommended: { type: 'boolean' }, task: NODE.task }, required: ['title'] }
 
@@ -58,15 +59,15 @@ const TOOLS = [
         description: [
             'Change the outline: a list of operations applied together, all or none. Make one call per turn, after your answer is decided. The result carries what the user did on the page since you were last told, and a map of the outline.',
             'Operations (op):',
-            '- add { num, title, text?, summary?, recommendation?, status?, task?, outcome?, failed?, options?, children? }: a new node. num is its full path (2.4), the next free number under its parent. options makes it a question the user answers by picking one; children are nodes under it, numbered in order. outcome adds it as a task you already carried out, because the user asked for it in chat.',
-            '- update { num, title?, text?, summary?, recommendation?, task?, status?, recommended? }: each field given replaces that whole field ("" clears it), so write the full new text.',
+            '- add { num, title, text?, summary?, recommendation?, status?, ask?, task?, outcome?, failed?, options?, children? }: a new node. num is its full path (2.4), the next free number under its parent. options makes it a question the user answers by picking one; children are nodes under it, numbered in order. outcome adds it as a task you already carried out, because the user asked for it in chat.',
+            '- update { num, title?, text?, summary?, recommendation?, task?, status?, ask?, recommended? }: each field given replaces that whole field ("" clears it), so write the full new text.',
             '- move { num, under }: puts a node under another parent ("" for the top level), where it takes the next number.',
             '- remove { num }: takes a node out with everything under it; the siblings after it are renumbered.',
             '- record { num, decision }: what the user decided in chat. approve, reopen, or pick (num is the option). Only what the user said, never your own judgment.',
             '- finish { num, outcome, failed? }: you carried out what the node describes, so it shows as a task done; outcome says what happened. The node is a task the user ran, or any node about something the user asked you in chat to do.',
             '- acknowledge {}: you took in the ticks the user made on the page and nothing in the outline follows from them. Any change made after you were told of a tick acknowledges it, so send this only in a change that holds nothing else.',
             '- message { text, num? }: a note for the inbox about something the outline does not hold.',
-            '- queue { items: [{ num, label?, read? }] }: replaces the queue, most important first. The server sets each item’s kind from its node and drops what the user handled.',
+            '- queue { items: [{ num }] }: the order of the queue, most important first. The queue is the pending actions (an open question, a task to run, a claim that asks for approval): the server lists them from the nodes, and you only order them. A node with no pending action is left out; one you do not list keeps the place it had.',
         ].join('\n'),
         inputSchema: {
             type: 'object',
@@ -89,8 +90,8 @@ const TOOLS = [
                             failed: { type: 'boolean', description: 'finish, or an add with outcome: you tried and it did not work.' },
                             items: {
                                 type: 'array',
-                                description: 'queue.',
-                                items: { type: 'object', properties: { num: text, label: { ...text, description: 'A few words.' }, read: { type: 'boolean', description: 'Only for reading: nothing to decide or approve.' } }, required: ['num'] },
+                                description: 'queue: the pending actions, most important first.',
+                                items: { type: 'object', properties: { num: text }, required: ['num'] },
                             },
                         },
                         required: ['op'],

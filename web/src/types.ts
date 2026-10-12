@@ -46,11 +46,16 @@ export interface HistoryEntry {
     did?: { what: 'approved' | 'took-back' | 'picked' | 'ran'; kind: 'claim' | 'task' | 'done' | 'failed' | 'option' | 'plain' }[]
 }
 
-/** An item of the queue: what the agent advises the user to handle next. */
+/**
+ * An item of the action queue: a pending action of a node. In server mode the server lists them from the nodes and the
+ * agent orders them; an agent in file mode writes the queue itself, and may queue a node only to be read.
+ */
 export interface QueueItem {
     num: string
     kind: 'decide' | 'action' | 'approve' | 'read'
     label: string
+    /** Server mode: the agent has not given this action its place in the queue yet, so it is last. */
+    unplaced?: boolean
 }
 
 /**

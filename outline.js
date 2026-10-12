@@ -56,13 +56,16 @@ export function extractHeaders(text) {
 }
 
 const QUEUE_HEADING = /^#{1,2} @queue$/
-const QUEUE_ITEM = /^[-*]\s+(\d+(?:\.\d+)*)\.?\s+@(decide|run|action|approve|read)\b\s*(.*)$/
+const QUEUE_ITEM = /^[-*]\s+(\d+(?:\.\d+)*)\.?\s+@(decide|run|action|approve|read)\b\s*(@unplaced\b\s*)?(.*)$/
 
 /**
  * The queue: a `# @queue` section (no number, so a topic never matches) listing, in priority order,
  * `- <number> @decide|@run|@approve|@read <label>`. It runs to the next heading or the end, and is not part of the outline.
  * Older outlines head it `## @queue`, and write `@action` for `@run`: the item that asks the user to run a task. The
  * page knows that item as `action`, so that is the kind it is given here under either name.
+ *
+ * In server mode the server writes the section: every pending action of the outline, in the agent's order, an item
+ * the agent has not placed yet marked `@unplaced` after its kind. It writes no `@read` item; an agent in file mode may.
  */
 function extractQueue(source) {
     const lines = source.split('\n')
@@ -74,7 +77,7 @@ function extractQueue(source) {
         .slice(start + 1, end)
         .map(line => line.trim().match(QUEUE_ITEM))
         .filter(Boolean)
-        .map(([, num, kind, label]) => ({ num, kind: kind === 'run' ? 'action' : kind, label: label.replace(/\*\*/g, '').trim() }))
+        .map(([, num, kind, unplaced, label]) => ({ num, kind: kind === 'run' ? 'action' : kind, label: label.replace(/\*\*/g, '').trim(), ...(unplaced ? { unplaced: true } : {}) }))
     lines.splice(start, end - start)
     return { items, source: lines.join('\n') }
 }
@@ -86,11 +89,12 @@ function extractQueue(source) {
  */
 export const HEAD_RE = /^(\d+(?:\.\d+)*)\.?(?:\s+|$)([\s\S]*)$/
 // A longer name comes before the name it starts with (`task-done` before `task`), or the shorter one would match.
-export const TAG_RE = /^@(user-approved|approved|agent-claim|claim|option[_-][a-z]|options|recommended|current|task-done|task-failed|task|action-done|action-failed|action|ran)\b\s*/i
+export const TAG_RE = /^@(user-approved|approved|agent-claim|claim|asks-approval|option[_-][a-z]|options|recommended|current|task-done|task-failed|task|action-done|action-failed|action|ran)\b\s*/i
 /** `@option_A`: the node is option A of the question above it. The letter is in the tag, where it cannot be mistyped into the title. */
 export const OPTION_RE = /^option[_-]([a-z])$/i
 /**
- * The tags as outlines write them say who or what: `@user-approved`, `@agent-claim`, `@task`, `@task-done`, `@task-failed`.
+ * The tags as outlines write them say who or what: `@user-approved`, `@agent-claim`, `@task`, `@task-done`, `@task-failed`,
+ * and `@asks-approval` on a node whose agent asks the user to approve it.
  * Outlines written before a task was called one say `@action`, `@action-done` and `@action-failed`, and older ones still
  * `@approved`, `@claim` and `@action @ran`. All read as the same tags here, under the names the page knows: a task is
  * `action` there, and one carried out `action` and `ran`.

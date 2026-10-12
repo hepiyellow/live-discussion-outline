@@ -297,6 +297,16 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
 
     const sections = (...parts) => parts.filter(Boolean).join('\n\n')
 
+    /** What the agent is told to do about pending actions it has not placed in the queue. */
+    const placeThem = nums => `Not placed yet: ${nums.join(', ')}. Before the turn ends, send a queue operation that lists the pending actions, most important first.`
+
+    /** The queue as a tool's result shows it: every pending action, in order, and which of them still need a place. */
+    function queueSection(model) {
+        if (!model.queue.length) return ''
+        const unplaced = model.queue.filter(item => !item.placed).map(item => item.num)
+        return [`Queue:\n${queueText(model)}`, unplaced.length ? placeThem(unplaced) : ''].filter(Boolean).join('\n')
+    }
+
     const resumeOf = sessionId => (sessionId && config.resumeTemplate ? config.resumeTemplate.replaceAll('{session}', sessionId) : '')
     const cleanTitle = title => String(title).replace(/\s+/g, ' ').trim().slice(0, 300)
 
@@ -362,7 +372,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                           : `Reattached to the outline "${model.headers.title || found.file}", filed under the project "${found.project}". Its name is the user's to change: keep it.\nPage: ${urlOf(found)}`,
                     workflowText(model.headers.workflow),
                     map ? `Map:\n${map}` : ledger.untitled ? '' : 'It has no nodes yet: add them with change.',
-                    model.queue.length ? `Queue:\n${queueText(model)}` : '',
+                    queueSection(model),
                     events,
                     map ? 'Read a node before you update it: you have not seen its text in this context.' : '',
                 ),
@@ -423,7 +433,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             text: sections(
                 num ? '' : `Outline "${model.headers.title || at.file}" (${urlOf(at)})`,
                 body.text || 'The outline has no nodes yet.',
-                !num && model.queue.length ? `Queue:\n${queueText(model)}` : '',
+                num ? '' : queueSection(model),
                 events,
             ),
         }
@@ -449,8 +459,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             writeLedger(at.project, at.file, ledger)
             throw new Refusal(sections(`Nothing was applied. ${e.message}`, e.hint, e.text, events))
         }
-        const queuedBefore = model.queue.map(i => i.num)
-        const dropped = normalize(model, result.touched)
+        normalize(model, result.touched)
         writeModel(at.project, at.file, model)
         // The action log: first what became of the numbers, then what the user decided in chat, by the numbers the
         // nodes have now.
@@ -489,9 +498,11 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         if (result.messages.length) onMessages(at.project, at.file)
 
         const notes = [...result.notes]
-        for (const item of dropped) {
-            if (item.gone) continue
-            notes.push(`${item.num} is ${queuedBefore.includes(item.num) && result.queued ? 'left out of' : 'dropped from'} the queue: it asks nothing more of the user.`)
+        // The agent orders the queue and does not fill it: a node it listed that waits for nothing is left out.
+        const queued = new Set(model.queue.map(item => item.num))
+        for (const num of result.ordered) {
+            if (queued.has(num)) continue
+            notes.push(`${num} is left out of the queue: it has no pending action. The server lists the pending actions by itself (an open question, a task to run, a claim that asks for approval); to ask the user to approve a node, set ask on it.`)
         }
         const renumbered = [...result.renumbered].map(([from, to]) => `${from} -> ${to}`)
         const count = ops.length
@@ -503,7 +514,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 renumbered.length ? `Numbers changed (use the new ones in chat, and update any node text that names the old ones): ${renumbered.join('; ')}` : '',
                 events,
                 `Map:\n${mapText(model, result.touchedAll)}`,
-                model.queue.length ? `Queue:\n${queueText(model)}` : '',
+                queueSection(model),
             ),
         }
     }
@@ -568,7 +579,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 `This conversation is mirrored into the outline "${model.headers.title || at.file}" (${urlOf(at)}) with the outline tools: keep doing so after each answer, with one change call. Your picture of it did not survive: this is its map. Read a node before you update it.`,
                 model.headers.workflow ? workflowText(model.headers.workflow) : '',
                 map ? `Map:\n${map}` : 'It has no nodes yet.',
-                model.queue.length ? `Queue:\n${queueText(model)}` : '',
+                queueSection(model),
                 events,
             ),
         }
@@ -625,6 +636,9 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
      * the turn open with; or with nothing, and the turn ends. Ticks the agent has not been told of yet are not its to
      * acknowledge. `active` says the turn already goes on because this hook held it open: it is not held twice.
      *
+     * A turn is held open the same way over pending actions the agent has not placed in the queue: the order of the
+     * queue is the agent's to give. A turn that ends all the same leaves them where the server put them, last.
+     *
      * A turn that ends without having changed the outline leaves its `reply` (the agent's final text, which the hook
      * hands over) in the inbox as a message: the user reads the page, not the chat, and would not see it otherwise.
      * The reply of a turn that is held open is kept, and is the one that counts when the turn does end: what the
@@ -637,15 +651,25 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         const added = takeCommands(at, ledger)
         const text = typeof reply === 'string' ? reply.trim().slice(0, MAX_REPLY) : ''
         const told = active ? [] : Object.entries(ledger.unacked).filter(([, tick]) => tick.told)
-        if (told.length) {
+        const model = readModel(at.project, at.file)
+        const unplaced = model.queue.filter(item => !item.placed)
+        if (active && unplaced.length) {
+            for (const item of unplaced) item.placed = true
+            writeModel(at.project, at.file, model)
+        }
+        if (told.length || (!active && unplaced.length)) {
             if (text && !ledger.changed) ledger.held = text
             writeLedger(at.project, at.file, ledger)
             if (added) onMessages(at.project, at.file)
             const refs = kind => told.filter(([, tick]) => tick.kind === kind).map(([num, tick]) => `${num} ${tick.title}`).join('; ')
             const lines = [refs('approved') && `- approved ${refs('approved')}`, refs('picked') && `- picked ${refs('picked')}`, refs('reopened') && `- took their approval back from ${refs('reopened')}`].filter(Boolean)
-            return {
-                text: `[outline "${headersOf(at).title || at.file}"] You were told that on the page the user:\n${lines.join('\n')}\nYou have not acknowledged it, and the page shows these as pending until you do. Before you end the turn, take the step they open and make one change call; when nothing follows from them, make a change call that holds the acknowledge operation alone.`,
-            }
+            const ticks = told.length
+                ? `You were told that on the page the user:\n${lines.join('\n')}\nYou have not acknowledged it, and the page shows these as pending until you do. Before you end the turn, take the step they open and make one change call; when nothing follows from them, make a change call that holds the acknowledge operation alone.`
+                : ''
+            const order = unplaced.length
+                ? `These pending actions have no place in the queue yet:\n${unplaced.map(item => `- ${item.num} [${item.kind}] ${item.label}`).join('\n')}\nThe order of the queue is yours to give. Before you end the turn, make one change call with a queue operation that lists the pending actions, most important first:\n${queueText(model)}`
+                : ''
+            return { text: `[outline "${headersOf(at).title || at.file}"] ${[ticks, order].filter(Boolean).join('\n\n')}` }
         }
         const answer = ledger.held || text
         const posted = !ledger.changed && !!answer

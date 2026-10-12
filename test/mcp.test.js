@@ -107,7 +107,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
                     text: 'Requests are limited per API key.',
                     children: [
                         { title: 'Limit at the gateway', text: 'The gateway already sees every request.', status: 'claim' },
-                        { title: 'Storage for counters', text: 'Pick one of the options below.', options: [{ title: 'Redis', text: 'Shared.', recommended: true }, { title: 'In memory', text: 'Per instance.' }] },
+                        { title: 'Storage for counters', text: 'Pick one of the options below.', ask: true, options: [{ title: 'Redis', text: 'Shared.', recommended: true }, { title: 'In memory', text: 'Per instance.' }] },
                         { title: 'Run the load test', task: 'Runs the k6 script against staging.' },
                     ],
                 },
@@ -115,14 +115,17 @@ describe('an agent keeps an outline through the MCP tools', () => {
             ],
         })
         assert.equal(built.error, false, built.text)
-        assert.match(built.text, /1\.2 Storage for counters \[question, has a recommendation\]/)
+        assert.match(built.text, /1\.2 Storage for counters \[question, has a recommendation, asks approval\]/)
         assert.match(built.text, /1\.2\.1 \(A\) Redis \[option, recommended\]/)
         const text = outlineText()
         assert.match(text, /^## 1\.1 @agent-claim Limit at the gateway$/m)
         assert.match(text, /^### 1\.2\.1 @recommended @option_A Redis$/m)
         assert.match(text, /^## 1\.3 @task Run the load test\n\n@Task\. Runs the k6 script against staging\.$/m)
-        // The server set each queue item's kind from its node.
-        assert.match(text, /# @queue\n- 1\.2 @approve Storage for counters\n- 1\.3 @run Run the load test\n- 1\.1 @approve Gateway is the place\n/)
+        // The queue is the pending actions, in the agent's order: the question that asks for approval and the task to
+        // run. The claim asks for nothing, so listing it does not put it there, and the agent is told why.
+        assert.match(text, /# @queue\n- 1\.2 @approve Storage for counters\n- 1\.3 @run Run the load test\n$/)
+        assert.match(built.text, /Note: 1\.1 is left out of the queue: it has no pending action\./)
+        assert.match(built.text, /Queue:\n1\.2 \[approve\] Storage for counters\n1\.3 \[run\] Run the load test$/)
     })
 
     test('a change that breaks a rule applies nothing, and says why', async () => {
@@ -151,7 +154,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.equal(pushed.nodes[0].children[0].status, 'approved')
         const text = outlineText()
         assert.match(text, /^## 1\.1 @user-approved @agent-claim Limit at the gateway$/m)
-        assert.match(text, /^## 1\.2 @user-approved @options Storage for counters$/m)
+        assert.match(text, /^## 1\.2 @user-approved @asks-approval @options Storage for counters$/m)
         assert.match(text, /^### 1\.2\.2 @user-approved @option_B In memory$/m)
         // What the user handled left the queue.
         assert.match(text, /# @queue\n- 1\.3 @run Run the load test\n$/)
@@ -367,20 +370,22 @@ describe('an agent keeps an outline through the MCP tools', () => {
         }
     })
 
-    test('the queue holds what the agent puts in it: a task done is there to be read, and a task takes no approval', async () => {
+    test('the agent cannot queue a node to have it looked at: a task done and a claim that asks nothing wait for no action', async () => {
         const n = (outlineText().match(/^# \d+\./gm) || []).length + 1
+        const before = /# @queue\n[\s\S]*$/.exec(outlineText())?.[0] ?? ''
         const built = await mcp.tool('change', {
             ops: [
                 { op: 'add', num: `${n}`, title: 'Results', children: [{ title: 'Add a retry', outcome: 'Added.' }, { title: 'Write the runbook', outcome: 'Written.' }, { title: 'Retries are safe', status: 'claim' }] },
-                { op: 'queue', items: [{ num: `${n}.1` }, { num: `${n}.2`, read: true }] },
+                { op: 'queue', items: [{ num: `${n}.1` }, { num: `${n}.2`, read: true }, { num: `${n}.3`, label: 'Please read' }] },
             ],
         })
         assert.equal(built.error, false, built.text)
-        // Queued by the agent, a task done is an item to read, marked so or not.
-        assert.match(outlineText(), new RegExp(`# @queue\\n- ${n}\\.1 @read Add a retry\\n- ${n}\\.2 @read Write the runbook\\n`))
-        // Which nodes to ask the user about is the agent's choice: the server lists nothing else as waiting, not the claim either.
-        assert.doesNotMatch(built.text, /Waiting on the user/)
-        assert.doesNotMatch(built.text, /left out of the queue/)
+        // None of them is a pending action, so none is in the queue, and the agent is told so of each.
+        assert.equal(/# @queue\n[\s\S]*$/.exec(outlineText())?.[0] ?? '', before)
+        for (const k of [1, 2, 3]) assert.match(built.text, new RegExp(`Note: ${n}\\.${k} is left out of the queue: it has no pending action\\.`))
+        // A task takes no approval, and an option is picked: neither can ask for one.
+        assert.match((await mcp.tool('change', { ops: [{ op: 'update', num: `${n}.1`, ask: true }] })).text, /is a task, and a task takes no approval/)
+        assert.match((await mcp.tool('change', { ops: [{ op: 'update', num: '1.1.1', ask: true }] })).text, /is an option, and an option is picked, not approved/)
         const text = outlineText()
         // An approval the user gives in chat cannot be recorded on a task, and a tick sent for one is not kept.
         const refused = await mcp.tool('change', { ops: [{ op: 'record', num: `${n}.1`, decision: 'approve' }] })
@@ -394,6 +399,56 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.match(outlineText(), new RegExp(`^## ${n}\\.1 @task-done Add a retry$`, 'm'))
         assert.match(outlineText(), new RegExp(`^## ${n}\\.3 @user-approved @agent-claim Retries are safe$`, 'm'))
         assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}` }] })).error, false)
+    })
+
+    test('the server lists the pending actions and the agent orders them; the turn-end hook holds a turn open once until it has', async () => {
+        const n = (outlineText().match(/^# \d+\./gm) || []).length + 1
+        const queue = () => (/# @queue\n([\s\S]*)$/.exec(outlineText())?.[1] ?? '').split('\n').filter(line => line.startsWith(`- ${n}.`))
+        const built = await mcp.tool('change', {
+            ops: [
+                {
+                    op: 'add',
+                    num: `${n}`,
+                    title: 'Rollout',
+                    children: [
+                        { title: 'Roll out by region', status: 'claim', ask: true },
+                        { title: 'Which region first', options: [{ title: 'Europe' }, { title: 'Asia', task: 'Deploys to Asia.' }] },
+                        { title: 'Deploy the canary', task: 'Deploys one instance.' },
+                        { title: 'Regions are independent', status: 'claim' },
+                    ],
+                },
+            ],
+        })
+        assert.equal(built.error, false, built.text)
+        assert.match(outlineText(), new RegExp(`^## ${n}\\.1 @agent-claim @asks-approval Roll out by region$`, 'm'))
+        // Listed by the server, in outline order, and none has a place yet: the claim that asks, the open question, the
+        // task. The claim that asks nothing, and the options of the unanswered question, wait for no action.
+        assert.deepEqual(queue(), [`- ${n}.1 @approve @unplaced Roll out by region`, `- ${n}.2 @decide @unplaced Which region first`, `- ${n}.3 @run @unplaced Deploy the canary`])
+        assert.match(built.text, new RegExp(`${n}\\.1 \\[approve, not placed\\] Roll out by region`))
+        assert.match(built.text, new RegExp(`Not placed yet: ${n}\\.1, ${n}\\.2, ${n}\\.3\\. Before the turn ends, send a queue operation`))
+        // Ending the turn without an order is held open, once, with the actions to place.
+        const held = JSON.parse(await runHook(server, { hook_event_name: 'Stop' }))
+        assert.equal(held.decision, 'block')
+        assert.match(held.reason, new RegExp(`These pending actions have no place in the queue yet:\\n- ${n}\\.1 \\[approve\\] Roll out by region\\n- ${n}\\.2 \\[decide\\] Which region first\\n- ${n}\\.3 \\[run\\] Deploy the canary\\n`))
+        // The agent orders two of them: they come first, in its order, and the one it left out still has no place.
+        const ordered = await mcp.tool('change', { ops: [{ op: 'queue', items: [{ num: `${n}.3` }, { num: `${n}.1` }] }] })
+        assert.equal(ordered.error, false, ordered.text)
+        assert.deepEqual(queue(), [`- ${n}.3 @run Deploy the canary`, `- ${n}.1 @approve Roll out by region`, `- ${n}.2 @decide @unplaced Which region first`])
+        assert.match(JSON.parse(await runHook(server, { hook_event_name: 'Stop' })).reason, new RegExp(`no place in the queue yet:\\n- ${n}\\.2 \\[decide\\] Which region first\\n`))
+        // A turn held open once ends all the same: what has no place stays last, and counts as placed.
+        assert.equal(await runHook(server, { hook_event_name: 'Stop', stop_hook_active: true }), '')
+        assert.deepEqual(queue(), [`- ${n}.3 @run Deploy the canary`, `- ${n}.1 @approve Roll out by region`, `- ${n}.2 @decide Which region first`])
+        assert.equal(await runHook(server, { hook_event_name: 'Stop' }), '')
+        // An item is cleared when the user performs its action: the approval, and the pick. The option picked is a
+        // task, which is now the one to run, and has no place yet.
+        assert.equal((await act({ set: [{ num: `${n}.1`, approved: true }, { num: `${n}.2.2`, approved: true }] })).status, 200)
+        assert.deepEqual(queue(), [`- ${n}.3 @run Deploy the canary`, `- ${n}.2.2 @run @unplaced Asia`])
+        // Or when the agent takes the request back: a task taken off its node, a claim that no longer asks.
+        const withdrawn = await mcp.tool('change', { ops: [{ op: 'update', num: `${n}.3`, task: '' }, { op: 'queue', items: [{ num: `${n}.2.2` }] }] })
+        assert.equal(withdrawn.error, false, withdrawn.text)
+        assert.deepEqual(queue(), [`- ${n}.2.2 @run Asia`])
+        assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}` }] })).error, false)
+        assert.deepEqual(queue(), [])
     })
 
     test('a node is a claim or a task, never both: the change that would make it both is refused', async () => {

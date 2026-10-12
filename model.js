@@ -35,7 +35,7 @@ function walkLines(lines, each) {
 const HEADING = /^(#{1,6}) +(.*)$/
 
 function blankNode(level) {
-    return { num: '', level, title: '', approved: false, claim: false, question: false, option: '', recommended: false, current: false, task: '', text: '', summary: '', recommendation: '', taskLine: '', children: [] }
+    return { num: '', level, title: '', approved: false, claim: false, asks: false, question: false, option: '', recommended: false, current: false, task: '', text: '', summary: '', recommendation: '', taskLine: '', children: [] }
 }
 
 /** A heading line's number, tags and title, as a node without text. */
@@ -50,6 +50,7 @@ function headingNode(content, level) {
         if (letter) node.option = letter[1].toUpperCase()
         else if (name === 'user-approved' || name === 'approved') node.approved = true
         else if (name === 'agent-claim' || name === 'claim') node.claim = true
+        else if (name === 'asks-approval') node.asks = true
         else if (name === 'options') node.question = true
         else if (name === 'recommended') node.recommended = true
         else if (name === 'current') node.current = true
@@ -94,8 +95,8 @@ function splitBody(lines) {
 }
 
 /**
- * An outline's text as a model: its header lines, the text before the first topic, its nodes as a tree, and its queue
- * (`read` on an item says the agent queued it as reading only).
+ * An outline's text as a model: its header lines, the text before the first topic, its nodes as a tree, and its queue:
+ * the pending actions in the agent's order, `placed` on an item once the agent gave it a place.
  */
 export function parseOutline(text) {
     const { source, queue, ...headers } = extractHeaders(text.replace(/\r\n/g, '\n'))
@@ -116,19 +117,24 @@ export function parseOutline(text) {
         node.children.forEach(finish)
     }
     root.children.forEach(finish)
-    return {
+    const model = {
         headers,
         intro: root.lines.join('\n').trim(),
         nodes: root.children,
         // The reader names the item that asks to run a task as the page knows it, `action`: here it is a run item.
-        queue: queue.map(({ num, kind, label }) => ({ num, kind: kind === 'action' ? 'run' : kind, label, read: kind === 'read' })),
+        queue: queue.map(({ num, kind, label, unplaced }) => ({ num, kind: kind === 'action' ? 'run' : kind, label, placed: !unplaced })),
     }
+    // An outline from when the agent chose what to queue: an approval it queued is a request on that node from here on.
+    const index = indexOf(model)
+    for (const item of model.queue) if (item.kind === 'approve' && index.has(item.num)) index.get(item.num).node.asks = true
+    return model
 }
 
 function headingLine(node) {
     const tags = [
         node.approved && '@user-approved',
         node.claim && '@agent-claim',
+        node.asks && '@asks-approval',
         node.current && '@current',
         node.question && '@options',
         node.recommended && '@recommended',
@@ -161,7 +167,7 @@ export function serializeOutline(model) {
     model.nodes.forEach(write)
     if (model.queue.length) {
         out.push('# @queue')
-        for (const item of model.queue) out.push(`- ${item.num} @${item.kind} ${item.label}`.trimEnd())
+        for (const item of model.queue) out.push(`- ${item.num} @${item.kind}${item.placed ? '' : ' @unplaced'} ${item.label}`.trimEnd())
         out.push('')
     }
     return out.join('\n')
@@ -231,6 +237,7 @@ function describe(node, parent) {
     else if (isQuestion(node)) parts.push(`question, ${{ approved: 'answered', claim: 'has a recommendation', open: 'open' }[questionStatus(node)]}`)
     else parts.push({ approved: 'user-approved', claim: 'claim', open: 'open' }[ownStatus(node)])
     if (node.task) parts.push({ proposed: 'task', done: 'task done', failed: 'task failed' }[node.task])
+    if (node.asks && !node.approved) parts.push('asks approval')
     return parts.join(', ')
 }
 
@@ -299,8 +306,9 @@ export function readText(model, num = '') {
     return { text: blocks.join('\n\n'), shown }
 }
 
+/** The queue as the agent reads it: the pending actions in order, each with what it asks, and whether it has a place yet. */
 export function queueText(model) {
-    return model.queue.map(item => `${item.num} [${item.kind}] ${item.label}`).join('\n')
+    return model.queue.map(item => `${item.num} [${item.kind}${item.placed ? '' : ', not placed'}] ${item.label}`).join('\n')
 }
 
 /** The hash of what an agent writes of a node: an update is stale when this changed since the agent last saw the node. */
@@ -323,19 +331,36 @@ export function userEntry(model, num, what) {
 }
 
 /**
- * What a queue item asks of the user, from its node; '' when it asks nothing more: the user approved it. Which nodes
- * are in the queue is the agent's choice alone. A task the agent carried out can be there, as something to read: a
- * task takes no approval.
+ * The action a node waits for the user to perform, or '' when it waits for none: `run` for a task still to run (or
+ * one that failed and can be run again), `decide` for a question the agent recommends no option for, `approve` for a
+ * claim (a question with a recommended option is one) whose agent asked the user to approve it. Nothing requires an
+ * approval, so a claim that does not ask for one waits for nothing.
  */
-function queueKind(node, item) {
-    // A task still to run, or one that failed and can be run again.
-    if (node.task && node.task !== 'done') return 'run'
-    // The item asked the user to run the task, and it has run. To ask for its result too, the agent queues it again.
-    if (node.task === 'done') return item?.kind === 'run' ? '' : 'read'
+function pendingKind(node) {
+    if (node.task) return node.task === 'done' ? '' : 'run'
     const status = isQuestion(node) ? questionStatus(node) : node.children.length ? parentStatus(node) : ownStatus(node)
-    if (status === 'approved') return ''
-    if (item?.read) return 'read'
-    return status === 'claim' ? 'approve' : 'decide'
+    if (isQuestion(node) && status === 'open') return 'decide'
+    return node.asks && status === 'claim' ? 'approve' : ''
+}
+
+/**
+ * The pending actions of an outline, in outline order: `{ num, kind }` for each node that waits for the user. The
+ * server reads them off the nodes; the agent only orders them (the queue). An option waits for nothing by itself: its
+ * question does, until the user picks one, and then the picked option's task is the one to run.
+ */
+export function pendingActions(model) {
+    const out = []
+    const walk = (nodes, parent) => {
+        const options = !!parent && isQuestion(parent)
+        for (const n of nodes) {
+            if (options && !n.approved) continue
+            const kind = options ? (n.task && n.task !== 'done' ? 'run' : '') : pendingKind(n)
+            if (kind) out.push({ num: n.num, kind })
+            walk(n.children, n)
+        }
+    }
+    walk(model.nodes)
+    return out
 }
 
 function parentStatus(node) {
@@ -353,8 +378,9 @@ const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 /**
  * After any change: options are lettered in order, statuses roll up (a question is approved once an option is picked; a
- * parent takes the status its descendants share), `current` marks the one node last touched, and the queue's items
- * take their kind from their node, those the user handled or whose node is gone dropped. Returns the dropped items.
+ * parent takes the status its descendants share), `current` marks the one node last touched, and the queue is the
+ * pending actions: those it held keep their order, those it did not hold yet come last, not placed, and those whose
+ * node waits for nothing more are dropped. Returns the dropped items.
  */
 export function normalize(model, touched = '') {
     const roll = (node, parent) => {
@@ -383,19 +409,18 @@ export function normalize(model, touched = '') {
     const current = allNodes(model.nodes).filter(n => n.current)
     current.slice(0, -1).forEach(n => (n.current = false))
 
+    const pending = new Map(pendingActions(model).map(p => [p.num, p.kind]))
+    const item = (num, placed) => ({ num, kind: pending.get(num), label: index.get(num).node.title, placed })
     const dropped = []
     const seen = new Set()
-    model.queue = model.queue.filter(item => {
-        const node = index.get(item.num)?.node
-        const kind = node && !seen.has(item.num) ? queueKind(node, item) : ''
-        seen.add(item.num)
-        if (!kind) dropped.push({ ...item, gone: !node })
-        else {
-            item.kind = kind
-            item.label ||= node.title
-        }
-        return !!kind
-    })
+    const queue = []
+    for (const held of model.queue) {
+        if (pending.has(held.num) && !seen.has(held.num)) queue.push(item(held.num, held.placed !== false))
+        else dropped.push({ ...held, gone: !index.has(held.num) })
+        seen.add(held.num)
+    }
+    for (const num of pending.keys()) if (!seen.has(num)) queue.push(item(num, false))
+    model.queue = queue
     return dropped
 }
 
@@ -439,6 +464,17 @@ function checkTask(value, where) {
     return line
 }
 
+/**
+ * `ask` on a node: the agent asks the user to approve it, which makes it a pending action while it is a claim the user
+ * has not approved. A task takes no approval, and an option is picked, not approved: its question is what asks.
+ */
+function checkAsk(value, node, option, where) {
+    if (typeof value !== 'boolean') throw new OpError(`The ask of ${where} is ${JSON.stringify(value)}.`, 'ask is true or false.')
+    if (value && node.task) throw new OpError(`${where} is a task, and a task takes no approval.`, 'A task to run is a pending action by itself. To ask approval of a claim about it, state the claim in a node of its own.')
+    if (value && option) throw new OpError(`${where} is an option, and an option is picked, not approved.`, 'Set ask on its question: the user then answers by picking.')
+    return value
+}
+
 /** A new node from an `add` (or one of its children, or an option of its question). */
 function buildNode(spec, num, level, option = '') {
     const where = `node ${num}`
@@ -473,6 +509,7 @@ function buildNode(spec, num, level, option = '') {
         node.text = [node.text, outcome].filter(Boolean).join('\n\n')
     }
     if (node.claim && node.task) throw new OpError(`${where} is added as a claim and as a task.`, `${ONE_KIND}: add the claim, and the task as a node of its own beside it.`)
+    if (spec.ask !== undefined) node.asks = checkAsk(spec.ask, node, option, where)
     if (option) node.recommended = !!spec.recommended
     else if (spec.recommended) throw new OpError(`${where} is marked recommended, and it is not an option.`, 'For a recommendation on a node that is not a choice, use the recommendation field.')
     if (spec.options !== undefined) {
@@ -514,7 +551,7 @@ const depthOf = node => 1 + Math.max(0, ...node.children.map(depthOf))
  */
 export function applyOperations(model, ops, shown = {}) {
     if (!Array.isArray(ops) || !ops.length) throw new OpError('A change needs a list of operations.', 'Pass ops: [{ op: "add", … }, …].')
-    const result = { touched: '', touchedAll: [], notes: [], renumbered: new Map(), messages: [], removed: [], decisions: [] }
+    const result = { touched: '', touchedAll: [], notes: [], renumbered: new Map(), messages: [], removed: [], decisions: [], ordered: [] }
     const touch = num => {
         result.touched = num
         result.touchedAll.push(num)
@@ -529,6 +566,7 @@ export function applyOperations(model, ops, shown = {}) {
     const renumbered = map => {
         if (!map.size) return
         for (const item of model.queue) item.num = map.get(item.num) ?? item.num
+        result.ordered = result.ordered.map(num => map.get(num) ?? num)
         const moved = Object.entries(shown).map(([num, hash]) => [map.get(num) ?? num, hash])
         for (const key of Object.keys(shown)) delete shown[key]
         Object.assign(shown, Object.fromEntries(moved))
@@ -592,6 +630,7 @@ export function applyOperations(model, ops, shown = {}) {
                 if (!line) node.task = ''
                 else node.task ||= 'proposed'
             }
+            if (op.ask !== undefined) node.asks = checkAsk(op.ask, node, parent && isQuestion(parent), where)
             if (op.recommended !== undefined) {
                 if (!parent || !isQuestion(parent)) throw new OpError(`${op.num} is not an option, so it cannot be recommended.`, 'Use the recommendation field for a node that is not a choice.')
                 if (op.recommended) parent.children.forEach(c => (c.recommended = false))
@@ -650,6 +689,7 @@ export function applyOperations(model, ops, shown = {}) {
             result.removed.push(...gone)
             for (const num of gone) delete shown[num]
             model.queue = model.queue.filter(item => !gone.includes(item.num))
+            result.ordered = result.ordered.filter(num => !gone.includes(num))
             renumbered(closeGap(from, parent))
             result.touchedAll = result.touchedAll.filter(n => !gone.includes(n))
             if (parent) touch(parent.num)
@@ -717,17 +757,21 @@ export function applyOperations(model, ops, shown = {}) {
             result.messages.push({ num: op.num || '', text: op.text.trim() })
         },
 
+        // The queue's order, and nothing else: which nodes are in it the server reads off the nodes (normalize). The
+        // nodes listed come first, in this order, and have their place; a pending action left out keeps the place it had.
         queue(op) {
-            if (!Array.isArray(op.items)) throw new OpError('A queue needs its items.', 'Pass items: [{ num, label }], most important first; an empty list empties the queue.')
+            if (!Array.isArray(op.items)) throw new OpError('A queue needs its items.', 'Pass items: [{ num }, …]: the pending actions, most important first.')
             const seen = new Set()
-            model.queue = op.items.map(item => {
-                const { node } = get(item?.num)
-                if (seen.has(item.num)) throw new OpError(`${item.num} is in the queue twice.`)
-                seen.add(item.num)
-                if (item.label !== undefined && !isText(item.label)) throw new OpError(`The label of queue item ${item.num} is not text.`)
-                return { num: item.num, kind: '', label: (item.label || node.title).replace(/\s+/g, ' ').trim(), read: !!item.read }
+            const order = op.items.map(item => {
+                const num = isText(item) ? item : item?.num
+                get(num)
+                if (seen.has(num)) throw new OpError(`${num} is in the queue twice.`)
+                seen.add(num)
+                return num
             })
-            result.queued = true
+            const held = new Map(model.queue.map(item => [item.num, item]))
+            model.queue = [...order.map(num => ({ ...(held.get(num) ?? { num, kind: '', label: '' }), placed: true })), ...model.queue.filter(item => !seen.has(item.num))]
+            result.ordered.push(...order.filter(num => !result.ordered.includes(num)))
         },
     }
 
