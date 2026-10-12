@@ -13,7 +13,7 @@ What is kept for an outline session and the page shows: its title, its nodes and
 _Avoid_: Mirror, notes, file (the file is how an outline is stored, in both modes)
 
 **Operation**:
-One change an agent asks of an outline in server mode: add, update, move or remove a node, record what the user decided in chat, finish a task, acknowledge the user's ticks, post a message, or replace the queue.
+One change an agent asks of an outline in server mode: add, update, move or remove a node, record what the user decided in chat, finish a task, acknowledge the user's ticks, post a message, or order the queue.
 _Avoid_: Edit, command, patch
 
 **Map**:
@@ -120,16 +120,32 @@ The agent's stored log of a session's messages and tool calls.
 _Avoid_: History, log
 
 **Action**:
-Something the user does on a node of the outline: approve it, pick an option, run a task, or read it. Only the user acts in this sense: what the agent does is a task. The agent can ask for an action, through the action queue, and never performs one.
+Something the user does on a node of the outline: approve it, pick an option, run a task, or read it. Only the user acts in this sense: what the agent does is a task. The agent never performs one. It can ask for an approval, on the node; the other actions a node waits for follow from what the node is (a pending action).
 _Avoid_: Task (that is the agent's), and "action" for anything the agent does
 
 **Task**:
 Something for the agent to do in the session itself (run tests, change code), kept as a node. The agent proposes it and carries it out only when the user runs it, or the user asks for it in chat and the agent carries it out at once. Once the agent has carried it out it is a **done** task, or a **failed** one when the agent tried and could not; a failed task can be run again. A task takes no approval.
 _Avoid_: Action (that is the user's), play task, step, job
 
+**Pending action**:
+An action a node waits for the user to perform: to pick an option of a question the agent has no recommendation for, to run a task (a proposed one, or one that failed), or to approve a claim whose agent asked for that. Nothing requires an approval, so a claim waits for one only when its agent asked.
+_Avoid_: Open item, to-do, and a bare "pending" (that is a tick the agent has not taken in)
+
 **Action queue**:
-The agent's ordered list of the actions it asks of the user, queue for short. Each item is an action indicator for one node, and says which action it is: **decide** (pick an option of a question the agent has no recommendation for), **run** (a task), **approve** (a claim, a question with a recommended option included) or **read**. An item does nothing but show the user where the action is: the action itself is done on the node. A task the agent carried out can be in the queue only as something to read. Which nodes are in the queue is the agent's choice alone.
+The pending actions of an outline, in order, queue for short. In server mode the server lists them from the nodes and the agent only orders them, most important first; one the agent has not placed yet comes last. Each item is an action indicator for one node, and says which action it is: **decide** (pick an option of a question the agent has no recommendation for), **run** (a task) or **approve** (a claim whose agent asked for the user's approval, a question with a recommended option included). An item does nothing but show the user where the action is: the action itself is done on the node. It leaves the queue when the user performs the action, or when the agent changes the node so that it asks nothing more. An agent cannot put a node in the queue to have it read: that is what a change indicator is for. An agent in file mode still writes the queue itself, and may list a node to **read**.
 _Avoid_: Task queue, tasks (those are the agent's), to-do, cue
+
+**Pending change**:
+A change the agent made to a node that the page holds back until the user opens it, so that the outline does not change under them. A node that was reworded, or whose kind changed, keeps what the user read; a node that was added is a bare row; a node that was removed stays where it stood, struck through, while the nodes after it carry their new numbers. Opening a node's pending change opens every one under it. What the user does is never one: their approval or pick applies at once. Nothing is pending on a first visit.
+_Avoid_: Update, unread (the code's word), diff (that is the icon), and a bare "pending"
+
+**Diff icon**:
+The one icon left of a node's title: it says the node has a pending change, and a click opens it. A plus over a minus for a node that changed, a plus for one that was added, a minus for one that was removed. A closed parent shows it for the pending changes under it.
+_Avoid_: Envelope, unread mark
+
+**Change indicator**:
+What shows the user where a pending change is, without opening it: an item of the lower queue of the page's column, under the action queue. It is drawn with what opening the change brings: the node's new kind mark, or else the diff icon in the form the node has. The page lists them, as the outline is ordered or the oldest change first, as the user chooses; no agent orders them. A node that has an item in the action queue has none: that item leads to the same node.
+_Avoid_: Notice, update message (a message is a note in the inbox), notification
 
 **Action indicator**:
 What shows the user where an action is, without performing it: a click takes them to the place on the node where the action is done, and nothing else. An item of the action queue is one. So is the empty checkbox among the kind marks of a title row, for a task that is proposed (the node's own, or one found under a parent): it does not run the task or tick the box, and takes the user to the task's own button, in the text of the first such node, by scrolling that button into view and making it grow and shrink once.
@@ -168,7 +184,7 @@ The tab that shows the linked session's transcript as rendered messages.
 _Avoid_: Chat tab, chat view
 
 **Viewer state**:
-What the page remembers for the user about one outline (open nodes, what was read, undo steps, seen messages, the input box's draft, the tab shown, and in file mode the approvals still pending), kept by the server so every window on the outline shows the same.
+What the page remembers for the user about one outline (open nodes, what was read, undo steps, seen messages, the input box's draft, the tab shown, the order of the change indicators, and in file mode the approvals still pending), kept by the server so every window on the outline shows the same.
 _Avoid_: Local storage, preferences, settings (that is the settings file)
 
 **Input box**:

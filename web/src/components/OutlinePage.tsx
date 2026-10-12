@@ -114,7 +114,8 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
     const removed = useMemo<RemovedNode[]>(() => {
         if (!stateLoaded) return []
         const there = new Set(allNodes(shown).map(n => n.num))
-        return outline.removed.filter(t => !viewer.seen[`removed:${t.id}`] && (!t.parent || there.has(t.parent)))
+        // A server from before this was kept sends none: the page may be newer than the server it talks to.
+        return (outline.removed ?? []).filter(t => !viewer.seen[`removed:${t.id}`] && (!t.parent || there.has(t.parent)))
     }, [outline.removed, viewer.seen, shown, stateLoaded])
     const removedUnder = useCallback((num: string) => removed.filter(t => t.parent === num || t.parent.startsWith(`${num}.`)), [removed])
     const actions = useMemo<NodeActions>(() => {
@@ -167,7 +168,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
             ...unreadNums.map(num => {
                 const change = pending.get(num)!
                 const mark = change.kind === 'changed' ? keyOf(statuses, after.get(num)) : undefined
-                return { num, kind: change.kind, done: change.done, mark: mark && mark !== keyOf(was, before.get(num)) ? mark : undefined, at: outline.changedAt[num] ?? 0 }
+                return { num, kind: change.kind, done: change.done, mark: mark && mark !== keyOf(was, before.get(num)) ? mark : undefined, at: outline.changedAt?.[num] ?? 0 }
             }),
             ...removed.map(t => ({ num: t.num, kind: 'removed' as const, id: t.id, at: t.at })),
         ]
@@ -307,8 +308,8 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                     onOpen={openQueued}
                     changes={changes}
                     onOpenUnread={change => (change.kind === 'removed' ? openRemovedItem(change.id ?? '') : openUnreadItem(change.num))}
-                    order={viewer.order}
-                    onOrder={outline.mode === 'server' ? order => patch({ order }) : undefined}
+                    order={viewer.order ?? 'number'}
+                    onOrder={outline.mode === 'server' && outline.changedAt ? order => patch({ order }) : undefined}
                     ready={stateLoaded}
                     footer={<InboxButton messages={session.messages} seen={viewer.seen} onSeen={onSeen} onReveal={reveal} />}
                 />

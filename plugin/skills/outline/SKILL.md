@@ -7,13 +7,13 @@ argument-hint: "[topic]"
 
 # Outline of this conversation
 
-Mirror this conversation into an outline. The outline server owns the outline: you change it through three tools, `start`, `read` and `change`, and never write a file. The tools are this plugin's `outline` MCP server. The server keeps the numbers unique, rolls approvals up, marks the node last touched as current, names what each queue item asks and refuses a change that breaks a rule, saying why.
+Mirror this conversation into an outline. The outline server owns the outline: you change it through three tools, `start`, `read` and `change`, and never write a file. The tools are this plugin's `outline` MCP server. The server keeps the numbers unique, rolls approvals up, marks the node last touched as current, lists the actions that wait for the user and refuses a change that breaks a rule, saying why.
 
 This file is the mechanics: how an outline works, the same for every user. Break one of its rules and the page tells the user something false, or stops working. How this user wants to work with an outline is a second skill, the workflow skill (see below). Where the two disagree, this one holds.
 
 ## The workflow skill
 
-**An outline has one workflow skill, and `start` tells you which.** Load it before your first `change`, and follow it for everything this file leaves open: when to ask for the user and what to put in the queue, whether tasks wait to be run, how much of the work to mirror and how finely.
+**An outline has one workflow skill, and `start` tells you which.** Load it before your first `change`, and follow it for everything this file leaves open: when to ask for the user and how to order the queue, whether tasks wait to be run, how much of the work to mirror and how finely.
 
 - **The outline records it**, and the page shows it. An outline nobody named a workflow for has this plugin's `outline-workflow` (`outline-only:outline-workflow`). If you cannot load skills, read `../outline-workflow/SKILL.md` beside this file.
 - **A workflow skill the user names replaces it**, whether they name it when they start the outline or later. Call `start` with its name as `workflow`, load that skill, and follow it from then on. Never pass a `workflow` the user did not name.
@@ -31,6 +31,7 @@ So every turn takes one of two shapes:
 Choose by where the answer belongs. What the user may decide, approve or come back to is a node. What is said once and done with is a reply. Never split one answer between the two: when the outline changes, the reply is not shown, so anything left only there is lost.
 
 - **Spend the effort on the nodes.** Make each node's text complete and self-sufficient: for what it covers, the user reads nothing else.
+- **What you change waits for the user.** The page holds each change of a node behind a button on that node until the user opens it, so the outline does not move under them: a node you reworded reads as before, a node you added is a bare row, a node you removed stays where it stood. Do not take a change as seen because you made it.
 - **Local commands reach the inbox without you.** The output of a command Claude Code runs itself, such as `/context` or `/model`, is put there by the server. Do not repeat it.
 - **After a change to the outline, keep the chat reply to one short line, or nothing.** The user does not see it, so do not explain, recap or repeat the outline there.
 - **Refer to nodes by their full-path numbers** (`2.1`, `2.2`, never a bare `1`, `2` under a parent) in the short line and in node text, so a reference means the same node everywhere. When the server renumbers nodes (after a move or a removal), use the new numbers from then on.
@@ -81,7 +82,8 @@ Choose by where the answer belongs. What the user may decide, approve or come ba
 
 ## The queue and messages
 
-- **The queue is what you ask the user to handle**, in the order you give it. Replace it with a `queue` operation whenever it changes. A row in the queue is the only thing on the page that calls for the user, so the queue holds only what you put in it: the server lists nothing else as waiting.
-- **The server names what each item asks**, from its node: to decide (an unresolved question), to run (a task not done), to approve (a claim, or a question with a recommended option), or to read (anything you mark so, and a task you carried out). It drops what the user handled. Mark an item `read` when nothing is to be decided or approved.
-- **A task you carried out can be in the queue**: the item then asks the user to read what came of it. A task that was queued to be run leaves the queue when you finish it; queue it again if its result is to be checked.
+- **The queue is the pending actions**: what waits for the user to do. The server lists them from the nodes, and you do not: to decide (an unresolved question), to run (a task not done), to approve (a claim you asked the user to approve). An action leaves the queue when the user performs it, or when you change its node so that it asks nothing more.
+- **You ask for an approval on the node**, with `ask`: on a claim, or on a question with a recommended option. Nothing else requires an approval, so a claim without it waits for nothing. A task takes none, and an option is picked: set `ask` on its question.
+- **You cannot queue a node to have it read.** A node you changed shows on the page as a change to open, and that is all the page needs. What must reach the user beyond that is a message.
+- **The order is yours to give.** A `queue` operation lists the pending actions, most important first, and does nothing else: a node with no pending action is left out, and an action you do not list keeps the place it had. Every result shows the queue and says which actions are not placed yet. Place them before you end the turn; if you do not, the turn is held open once and you are told which.
 - **A message is for what the outline does not hold**: a status, a warning. One or two sentences, with the node it relates to when there is one. Post one with the `message` operation when it has to name a node, or when the turn also changes the outline; otherwise the turn's reply is the message (see above). The outcome of something you did belongs in its node, not in a message.

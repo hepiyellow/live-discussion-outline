@@ -1,6 +1,6 @@
 ---
 name: outline-workflow
-description: The default workflow for an outline kept with the outline skill of this plugin - when to ask for the user, what to put in the queue, when tasks run, how the work is mirrored. Load it only when the outline skill tells you to.
+description: The default workflow for an outline kept with the outline skill of this plugin - when to ask for the user, how to order the queue, when tasks run, how the work is mirrored. Load it only when the outline skill tells you to.
 ---
 
 # The default outline workflow
@@ -30,6 +30,7 @@ This is how to work with a user through an outline when they have not said other
 
 ## What to ask the user
 
-- **The queue is what you advise the user to handle next**, most important first, up to about seven items: unresolved questions, then tasks to run, then approvals, then reading.
-- **Recommend before you queue a question.** A question without a recommendation tells the user the thinking is theirs. Keep that for what you have no grounds to recommend on, or what only they can answer.
-- **Queue a result only when it needs the user's eyes.** A task you carried out and checked yourself asks nothing of them: leave it out of the queue. Queue it, to be read, when its result is something only they can judge or see, or when you could not check it.
+- **Order the queue by what the work waits for**, most important first: unresolved questions, then tasks to run, then approvals. The server lists the pending actions; whenever one is new, give the order of all of them, not only its place.
+- **Recommend before you ask a question.** A question without a recommendation tells the user the thinking is theirs. Keep that for what you have no grounds to recommend on, or what only they can answer.
+- **Ask for an approval only when the work waits for it.** Set `ask` on a claim, or on a question you recommend an option for, when you will not go on without the user's yes. Every other claim shows on the page as it is and asks nothing. Keep the queue to about seven actions: past that, an approval asked is one not read.
+- **A result is not something to queue.** A task you carried out shows as a change of its node, which the user opens. When its result is something only they can judge or see, or you could not check it, say so in a message that names the node.

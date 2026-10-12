@@ -43,8 +43,9 @@ describe('the plugin’s skills for server mode', () => {
         assert.match(mechanics, /A workflow skill the user names replaces it/)
         // What the server enforces is said here, not left to a workflow.
         for (const rule of [/Only the user approves/, /A node is never a claim and a task at once/, /Acknowledge every tick you were told of/, /Never finish what you did not do/]) assert.match(mechanics, rule)
+        for (const rule of [/The queue is the pending actions/, /You cannot queue a node to have it read/, /The order is yours to give/]) assert.match(mechanics, rule)
         // When to act and what to ask are the workflow’s.
-        for (const choice of [/Run only when asked/, /Recommend before you queue a question/]) assert.doesNotMatch(mechanics, choice)
+        for (const choice of [/Run only when asked/, /Recommend before you ask a question/]) assert.doesNotMatch(mechanics, choice)
     })
 
     test('the default workflow skill is there for the agent to load, and holds the choices', () => {
@@ -52,7 +53,8 @@ describe('the plugin’s skills for server mode', () => {
         assert.match(workflow, /^---\nname: outline-workflow\n/)
         // The agent loads it itself, on the outline skill’s word.
         assert.doesNotMatch(workflow, /disable-model-invocation/)
-        for (const choice of [/Run only when asked/, /Recommend before you queue a question/, /Queue a result only when it needs the user's eyes/, /A request with no node gets one before you start/]) assert.match(workflow, choice)
+        for (const choice of [/Run only when asked/, /Recommend before you ask a question/, /Ask for an approval only when the work waits for it/, /A result is not something to queue/, /A request with no node gets one before you start/])
+            assert.match(workflow, choice)
     })
 })
 
