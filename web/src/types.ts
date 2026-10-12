@@ -5,7 +5,7 @@ export type Status = 'open' | 'claim' | 'approved'
 
 /** The `@` tags a node's heading line can carry, right after its number. */
 /** The tags of a node, by the names the code uses: `@user-approved` is `approved`, `@agent-claim` is `claim`, `@action-done` is `action` and `ran`, `@action-failed` is `action` and `failed`. */
-export type Tag = 'approved' | 'claim' | 'options' | 'option' | 'recommended' | 'current' | 'action' | 'ran' | 'failed'
+export type Tag = 'approved' | 'claim' | 'asks-approval' | 'options' | 'option' | 'recommended' | 'current' | 'action' | 'ran' | 'failed'
 
 /** A closing line of a node's text: `@Summary.`, `@Recommendation.` or `@Action.`, shown after its own tag. */
 export interface ClosingLine {

@@ -8,7 +8,8 @@ import { referenceTo, removalOf } from '@/lib/references'
 import { useUnread } from '@/hooks/useUnread'
 import { useOutline } from '@/hooks/useOutline'
 import { UNTITLED, allNodes, currentPath, duplicateNums, isParent, nodeLabel, pathNums } from '@/lib/outline'
-import { Statuses } from '@/lib/status'
+import { shownNodes } from '@/lib/pending'
+import { Statuses, type KindKey } from '@/lib/status'
 import { scrollToNode } from '@/lib/sticky'
 import type { Chip, Outline, OutlineNode, QueueItem, StatePatch, TabName, ViewerState } from '@/types'
 import { InboxButton } from './Inbox'
@@ -16,7 +17,7 @@ import { InputBox } from './InputBox'
 import { useNotify } from './Notice'
 import { OutlineTab, type NodeActions } from './OutlineTab'
 import { PermissionPrompt } from './PermissionPrompt'
-import { QueueColumn } from './QueueColumn'
+import { QueueColumn, type ChangeIndicator } from './QueueColumn'
 import { readId } from './queue'
 import { OutlinesPane } from './OutlinesPane'
 import { StatusBar } from './StatusBar'
@@ -106,28 +107,52 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
     )
     const messagesFor = useCallback((num: string) => messagesAbout(num, session.messages), [session.messages])
     const onSeen = useCallback((ids: string[]) => patch({ seen: Object.fromEntries(ids.map(id => [id, 1])) }), [patch])
-    const { unread, opening, openUnread, unreadNums, unreadUnder, openUnreadUnder } = useUnread(outline, viewer, stateLoaded, patch)
-    const actions = useMemo<NodeActions>(
-        () => ({
+    const { pending, unread, opening, openChange, unreadNums, unreadUnder, openUnreadUnder } = useUnread(outline, viewer, stateLoaded, patch)
+    // The outline as the viewer sees it: a node whose change waits is as they read it, and an added one a bare row.
+    const shown = useMemo(() => shownNodes(outline.nodes, pending), [outline, pending])
+    const actions = useMemo<NodeActions>(() => {
+        // The rows hold the nodes as they are shown; what the user does applies to the node as it is. A node whose
+        // change waits takes no approval: the user has not seen what they would approve.
+        const live = (node: OutlineNode) => allNodes(outline.nodes).find(n => n.num === node.num) ?? node
+        return {
             linked,
-            onCheck: clickNode,
-            onTopicCheck: clickTopic,
-            onRun: run,
-            onReference,
-            onRemove,
+            onCheck: node => {
+                if (!pending.has(node.num)) clickNode(live(node))
+            },
+            onTopicCheck: topic => {
+                if (!pending.has(topic.num)) clickTopic(live(topic))
+            },
+            onRun: node => run(live(node)),
+            onReference: node => onReference(live(node)),
+            onRemove: node => onRemove(live(node)),
+            pending,
             unread,
             opening,
-            onOpenUnread: openUnread,
+            onOpenChange: node => openChange(live(node)),
             unreadUnder,
-            onOpenUnreadUnder: openUnreadUnder,
+            onOpenUnreadUnder: node => openUnreadUnder(live(node)),
             messagesFor,
             seen: viewer.seen,
             onSeen,
             onReveal: (num: string, then?: (el: HTMLElement) => void, inside?: boolean) => revealRef.current(num, then, inside),
-        }),
-        [linked, clickNode, clickTopic, run, onReference, onRemove, unread, opening, openUnread, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen],
-    )
-    const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides, 'file', new Set(), new Set(unreadNums)), [outline, viewer.overrides, unreadNums])
+        }
+    }, [outline, linked, clickNode, clickTopic, run, onReference, onRemove, pending, unread, opening, openChange, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen])
+    const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
+    /**
+     * The change indicators of the queue column, in outline order. One of a node whose own kind mark changes is drawn
+     * with the new mark, which is what opening the change brings.
+     */
+    const changes = useMemo<ChangeIndicator[]>(() => {
+        const was = new Statuses(shown, viewer.overrides)
+        const before = new Map(allNodes(shown).map(n => [n.num, n]))
+        const after = new Map(allNodes(outline.nodes).map(n => [n.num, n]))
+        const keyOf = (s: Statuses, node?: OutlineNode): KindKey | undefined => node && (node.level === 1 ? s.topicBox(node) : s.box(node)).markKey
+        return unreadNums.map(num => {
+            const change = pending.get(num)!
+            const mark = change.kind === 'changed' ? keyOf(statuses, after.get(num)) : undefined
+            return { num, kind: change.kind, done: change.done, mark: mark && mark !== keyOf(was, before.get(num)) ? mark : undefined }
+        })
+    }, [outline, shown, viewer.overrides, statuses, unreadNums, pending])
     const duplicates = useMemo(() => duplicateNums(outline.nodes), [outline])
 
     const onToggle = useCallback((node: OutlineNode, value: boolean) => patch({ open: { [node.num]: value } }), [patch])
@@ -138,8 +163,11 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
      * `inside`, a node that has nodes under it is opened too: what there is to do is in them (a question's options). So
      * is an action, whose Run button is in its text.
      */
-    const reveal = (num: string, then?: (el: HTMLElement) => void, inside = false) => {
-        const parent = inside && allNodes(outline.nodes).some(n => n.num === num && (n.children.length > 0 || n.tags.includes('action')))
+    const reveal = (asked: string, then?: (el: HTMLElement) => void, inside = false) => {
+        // A node inside one that was added and is not opened yet is not shown: the added node is, with its plus.
+        const there = new Set(allNodes(shown).map(n => n.num))
+        const num = pathNums(asked).reverse().find(n => there.has(n)) ?? asked
+        const parent = inside && allNodes(shown).some(n => n.num === num && (n.children.length > 0 || n.tags.includes('action')))
         flushSync(() => {
             if (tab !== 'outline') setTab('outline')
             patch({ open: Object.fromEntries(pathNums(num).slice(0, parent || !num.includes('.') ? undefined : -1).map(n => [n, true])) })
@@ -233,12 +261,12 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                     runs={viewer.runs}
                     seen={viewer.seen}
                     onOpen={openQueued}
-                    unread={unreadNums}
+                    changes={changes}
                     onOpenUnread={openUnreadItem}
                     ready={stateLoaded}
                     footer={<InboxButton messages={session.messages} seen={viewer.seen} onSeen={onSeen} onReveal={reveal} />}
                 />
-                <OutlineTab outline={outline} viewer={viewer} actions={actions} onToggle={onToggle} />
+                <OutlineTab outline={outline} shown={shown} viewer={viewer} actions={actions} onToggle={onToggle} />
             </TabsContent>
             <TabsContent value="md" forceMount hidden={tab !== 'md'} className="mx-auto max-w-[900px] px-5 pt-4 pb-20">
                 <div className="markdown" dangerouslySetInnerHTML={{ __html: outline.markdown }} />

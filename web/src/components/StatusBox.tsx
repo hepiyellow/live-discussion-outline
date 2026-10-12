@@ -40,7 +40,7 @@ const MARK_ICON: Record<Mark, React.ReactNode> = {
 const RUNNING_TITLE = 'Running: waiting for the agent to finish this action'
 
 /** A column's icon: a claim the user approved is the sparkle filled, as a done action is the triangle filled. */
-const keyIcon = (key: KindKey) => (key === 'claim-approved' ? <Sparkle fill="currentColor" aria-hidden="true" /> : MARK_ICON[markOfKey(key)])
+export const keyIcon = (key: KindKey) => (key === 'claim-approved' ? <Sparkle fill="currentColor" aria-hidden="true" /> : MARK_ICON[markOfKey(key)])
 
 /**
  * A node's or topic's approval box: empty, pending (the user's green tick, fading in and out until the agent records

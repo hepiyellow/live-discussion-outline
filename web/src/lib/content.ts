@@ -1,4 +1,4 @@
-import type { ClosingLine, OutlineNode } from '@/types'
+import type { ClosingLine, OutlineNode, Tag } from '@/types'
 
 /** The sparkle of the agent's claim: a recommendation is one. */
 const SPARKLE_ICON =
@@ -55,24 +55,60 @@ export const liveHtml = (node: OutlineNode) => {
     return lines.join('') + node.html
 }
 
-/** What a node shows: its title and its text, as HTML. */
+/** The tags that say what a node is on the agent's side. The user's approval, and which node is current, are not among them. */
+export const AGENT_TAGS: Tag[] = ['claim', 'options', 'recommended', 'action', 'ran', 'failed']
+
+/** A node's kind as the agent gave it: its agent-side tags, and which closing lines it has (a recommendation makes a claim). */
+export interface KindRead {
+    tags: Tag[]
+    closing: ClosingLine['kind'][]
+}
+
+/** What a node shows: its title and its text, as HTML, and its kind when that was kept. */
 export interface NodeContent {
     titleHtml: string
     html: string
+    kind?: KindRead
 }
 
 const SEP = '\u0001'
 
-/** A node as the viewer reads it, as one string: what the viewer state keeps of each node they have read. */
-export const readVersion = (node: OutlineNode) => `${node.titleHtml}${SEP}${contentHtml(node)}`
+const wordingOf = (node: OutlineNode) => `${node.titleHtml}${SEP}${contentHtml(node)}`
+const kindOf = (node: OutlineNode): KindRead => ({ tags: AGENT_TAGS.filter(t => node.tags.includes(t)), closing: node.closing.map(c => c.kind) })
 
 /**
- * `readVersion` as it was before the tags came first. A node read in that form and unchanged since is not an unread
- * change; the page takes it as read in the new form. (Drop this once every viewer state has been through one load.)
+ * A node as the viewer reads it, as one string: what the viewer state keeps of each node they have read. Its title,
+ * its text and its kind: a change of any of them is a change to open.
  */
-export const legacyReadVersion = (node: OutlineNode) => `${node.titleHtml}${SEP}${legacyContentHtml(node)}`
+export const readVersion = (node: OutlineNode) => `${wordingOf(node)}${SEP}${JSON.stringify(kindOf(node))}`
+
+/** The title and text of a version, without its kind: two nodes that read alike have the same. */
+export const wording = (version: string) => version.split(SEP).slice(0, 2).join(SEP)
+
+/** `readVersion` as it was before the tags came first. (Drop this once every viewer state has been through one load.) */
+const legacyReadVersion = (node: OutlineNode) => `${node.titleHtml}${SEP}${legacyContentHtml(node)}`
+
+/**
+ * Whether what the viewer read of a node (`version`) is the node as it is now. A version kept before the kind was
+ * part of it, or before the tags came first, counts when its wording is the node's: the page then takes it as read in
+ * the form kept now. So does a node the user approved since: the approval is theirs, and an agent that records it in
+ * the file may drop its own claim tag for it, which is not a change of kind.
+ */
+export function isRead(version: string, node: OutlineNode) {
+    if (version === readVersion(node)) return true
+    if (wording(version) !== wordingOf(node)) return version === legacyReadVersion(node)
+    const was = parseVersion(version).kind
+    if (!was) return true
+    const now = kindOf(node)
+    const tags = (kind: KindRead) => kind.tags.filter(t => t !== 'claim' || !node.tags.includes('approved')).join()
+    return tags(was) === tags(now) && was.closing.join() === now.closing.join()
+}
 
 export function parseVersion(version: string): NodeContent {
-    const [titleHtml, html = ''] = version.split(SEP)
-    return { titleHtml, html }
+    const [titleHtml, html = '', kind] = version.split(SEP)
+    let read: KindRead | undefined
+    try {
+        if (kind) read = JSON.parse(kind)
+    } catch {}
+    return { titleHtml, html, ...(read ? { kind: read } : {}) }
 }

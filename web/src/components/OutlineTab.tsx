@@ -25,10 +25,15 @@ export const isOpenIn = (open: OpenNodes, statuses: Statuses) => (node: OutlineN
  * starts with the field that names it; once it has a title, the top bar shows it.
  */
 /** The user's actions on nodes, from useApprovals. */
-export type NodeActions = Pick<OutlineContext, 'linked' | 'onCheck' | 'onTopicCheck' | 'onRun' | 'onReference' | 'onRemove' | 'unread' | 'opening' | 'onOpenUnread' | 'unreadUnder' | 'onOpenUnreadUnder' | 'messagesFor' | 'seen' | 'onSeen' | 'onReveal'>
+export type NodeActions = Pick<
+    OutlineContext,
+    'linked' | 'onCheck' | 'onTopicCheck' | 'onRun' | 'onReference' | 'onRemove' | 'pending' | 'unread' | 'opening' | 'onOpenChange' | 'unreadUnder' | 'onOpenUnreadUnder' | 'messagesFor' | 'seen' | 'onSeen' | 'onReveal'
+>
 
 interface Props {
     outline: Outline
+    /** The outline's nodes as the viewer sees them while changes wait to be opened (`shownNodes`). */
+    shown: OutlineNode[]
     viewer: ViewerState
     actions: NodeActions
     onToggle: (node: OutlineNode, open: boolean) => void
@@ -44,15 +49,16 @@ const EMPTY = {
     unlinked: 'This outline is empty.',
 }
 
-export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
+export function OutlineTab({ outline, shown, viewer, actions, onToggle }: Props) {
     const root = useRef<HTMLDivElement>(null)
     const [historyOf, setHistoryOf] = useState<OutlineNode | null>(null)
-    // A change being opened counts as read: its box turns done as the animation starts.
-    const unopened = useMemo(() => new Set([...actions.unread.keys()].filter(num => !actions.opening.has(num))), [actions.unread, actions.opening])
+    // The changes that wait. One being opened no longer does: its marks turn as the animation starts.
+    const unopened = useMemo(() => new Set(actions.pending.keys()), [actions.pending])
     // The kind marks that changed as a change was opened.
     const [pulse, setPulse] = useState<Map<string, MarksChange>>(new Map())
     const ctx = useMemo<OutlineContext>(() => {
-        const statuses = new Statuses(outline.nodes, viewer.overrides, outline.mode, new Set(outline.unacked), unopened)
+        // The marks are those of the outline as it is shown: a node whose change waits keeps the kind it was read with.
+        const statuses = new Statuses(shown, viewer.overrides, outline.mode, new Set(outline.unacked), unopened)
         const isOpen = isOpenIn(viewer.open, statuses)
         return {
             ...actions,
@@ -66,27 +72,28 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
                     .map(q => [q.item.num, q.item]),
             ),
             isOpen,
-            kindColumns: withGone(kindColumnsInView(outline.nodes, statuses, isOpen), pulse),
+            kindColumns: withGone(kindColumnsInView(shown, statuses, isOpen), pulse),
             pulse,
             toggle: node => onToggle(node, !isOpen(node)),
-            current: currentPath(outline.nodes),
+            current: currentPath(shown),
             runs: viewer.runs,
         }
-    }, [outline, viewer.open, viewer.overrides, viewer.runs, viewer.seen, actions, unopened, pulse, onToggle])
+    }, [outline, shown, viewer.open, viewer.overrides, viewer.runs, viewer.seen, actions, unopened, pulse, onToggle])
 
     // Opening a change turns the marks it held back: each one that differs from before grows and shrinks once. What it
-    // was is the same outline with the change still unopened, so only the click makes a difference.
+    // was is the outline as it was shown with the change still unopened, so only the click makes a difference.
     const prevUnopened = useRef<Set<string> | null>(null)
+    const prevStatuses = useRef<Statuses | null>(null)
     const pulseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
     useEffect(() => () => clearTimeout(pulseTimer.current), [])
     useLayoutEffect(() => {
         const before = prevUnopened.current
+        const was = prevStatuses.current
         prevUnopened.current = unopened
-        if (!before) return
+        if (!before || !was) return
         const opened = [...before].filter(num => !unopened.has(num))
         if (!opened.length) return
-        const was = new Statuses(outline.nodes, viewer.overrides, outline.mode, new Set(outline.unacked), new Set([...unopened, ...opened]))
-        const changes = marksChanged(was, ctx.statuses, outline.nodes)
+        const changes = marksChanged(was, ctx.statuses)
         if (!changes.size) return
         clearTimeout(pulseTimer.current)
         setPulse(changes)
@@ -94,15 +101,19 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
         // Only a change of what is unopened matters.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [unopened])
+    // After the comparison above: what the outline showed on the render before a change is opened.
+    useLayoutEffect(() => {
+        prevStatuses.current = ctx.statuses
+    })
 
     // A parent that becomes settled collapses, also one the viewer had opened themselves: such a parent would stay
     // open by their choice, so it is closed here. After a pause, since a click that settles a parent closes it itself,
     // with its own animation.
     const settled = useRef<Set<string> | null>(null)
-    const latest = useRef({ outline, open: viewer.open, statuses: ctx.statuses, onToggle })
-    latest.current = { outline, open: viewer.open, statuses: ctx.statuses, onToggle }
+    const latest = useRef({ shown, open: viewer.open, statuses: ctx.statuses, onToggle })
+    latest.current = { shown, open: viewer.open, statuses: ctx.statuses, onToggle }
     useEffect(() => {
-        const now = new Set(allNodes(outline.nodes).filter(n => ctx.statuses.isSettled(n)).map(n => n.num))
+        const now = new Set(allNodes(shown).filter(n => ctx.statuses.isSettled(n)).map(n => n.num))
         const before = settled.current
         settled.current = now
         // On the first pass nothing became settled: it is how the outline was found.
@@ -110,13 +121,13 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
         const turned = [...now].filter(num => !before.has(num) && viewer.open[num])
         if (!turned.length) return
         const timer = setTimeout(() => {
-            const { outline, open, statuses, onToggle } = latest.current
-            for (const n of allNodes(outline.nodes)) if (turned.includes(n.num) && open[n.num] && statuses.isSettled(n)) onToggle(n, false)
+            const { shown, open, statuses, onToggle } = latest.current
+            for (const n of allNodes(shown)) if (turned.includes(n.num) && open[n.num] && statuses.isSettled(n)) onToggle(n, false)
         }, SETTLE_PAUSE)
         return () => clearTimeout(timer)
         // Only a change of what is settled matters: the viewer opening a node is not one.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [outline, ctx.statuses])
+    }, [shown, ctx.statuses])
 
     // The header stack follows scrolling, resizing, and every change of the content.
     useLayoutEffect(() => {
@@ -162,7 +173,7 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
                         {EMPTY[!actions.linked ? 'unlinked' : outline.mode === 'server' && !outline.session ? 'starting' : 'linked']}
                     </p>
                 )}
-                {outline.nodes.map(n => (
+                {shown.map(n => (
                     <Topic key={n.num} node={n} />
                 ))}
             </div>

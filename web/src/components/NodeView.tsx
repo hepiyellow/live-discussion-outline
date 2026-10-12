@@ -8,7 +8,8 @@ import type { Box, KindKey, MarksChange } from '@/lib/status'
 import type { Message, OutlineNode, QueueItem } from '@/types'
 import { NodeMessages } from './Inbox'
 import { useNotify } from './Notice'
-import { DIFF_ICON } from './queue'
+import type { PendingChange } from '@/lib/pending'
+import { DIFF_ICON, PLUS_ICON } from './queue'
 import { Marks, StatusBox, type OwnRole } from './StatusBox'
 
 /** What every node of the Outline tab needs: statuses, which nodes are open, the current path, and the user's actions. */
@@ -31,11 +32,14 @@ export interface OutlineContext {
     onRemove: (node: OutlineNode) => void
     /** Opens the node's history: its changes, and the node as it was at each. */
     onHistory: (node: OutlineNode) => void
+    /** The changes that wait for the viewer to open them, by node: changed nodes, and nodes added. */
+    pending: ReadonlyMap<string, PendingChange>
     /** Nodes changed since the viewer read them: what they read, shown until they open the change. */
     unread: Map<string, NodeContent>
     /** Unread nodes being opened: their diff button is gone, their text animating. */
     opening: Set<string>
-    onOpenUnread: (node: OutlineNode) => void
+    /** A click on a node's diff button: opens its own change and every change under it. */
+    onOpenChange: (node: OutlineNode) => void
     /** The nodes under a node with a change to open, and opening them all. */
     unreadUnder: (num: string) => string[]
     onOpenUnreadUnder: (node: OutlineNode) => void
@@ -272,24 +276,38 @@ function Asks({ node }: { node: OutlineNode }) {
     )
 }
 
-/** The diff button of a node changed since the viewer read it: opening it animates the node to its new text. */
+/**
+ * The diff button, the one icon left of a title: the node has a change the viewer has not opened. A plus over a minus
+ * for a node that changed (opening it animates the node to its new text), a plus for one that was added. A closed
+ * parent shows it for the changes under it, which nothing else on screen would say; an open one leaves that to its
+ * nodes. A click opens the node's change and every change under it.
+ */
 function Diff({ node }: { node: OutlineNode }) {
-    const { unread, opening, onOpenUnread } = useOutlineCtx()
-    if (!unread.has(node.num) || opening.has(node.num)) return null
+    const { pending, unreadUnder, isOpen, onOpenChange } = useOutlineCtx()
+    const own = pending.get(node.num)
+    const under = !own && node.children.length > 0 && !isOpen(node) ? unreadUnder(node.num).length : 0
+    if (!own && !under) return null
+    const added = own?.kind === 'added'
+    const title = added
+        ? 'Added since you last looked: click to open it'
+        : own
+          ? `Changed since you read it${own.done ? ', and now done' : ''}: click to see what changed`
+          : `${under} change${under === 1 ? '' : 's'} under this node since you read ${under === 1 ? 'it' : 'them'}: click to open ${under === 1 ? 'it' : 'them'}`
     return (
         <button
             type="button"
             className="env"
+            data-change={added ? 'added' : own ? 'changed' : 'under'}
             // The new content has the agent's Done tag: the change is an action carried out, which the icon shows in yellow.
-            data-done={node.tags.includes('ran') || undefined}
-            title={node.tags.includes('ran') ? 'Changed since you read it, and now done: click to see what changed' : 'Changed since you read it: click to see what changed'}
-            aria-label={`See what changed in ${node.num}`}
+            data-done={own?.done || undefined}
+            title={title}
+            aria-label={added ? `Open the new node ${node.num}` : own ? `See what changed in ${node.num}` : `See what changed under ${node.num}`}
             onClick={e => {
                 e.stopPropagation()
-                onOpenUnread(node)
+                onOpenChange(node)
             }}
         >
-            {DIFF_ICON}
+            {added ? PLUS_ICON : DIFF_ICON}
         </button>
     )
 }
@@ -456,7 +474,7 @@ export function Topic({ node }: { node: OutlineNode }) {
     const open = isOpen(node)
     const box = statuses.topicBox(node)
     const asked = useAsked(node)
-    const html = liveHtml(node)
+    const shown = useShown(node)
     return (
         <section className={cn('topic', !open && 'closed', box.done && 'done')}>
             <div
@@ -467,15 +485,19 @@ export function Topic({ node }: { node: OutlineNode }) {
                 aria-expanded={open}
                 onClick={e => isRowClick(e) && toggle(node)}
             >
+                <Diff node={node} />
                 <StatusBox box={box} onToggle={() => onTopicCheck(node)} />
                 <ChevronDown className="tri size-4" aria-hidden="true" />
-                <span className="node-title" dangerouslySetInnerHTML={{ __html: `${node.num}. ${node.titleHtml}` }} />
+                <span className="node-title">
+                    {node.num}. <span className="title-html" dangerouslySetInnerHTML={{ __html: shown.titleHtml }} />
+                </span>
                 <Messages node={node} />
                 <RowMarks node={node} box={box} />
                 <Asks node={node} />
             </div>
             <div className="topic-body" hidden={!open}>
-                {html && <NodeText node={node} className="topic-text node-html" html={html} />}
+                {/* Kept when empty: the diff animation may fill it. */}
+                <NodeText node={node} className="topic-text node-html" html={shown.html} hidden={!shown.html} />
                 {node.children.length > 0 && <NodeList nodes={node.children} />}
             </div>
         </section>

@@ -39,18 +39,27 @@ describe('unread changes', () => {
     /** On a first visit every node below the topics (20 in sample.md) counts as read; this waits until the page has recorded it. */
     const firstVisit = () => until(async () => Object.keys((await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read).length >= 20, { what: 'the first visit to be recorded' })
 
-    test('a rewritten node keeps what was read, with a diff button; a new node shows at once', async () => {
+    test('a rewritten node keeps what was read, with a diff button; a new node is a bare row with a plus until it is opened', async () => {
         await open()
         await firstVisit()
         assert.equal(await page.locator('.outline-tab .env').count(), 0)
         server.swap('demo/sample', 'demo/sample-edited')
         await node('3.4').waitFor()
         assert.match(await text('2.3'), /and the index version/)
-        assert.equal(await node('2.3').locator('> .env').count(), 1)
-        assert.equal(await node('3.4').locator('> .env').count(), 0)
-        assert.match(await text('3.4'), /Replay the top thousand queries/)
-        // Approving 4.1 changed its status, not its text: nothing to read.
+        assert.equal(await node('2.3').locator('> .env').getAttribute('data-change'), 'changed')
+        // The added node is there, with its title and nothing of its text, and the column has its indicator.
+        const plus = node('3.4').locator('> .env')
+        assert.equal(await plus.getAttribute('data-change'), 'added')
+        assert.match(await node('3.4').locator('.title-html').textContent(), /Warming the cache after a deploy/)
+        assert.equal((await text('3.4')).trim(), '')
+        assert.equal(await page.locator('[aria-label="Changes to open"] [data-unread="3.4"]').getAttribute('data-change'), 'added')
+        // Approving 4.1 is the user's own doing, recorded by the agent: nothing to open.
         assert.equal(await node('4.1').locator('> .env').count(), 0)
+        // The plus opens it: its text is there, and nothing is left to open on it.
+        await plus.click()
+        await page.waitForFunction(() => /Replay the top thousand queries/.test(document.querySelector('.outline-tab [data-num="3.4"] .node-html')?.textContent ?? ''))
+        assert.equal(await node('3.4').locator('> .env').count(), 0)
+        assert.equal(await page.locator('[data-unread="3.4"]').count(), 0)
         // 2.3 is in the action queue, so the column shows it once, there: it has no change indicator of its own, and
         // its item says the node changed.
         assert.equal(await page.locator('[data-unread="2.3"]').count(), 0)
@@ -72,6 +81,95 @@ describe('unread changes', () => {
         await indicator.click()
         await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="3.2"] > .env')?.hasAttribute('data-pulse'))
         assert.doesNotMatch(await text('3.2'), /ten minutes/)
+    })
+
+    /** Rewrites the outline's file the way an agent does. */
+    const rewrite = change => {
+        const file = path.join(server.dir, 'demo', 'sample.md')
+        const before = fs.readFileSync(file, 'utf8')
+        const after = change(before)
+        assert.notEqual(after, before)
+        fs.writeFileSync(file, after)
+    }
+
+    test('a change of kind alone waits too: the row keeps the marks it had, and the indicator shows the new one', async () => {
+        await open()
+        await firstVisit()
+        const own = () => node('3.3').locator('> .marks .km[data-own]')
+        assert.equal(await own().count(), 0)
+        rewrite(text => text.replace('## 3.3 Who can flush', '## 3.3 @agent-claim Who can flush'))
+        const indicator = page.locator('[aria-label="Changes to open"] [data-unread="3.3"]')
+        await indicator.waitFor()
+        // Opening it brings a claim, so that is what the indicator is drawn with; the row itself has no mark yet.
+        assert.equal(await indicator.getAttribute('data-mark'), 'claim')
+        assert.equal(await own().count(), 0)
+        await node('3.3').locator('> .env').click()
+        await own().waitFor()
+        assert.equal(await own().getAttribute('data-kind'), 'claim')
+        assert.equal(await page.locator('[data-unread="3.3"]').count(), 0)
+    })
+
+    test('a topic waits like any node: its title and text stay as read until its diff button is clicked', async () => {
+        await open({ reducedMotion: 'reduce' })
+        await firstVisit()
+        const title = () => node('3').locator('.title-html').textContent()
+        rewrite(text => text.replace('# 3. Invalidation\n', '# 3. Invalidation rules\n\nWhat drops an entry, and when.\n'))
+        const button = node('3').locator('> .env')
+        await button.waitFor()
+        assert.equal(await title(), 'Invalidation')
+        await button.click()
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="3"] .title-html').textContent === 'Invalidation rules')
+        assert.match(await page.locator('.outline-tab .topic:has(> [data-num="3"]) .topic-text').textContent(), /What drops an entry, and when\./)
+        assert.equal(await node('3').locator('> .env').count(), 0)
+    })
+
+    test('a closed parent shows the diff button for what waits under it, and a click opens all of it; an open one leaves it to its nodes', async () => {
+        await open({ reducedMotion: 'reduce' })
+        await firstVisit()
+        rewrite(text => text.replace('## 3.2 Time to live\n', '## 3.2 Time to live\n\nNow ten minutes.\n').replace('## 3.3 Who can flush the cache by hand\n', '## 3.3 Who can flush the cache by hand\n\nOperators only.\n'))
+        await node('3.2').locator('> .env').waitFor()
+        // Open, topic 3 has no button of its own: 3.2 and 3.3 show theirs.
+        assert.equal(await node('3').locator('> .env').count(), 0)
+        await node('3').click()
+        const button = node('3').locator('> .env')
+        await button.waitFor()
+        assert.equal(await button.getAttribute('data-change'), 'under')
+        assert.match(await button.getAttribute('title'), /^2 changes under this node/)
+        await button.click()
+        await until(async () => /ten minutes/.test((await readState())['3.2']) && /Operators only/.test((await readState())['3.3']), { what: 'both changes to be taken in' })
+        assert.equal(await node('3').locator('> .env').count(), 0)
+        assert.equal(await page.locator('[data-unread]').count(), 0)
+    })
+
+    test('a new topic comes with everything under it: one row and one indicator until its plus is clicked', async () => {
+        await open()
+        await firstVisit()
+        rewrite(text => text.replace('# @queue\n', '# 5. Monitoring\n\nWhat to watch.\n\n## 5.1 @options Which dashboard\n\n### 5.1.1 @option_A Grafana\n\n### 5.1.2 @option_B Datadog\n\n# @queue\n- 5.1 @decide Pick a dashboard.\n'))
+        const plus = node('5').locator('> .env')
+        await plus.waitFor()
+        assert.equal(await plus.getAttribute('data-change'), 'added')
+        assert.equal(await node('5.1').count(), 0)
+        assert.deepEqual(await page.locator('[data-unread]').evaluateAll(els => els.map(e => e.dataset.unread)), ['5'])
+        // The action item of a node inside it shows the added topic, which is what there is to click first.
+        await page.locator('[aria-label="Your queue"] [data-queue="5.1"]').click()
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="5"]')?.hasAttribute('data-qmark'))
+        assert.equal(await node('5.1').count(), 0)
+        await plus.click()
+        await node('5.1.2').waitFor()
+        assert.equal(await page.locator('.outline-tab .env').count(), 0)
+        assert.equal(await page.locator('[data-unread]').count(), 0)
+    })
+
+    test('a task whose change is not opened shows no button to run it: what there is to run has not been read', async () => {
+        await open({ reducedMotion: 'reduce' })
+        await firstVisit()
+        assert.equal(await node('2.4').locator('[data-run]').count(), 1)
+        rewrite(text => text.replace(/(## 2\.4 @action Measure the hit rate on staging\n)/, '$1\nOn production instead.\n'))
+        await node('2.4').locator('> .env').waitFor()
+        assert.equal(await node('2.4').locator('[data-run]').count(), 0)
+        await node('2.4').locator('> .env').click()
+        await node('2.4').locator('[data-run]').waitFor()
+        assert.match(await text('2.4'), /On production instead\./)
     })
 
     test('nodes renumbered after a removed one are not changes to read', async () => {
@@ -103,7 +201,8 @@ describe('unread changes', () => {
         assert.match(await text('2.3'), /Results differ by tenant as well as by locale/)
         assert.match(await node('2.3').locator('.closing').first().textContent(), /the locale and the tenant/)
         assert.equal(await node('2.3').locator('> .env').count(), 0)
-        assert.equal(await page.locator('[data-unread]').count(), 0)
+        // What is left to open is the node that was added.
+        assert.deepEqual(await page.locator('[data-unread]').evaluateAll(els => els.map(e => e.dataset.unread)), ['3.4'])
         assert.match((await readState())['2.3'], /and the tenant/)
     })
 
@@ -120,7 +219,7 @@ describe('unread changes', () => {
         const html = await node('2.3').locator('.node-html').innerHTML()
         assert.doesNotMatch(html, /tx-/)
         assert.match(html, /Results differ by tenant as well as by locale/)
-        assert.equal(await page.locator('[data-unread]').count(), 0)
+        assert.equal(await node('2.3').locator('> .env').count(), 0)
     })
 
     test('each stage of the animation takes half a second, however long the text', async () => {
@@ -173,7 +272,7 @@ describe('unread changes', () => {
         const button = head.locator('.ask-diff')
         assert.equal(await button.getAttribute('data-unread-under'), '1')
         await button.click()
-        await page.locator('[data-unread]').waitFor({ state: 'detached' })
+        await node('2.3').locator('> .env').waitFor({ state: 'detached' })
         await page.waitForFunction(() => !document.querySelector('.tx-cur'))
         assert.match(await text('2.3'), /Results differ by tenant as well as by locale/)
         assert.equal(await node('2.3').locator('> .env').count(), 0)
@@ -192,8 +291,7 @@ describe('unread changes', () => {
         await node('2.3').waitFor({ state: 'hidden' })
         await node('2').hover()
         await node('2').locator('.ask-diff').click()
-        await page.waitForFunction(() => !document.querySelector('[data-unread]'))
-        assert.match((await readState())['2.3'], /and the tenant/)
+        await until(async () => /and the tenant/.test((await readState())['2.3']), { what: 'the change to be taken in' })
         // Nothing was opened that the viewer had collapsed.
         assert.equal(await node('2.3').isVisible(), false)
     })

@@ -480,6 +480,29 @@ button.ck[data-state='open']:hover { border-color: var(--tick); }
 .row .env[data-done] { background: color-mix(in srgb, var(--done) 22%, transparent); color: var(--done); }
 .row .env[data-done]:hover { background: color-mix(in srgb, var(--done) 38%, transparent); }
 .row.leaf > .env { align-self: start; margin-top: 13px; }
+/* A topic has no indent: its diff button sits in the page's margin, as far left of the topic as a node's is of the node.
+   The current topic's line is inset, so it moves nothing and the button needs no offset for it. */
+.topic-head > .env {
+    position: absolute;
+    left: -18px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--claim) 22%, transparent);
+    color: var(--foreground);
+    cursor: pointer;
+}
+.topic-head > .env svg { width: 10px; height: 10px; }
+.topic-head > .env:hover { background: color-mix(in srgb, var(--claim) 38%, transparent); }
+.topic-head > .env[data-pulse] { animation: envpulse-topic 0.5s ease-in-out 3; }
+@keyframes envpulse-topic { 50% { transform: translateY(-50%) scale(1.3); background: color-mix(in srgb, var(--claim) 25%, transparent); } }
 .row .env[data-pulse] { animation: envpulse 0.5s ease-in-out 3; }
 /* Grown, it is 18.2px wide in the 21px between the lines. */
 @keyframes envpulse { 50% { transform: scale(1.3); background: color-mix(in srgb, var(--claim) 25%, transparent); } }

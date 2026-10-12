@@ -1,3 +1,4 @@
+import { allNodes } from '@/lib/outline'
 import type { Mode, OutlineNode } from '@/types'
 
 /**
@@ -362,16 +363,23 @@ export interface MarksChange {
     gone: Partial<Record<KindKey, number>>
 }
 
-/** The nodes whose kind marks differ between two statuses of one outline, with what differs. */
-export function marksChanged(before: Statuses, after: Statuses, nodes: OutlineNode[]): Map<string, MarksChange> {
+/**
+ * The nodes whose kind marks differ between two statuses of one outline, with what differs. The two are of the outline
+ * as it was shown before a change was opened and as it is shown after, so a node is looked up by its number in each;
+ * one that was not shown before (it came with an added node) had no marks.
+ */
+export function marksChanged(before: Statuses, after: Statuses): Map<string, MarksChange> {
     const changes = new Map<string, MarksChange>()
+    const earlier = new Map(allNodes(before.nodes).map(n => [n.num, n]))
+    const none: Pick<Box, 'markKey' | 'extras'> = { extras: [] }
     const walk = (list: OutlineNode[], topic: boolean) => {
         for (const n of list) {
-            const was = topic ? before.topicBox(n) : before.box(n)
+            const old = earlier.get(n.num)
+            const was = !old ? none : topic ? before.topicBox(old) : before.box(old)
             const now = topic ? after.topicBox(n) : after.box(n)
             const change: MarksChange = { keys: new Set(), gone: {} }
             if (was.markKey !== now.markKey && now.markKey) change.keys.add(now.markKey)
-            const counts = (box: Box) => new Map(box.extras.map(e => [e.key, e.nums.length]))
+            const counts = (box: Pick<Box, 'extras'>) => new Map(box.extras.map(e => [e.key, e.nums.length]))
             const from = counts(was)
             const to = counts(now)
             for (const key of new Set([...from.keys(), ...to.keys()])) {
@@ -385,6 +393,6 @@ export function marksChanged(before: Statuses, after: Statuses, nodes: OutlineNo
             walk(n.children, false)
         }
     }
-    walk(nodes, true)
+    walk(after.nodes, true)
     return changes
 }
