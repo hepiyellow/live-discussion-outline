@@ -29,6 +29,18 @@ export type Mark = 'claim' | 'question' | 'answered' | 'action' | 'done' | 'fail
  */
 export type KindKey = 'claim' | 'claim-approved' | 'question' | 'answered' | 'action' | 'done' | 'failed'
 export const KIND_COLUMNS: KindKey[] = ['claim', 'claim-approved', 'question', 'answered', 'action', 'done', 'failed']
+/**
+ * How the kind marks at the right of a row are laid out. `indicators-table`: one fixed cell for each kind in view,
+ * empty where a row has none, so the marks of different rows line up in columns. `indicators-condensed`: no table, a
+ * row draws only the marks it has, together at the right.
+ */
+export type IndicatorLayout = 'indicators-table' | 'indicators-condensed'
+export const INDICATOR_LAYOUT: IndicatorLayout = 'indicators-condensed'
+/**
+ * Whether the approval box is drawn left of a node's title. Off, it is only hidden: it stays in the row, so the queue
+ * icon of an approval still ticks it, and the page's pulses and diff button find it.
+ */
+export const SHOW_TITLE_CHECKBOX = false
 /** The kind mark a column is of. */
 export const markOfKey = (key: KindKey): Mark => (key === 'claim-approved' ? 'claim' : key)
 export const MARK_TITLE: Record<Mark, string> = {

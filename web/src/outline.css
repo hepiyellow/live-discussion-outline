@@ -312,7 +312,11 @@ span.km.small, span.km.small:hover { cursor: default; background: none; }
 .km.small:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; }
 /* One cell per column of the view, drawn in every parent row, empty when the row has none of that kind. */
 .km-cell { flex: none; display: inline-flex; align-items: center; width: var(--kcell); }
-.km-cell > .km.small { margin-left: 0; }
+/* Every bubble is as wide, whether it counts one node (the icon alone, centred) or up to three digits of them. */
+.km-cell > .km.small { margin-left: 0; width: calc(var(--kcell) - 4px); padding: 0 3px; }
+/* Condensed (INDICATOR_LAYOUT): no table, only the cells a row has, together at the right and as wide as their bubble. */
+.marks[data-layout='condensed'] { justify-content: flex-end; gap: 4px; }
+.marks[data-layout='condensed'] > .km-cell { width: auto; }
 .km-i { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; }
 .km.small svg { width: 11px; height: 11px; }
 .km-n { font-size: 10px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -365,6 +369,10 @@ span.km.small, span.km.small:hover { cursor: default; background: none; }
 [data-asked] > .ck[data-state='open'] { border-color: var(--muted-foreground); }
 .extras { display: inline-flex; align-items: center; }
 
+/* SHOW_TITLE_CHECKBOX off: no box left of the titles, and no 48px cell for it before the triangle. */
+.outline-tab[data-ck='hidden'] :is(.row, .topic-head) > .ck { display: none; }
+.outline-tab[data-ck='hidden'] .row.parent { grid-template-columns: 0 22px auto minmax(0, max-content) minmax(0, 1fr) auto auto auto auto; }
+.outline-tab[data-ck='hidden'] .row.leaf { grid-template-columns: 0 22px auto minmax(0, max-content) minmax(0, 1fr) auto auto auto; }
 /* The triangle of an action still to run, in the indent left of its checkbox (a leaf is relative, a parent row sticky). */
 .row .play {
     position: absolute;

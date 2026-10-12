@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { allNodes, currentPath } from '@/lib/outline'
-import { Statuses, kindColumnsInView } from '@/lib/status'
+import { SHOW_TITLE_CHECKBOX, Statuses, kindColumnsInView } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
 import { NodeHistory } from './NodeHistory'
@@ -116,7 +116,7 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     return (
         <OutlineCtx.Provider value={ctx}>
             {historyOf && <NodeHistory project={outline.project} file={outline.file} node={historyOf} onClose={() => setHistoryOf(null)} />}
-            <div ref={root} className="outline-tab">
+            <div ref={root} className="outline-tab" data-ck={SHOW_TITLE_CHECKBOX ? undefined : 'hidden'}>
                 {outline.intro && <div className="outline-intro" dangerouslySetInnerHTML={{ __html: outline.intro }} />}
                 {!outline.intro && !outline.nodes.length && (
                     <p data-empty role="status" className="mt-10 text-center text-sm text-muted-foreground">

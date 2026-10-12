@@ -1,6 +1,6 @@
 import { CircleHelp, Sparkle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { KEY_TITLE, markOfKey, type Box, type BoxState, type KindKey, type Mark } from '@/lib/status'
+import { INDICATOR_LAYOUT, KEY_TITLE, markOfKey, type Box, type BoxState, type KindKey, type Mark } from '@/lib/status'
 
 function Tick({ state, radio }: { state: BoxState; radio: boolean }) {
     if (state === 'open') return null
@@ -107,12 +107,17 @@ interface MarksProps {
 export function Marks({ box, ownRole, ownRunning, columns, below, isRunning, onShow }: MarksProps) {
     const byKey = new Map(box.extras.map(i => [i.key, i]))
     const own = box.mark
+    const table = INDICATOR_LAYOUT === 'indicators-table'
     return (
-        <span className="extras marks" style={{ width: `calc(var(--kcell) * ${columns.length})` }}>
+        <span
+            className="extras marks"
+            data-layout={table ? 'table' : 'condensed'}
+            style={table ? { width: `calc(var(--kcell) * ${columns.length})` } : undefined}
+        >
             {columns.map(key => {
                 if (own && key === box.markKey) return <OwnMark key={key} box={box} kindKey={key} role={ownRole} running={ownRunning} />
                 const item = byKey.get(key)
-                if (!item) return <span key={key} className="km-cell" aria-hidden="true" />
+                if (!item) return table ? <span key={key} className="km-cell" aria-hidden="true" /> : null
                 const { mark, nums } = item
                 const running = mark === 'action' && nums.some(isRunning)
                 const where = below ? 'Below' : 'Under it'
