@@ -17,6 +17,7 @@ import { useNotify } from './Notice'
 import { OutlineTab, type NodeActions } from './OutlineTab'
 import { PermissionPrompt } from './PermissionPrompt'
 import { QueueColumn } from './QueueColumn'
+import { readId } from './queue'
 import { OutlinesPane } from './OutlinesPane'
 import { StatusBar } from './StatusBar'
 import { TopBar } from './TopBar'
@@ -147,7 +148,11 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
         if (el) setTimeout(() => scrollToNode(el, () => then?.(el)), 0)
         return !!el
     }
-    /** A queue item shows its node, marked for a moment with a line in the item's color. */
+    /**
+     * An item of the action queue shows its node, marked for a moment with a line in the item's color. A node changed
+     * since the viewer read it shows what they read: its diff button pulses, as the thing to click first. An item
+     * that only asks for a node to be read (file mode) is handled by showing it.
+     */
     const openQueued = (item: QueueItem, color: string) => {
         const found = reveal(item.num, el => {
             el.style.setProperty('--qline', color)
@@ -155,13 +160,14 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
             void el.offsetWidth
             el.setAttribute('data-qmark', '')
             setTimeout(() => el.removeAttribute('data-qmark'), 1700)
-            // A read item is marked read on its node: the eye there pulses, as the thing to click.
-            const eye = item.kind === 'read' ? el.querySelector<HTMLElement>(':scope > .qicon') : null
-            eye?.removeAttribute('data-pulse')
-            void eye?.offsetWidth
-            eye?.setAttribute('data-pulse', '')
+            const env = el.querySelector<HTMLElement>(':scope > .env')
+            env?.removeAttribute('data-pulse')
+            void env?.offsetWidth
+            env?.setAttribute('data-pulse', '')
         }, true)
-        if (!found) notify('Not in the outline', true)
+        if (!found) return notify('Not in the outline', true)
+        const node = item.kind === 'read' ? allNodes(outline.nodes).find(n => n.num === item.num) : undefined
+        if (node) onSeen([readId(item, node)])
     }
     /** An unread item shows its node, and points at its diff button: the change opens from there. */
     const openUnreadItem = (num: string) =>

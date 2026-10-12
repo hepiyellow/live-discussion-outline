@@ -8,7 +8,7 @@ import type { Box, KindKey, MarksChange } from '@/lib/status'
 import type { Message, OutlineNode, QueueItem } from '@/types'
 import { NodeMessages } from './Inbox'
 import { useNotify } from './Notice'
-import { DIFF_ICON, KINDS, readId } from './queue'
+import { DIFF_ICON } from './queue'
 import { Marks, StatusBox, type OwnRole } from './StatusBox'
 
 /** What every node of the Outline tab needs: statuses, which nodes are open, the current path, and the user's actions. */
@@ -104,35 +104,6 @@ function pointAtRun(num: string) {
         void (button as HTMLElement).offsetWidth
         button.setAttribute('data-pulse', '')
     }, 0)
-}
-
-/**
- * The red triangle of an action the agent asks the user to run: one still to run that is in the queue. An action out
- * of the queue asks nothing, and has its kind mark alone. The triangle runs nothing itself: a click opens the node and
- * points at the button in its text that does, as the diff button leads to the diff.
- */
-function Play({ node }: { node: OutlineNode }) {
-    const { isOpen, toggle, runs, queued } = useOutlineCtx()
-    if (!node.tags.includes('action') || node.tags.includes('ran')) return null
-    // From the click on Run until the agent marks the action done or failed, the node's kind mark turns a ring instead.
-    if (runs[node.num] || !queued.has(node.num)) return null
-    return (
-        <button
-            type="button"
-            className="play"
-            title="An action: click to see the button that runs it"
-            aria-label={`Show the button that runs ${node.num}`}
-            onClick={e => {
-                e.stopPropagation()
-                if (!isOpen(node)) toggle(node)
-                pointAtRun(node.num)
-            }}
-        >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M4.5 2.8v10.4L13 8z" fill="currentColor" />
-            </svg>
-        </button>
-    )
 }
 
 /** Makes a checkbox, or a row's own kind icon, grow and shrink: this is where to look, or to click. */
@@ -324,43 +295,8 @@ function Diff({ node }: { node: OutlineNode }) {
 }
 
 /**
- * The icon of the node's queue item, as the queue column shows it, so the item and its node are recognized as one: a red
- * question mark on both, say. It is just right of the title, where the diff button is, which comes first (what the
- * node shows is not its text yet). An item to run an action has none: the action's own mark is its indicator.
- */
-function QueueMark({ node }: { node: OutlineNode }) {
-    const { queued, unread, opening, onSeen } = useOutlineCtx()
-    const item = queued.get(node.num)
-    if (!item || item.kind === 'action') return null
-    if (unread.has(node.num) && !opening.has(node.num)) return null
-    const kind = KINDS[item.kind]
-    // The icon neither scrolls nor toggles the row. Of an item to approve it points at the node's own checkbox, which is
-    // where the approving is done: that box pulses.
-    // A read item has nothing to tick: a click on its eye says the node is read, and the item leaves the queue.
-    const point = (e: MouseEvent<HTMLButtonElement>) => {
-        e.stopPropagation()
-        if (item.kind === 'read') return onSeen([readId(item, node)])
-        if (item.kind !== 'approve') return
-        const box = e.currentTarget.parentElement?.querySelector<HTMLElement>(':scope > .ck')
-        if (box) pulseBox(box)
-    }
-    return (
-        <button
-            type="button"
-            className="qicon"
-            data-queue-kind={item.kind}
-            title={item.kind === 'approve' ? `${kind.name}: ${item.label} — tick the checkbox to approve it` : item.kind === 'read' ? `${kind.name}: ${item.label} — click to mark it read` : `${kind.name}: ${item.label}`}
-            aria-label={`${kind.name}: ${item.label}`}
-            style={{ color: kind.color }}
-            onClick={point}
-        >
-            {kind.icon}
-        </button>
-    )
-}
-
-/**
- * The kind marks at the right of a row's title: every kind mark a row has is there, and none is at its left. An
+ * The kind marks at the right of a row's title: every kind mark a row has is there, and none is at its left, where the
+ * diff button stands alone. An
  * action's triangle is the action indicator, which runs nothing: a click opens the node and shows the button in its
  * text that does. A parent's bubbles show the first node under it of their kind, and then what there is to act on: an
  * action's button, or that node's own icon.
@@ -458,9 +394,7 @@ function Group({ node }: { node: OutlineNode }) {
                 aria-expanded={open}
                 onClick={e => isRowClick(e) && toggle(node)}
             >
-                <Play node={node} />
                 <Diff node={node} />
-                <QueueMark node={node} />
                 <StatusBox box={box} onToggle={() => onCheck(node)} />
                 <ChevronDown className="tri size-4" aria-hidden="true" />
                 <span className="num">{node.num}</span>
@@ -498,9 +432,7 @@ function Leaf({ node }: { node: OutlineNode }) {
             aria-expanded={text ? open : undefined}
             onClick={e => text && isRowClick(e) && toggle(node)}
         >
-            <Play node={node} />
             <Diff node={node} />
-            <QueueMark node={node} />
             <StatusBox box={box} onToggle={() => onCheck(node)} />
             {text && <ChevronDown className="tri size-4" aria-hidden="true" />}
             <span className="num">{node.num}</span>
@@ -535,7 +467,6 @@ export function Topic({ node }: { node: OutlineNode }) {
                 aria-expanded={open}
                 onClick={e => isRowClick(e) && toggle(node)}
             >
-                <QueueMark node={node} />
                 <StatusBox box={box} onToggle={() => onTopicCheck(node)} />
                 <ChevronDown className="tri size-4" aria-hidden="true" />
                 <span className="node-title" dangerouslySetInnerHTML={{ __html: `${node.num}. ${node.titleHtml}` }} />

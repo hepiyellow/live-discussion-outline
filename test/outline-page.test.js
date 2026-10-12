@@ -99,7 +99,7 @@ for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mod
         assert.equal(await box('2.3').getAttribute('role'), 'checkbox')
     })
 
-    test('only a row in the queue calls for the user: its empty box is drawn in full, and its action has the triangle', async () => {
+    test('only a row in the queue calls for the user: its empty box is drawn in full; left of a title there is no icon for it', async () => {
         const asked = num => node(num).getAttribute('data-asked')
         const border = num => box(num).evaluate(e => getComputedStyle(e).borderTopColor)
         // In the queue: 2.3 to approve, 2.4 to run, and the question 2.1, whose options are where it is answered.
@@ -109,14 +109,15 @@ for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mod
         assert.notEqual(await border('2.3'), await border('3.2'))
         assert.equal(await border('3.2'), await border('3.3'))
         assert.equal(await border('2.3'), await border('2.1.1'))
-        assert.equal(await node('2.4').locator('> .play').count(), 1)
+        // Nothing left of a title says a row is asked: the diff button stands there alone.
+        assert.equal(await page.locator('.outline-tab :is(.row, .topic-head) > :is(.play, .qicon)').count(), 0)
         // An action has the indicator among its kind marks at the right, in or out of the queue.
         const indicator = () => node('2.4').locator('> .marks [data-point]')
         assert.equal(await indicator().getAttribute('data-kind'), 'action')
-        // Out of the queue the action asks nothing: no red triangle. It keeps its indicator, and the button that runs it.
+        // Out of the queue the action asks nothing. It keeps its indicator, and the button that runs it.
         const file = path.join(server.dir, 'demo', 'sample.md')
         fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^- 2\.4 @action .*\n/m, ''))
-        await node('2.4').locator('> .play').waitFor({ state: 'detached' })
+        await page.locator('[aria-label="Your queue"] [data-queue="2.4"]').waitFor({ state: 'detached' })
         assert.equal(await asked('2.4'), null)
         assert.equal(await indicator().count(), 1)
         assert.equal(await node('2.4').locator('.closing [data-run]').count(), 1)
@@ -129,7 +130,6 @@ for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mod
         await item.waitFor()
         assert.equal(await item.getAttribute('data-kind'), 'approve')
         assert.equal(await node('2.5').getAttribute('data-asked'), 'true')
-        assert.deepEqual(await node('2.5').locator('> .qicon').evaluateAll(els => els.map(e => e.dataset.queueKind)), ['approve'])
         assert.equal(await node('2.5').locator('> .marks .km[data-own]').getAttribute('data-kind'), 'done')
     })
 

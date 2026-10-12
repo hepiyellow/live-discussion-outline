@@ -51,8 +51,27 @@ describe('unread changes', () => {
         assert.match(await text('3.4'), /Replay the top thousand queries/)
         // Approving 4.1 changed its status, not its text: nothing to read.
         assert.equal(await node('4.1').locator('> .env').count(), 0)
-        // The left pane lists it first.
-        assert.equal(await page.locator('[aria-label="Your queue"] li:first-child [data-unread]').getAttribute('data-unread'), '2.3')
+        // 2.3 is in the action queue, so the column shows it once, there: it has no change indicator of its own, and
+        // its item says the node changed.
+        assert.equal(await page.locator('[data-unread="2.3"]').count(), 0)
+        assert.match(await page.locator('[aria-label="Your queue"] [data-queue="2.3"]').getAttribute('title'), /it changed since you read it/)
+    })
+
+    test('a changed node that is not in the action queue has a change indicator, below the queue and a divider', async () => {
+        await open()
+        await firstVisit()
+        assert.equal(await page.locator('[data-queue-divider]').count(), 0)
+        const file = path.join(server.dir, 'demo', 'sample.md')
+        fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/(## 3\.2 Time to live\n\n)/, '$1Entries now live for ten minutes. '))
+        const indicator = page.locator('[aria-label="Changes to open"] [data-unread="3.2"]')
+        await indicator.waitFor()
+        const top = selector => page.locator(selector).evaluate(e => e.getBoundingClientRect().top)
+        assert.ok((await top('[aria-label="Your queue"] li:last-child')) < (await top('[data-queue-divider]')))
+        assert.ok((await top('[data-queue-divider]')) < (await top('[data-unread="3.2"]')))
+        // It shows the node and points at its diff button, and opens nothing.
+        await indicator.click()
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="3.2"] > .env')?.hasAttribute('data-pulse'))
+        assert.doesNotMatch(await text('3.2'), /ten minutes/)
     })
 
     test('nodes renumbered after a removed one are not changes to read', async () => {
@@ -189,12 +208,13 @@ describe('unread changes', () => {
         assert.match(await text('2.3'), /and the index version/)
     })
 
-    test('the left pane’s item shows the node and points at its diff button', async () => {
+    test('the action item of a changed node shows the node and points at its diff button: the change is opened first', async () => {
         await open()
         await firstVisit()
         await page.getByRole('button', { name: 'Collapse all' }).click()
         server.swap('demo/sample', 'demo/sample-edited')
-        await page.locator('[data-unread="2.3"]').click()
+        await node('3.4').waitFor({ state: 'attached' })
+        await page.locator('[aria-label="Your queue"] [data-queue="2.3"]').click()
         await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.3"] > .env')?.hasAttribute('data-pulse'))
         assert.equal(await node('2.3').isVisible(), true)
         // It only shows the node: the change is still unread.

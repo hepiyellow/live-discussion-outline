@@ -373,27 +373,6 @@ span.km.small, span.km.small:hover { cursor: default; background: none; }
 .outline-tab[data-ck='hidden'] :is(.row, .topic-head) > .ck { display: none; }
 .outline-tab[data-ck='hidden'] .row.parent { grid-template-columns: 0 22px auto minmax(0, max-content) minmax(0, 1fr) auto auto auto auto; }
 .outline-tab[data-ck='hidden'] .row.leaf { grid-template-columns: 0 22px auto minmax(0, max-content) minmax(0, 1fr) auto auto auto; }
-/* The triangle of an action still to run, in the indent left of its checkbox (a leaf is relative, a parent row sticky). */
-.row .play {
-    position: absolute;
-    /* Ends 4px left of the row, as the diff button and the queue icon do, clear of the row's own line. */
-    left: -22px;
-    top: 10px;
-    width: 18px;
-    height: 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: none;
-    color: var(--danger);
-    cursor: pointer;
-}
-.row.parent .play { top: 50%; transform: translateY(-50%); }
-.row .play svg { width: 12px; height: 12px; }
-.row .play:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); }
 /* The Action tag of an action still to run is the button that runs it. The action indicator points at it: it grows and shrinks once. */
 button.pill.run { border: 0; font-family: inherit; line-height: inherit; cursor: pointer; }
 button.pill.run:hover { background: color-mix(in srgb, var(--done) 30%, transparent); }
@@ -501,9 +480,6 @@ button.ck[data-state='open']:hover { border-color: var(--tick); }
 .row .env[data-done] { background: color-mix(in srgb, var(--done) 22%, transparent); color: var(--done); }
 .row .env[data-done]:hover { background: color-mix(in srgb, var(--done) 38%, transparent); }
 .row.leaf > .env { align-self: start; margin-top: 13px; }
-/* Beside a diff button or a queue icon, an action's play button moves further left to leave a gap. */
-.row .play:has(+ .env), .row .play:has(+ .qicon) { left: -40px; }
-/* Beside a diff button or a queue icon, an action's play button moves further left to leave a gap. */
 .row .env[data-pulse] { animation: envpulse 0.5s ease-in-out 3; }
 /* Grown, it is 18.2px wide in the 21px between the lines. */
 @keyframes envpulse { 50% { transform: scale(1.3); background: color-mix(in srgb, var(--claim) 25%, transparent); } }
@@ -524,39 +500,6 @@ button.ck[data-state='open']:hover { border-color: var(--tick); }
     .work-dot[data-busy] { animation: none; }
 }
 
-/* The icon of the node's queue item, as the queue column draws it, where the diff button would be. */
-.qicon {
-    padding: 0;
-    border: 0;
-    background: none;
-    cursor: default;
-    grid-area: ck;
-    justify-self: start;
-    margin-left: calc(-12px - 4px - 14px);
-    width: 14px;
-    height: 14px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-.qicon svg { width: 14px; height: 14px; }
-/* Only the icon of an item to approve does something when clicked (it points at the node's checkbox), so only it answers the pointer. */
-.qicon[data-queue-kind='approve'] { cursor: pointer; border-radius: 50%; transition: background-color 0.1s, box-shadow 0.1s; }
-.qicon[data-queue-kind='approve']:hover { background: color-mix(in srgb, var(--tick) 20%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tick) 20%, transparent); }
-.qicon[data-queue-kind='approve']:focus-visible { outline: 2px solid var(--tick); outline-offset: 2px; }
-/* A read item's eye is clicked to mark the node read. It pulses when the queue item pointed at it. */
-.qicon[data-queue-kind='read'] { cursor: pointer; border-radius: 50%; transition: background-color 0.1s, box-shadow 0.1s; }
-.qicon[data-queue-kind='read']:hover { background: color-mix(in srgb, var(--foreground) 16%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--foreground) 16%, transparent); }
-.qicon[data-queue-kind='read']:focus-visible { outline: 2px solid var(--claim); outline-offset: 2px; }
-.qicon[data-pulse] { animation: qpoint 0.5s ease-in-out 3; }
-@keyframes qpoint { 50% { background: color-mix(in srgb, var(--foreground) 24%, transparent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--foreground) 24%, transparent); } }
-@media (prefers-reduced-motion: reduce) {
-    .qicon[data-pulse] { animation: none; box-shadow: 0 0 0 3px var(--foreground); }
-}
-.row.leaf > .qicon { align-self: start; margin-top: 13px; }
-/* A topic has no indent: its icon sits in the page's margin, as far left of the topic as a node's is of the node. The
-   current topic's line is inset, so it moves nothing and the icon needs no offset for it. */
-.topic-head > .qicon { position: absolute; left: -18px; top: 50%; margin: 0; transform: translateY(-50%); }
 
 /* The diff animation: words are units (a word and the space after it) that grow in or collapse. Words about to go are
    marked first: red for removed ones, orange for rewritten ones, whose new words come in orange too; added ones in green. */

@@ -1,4 +1,4 @@
-import { CircleCheck, CircleHelp, Eye } from 'lucide-react'
+import { CircleHelp, Eye, Sparkle } from 'lucide-react'
 import { allNodes } from '@/lib/outline'
 import type { Statuses } from '@/lib/status'
 import type { OutlineNode, QueueItem } from '@/types'
@@ -10,16 +10,20 @@ export const DIFF_ICON = (
     </svg>
 )
 
-/** How each kind of queue item is drawn: in the queue column, and beside the node it is about. */
+/**
+ * How each kind of item of the action queue is drawn: with the kind mark of the node it asks about, as that node shows
+ * it at the right of its title, and in that mark's color. A claim to approve is the outlined sparkle, a question to
+ * decide the question mark, a task to run the outlined triangle. Only an agent in file mode queues a node to be read.
+ */
 export const KINDS: Record<QueueItem['kind'], { name: string; color: string; icon: React.ReactNode }> = {
     decide: { name: 'Decide', color: 'var(--danger)', icon: <CircleHelp aria-hidden="true" /> },
-    approve: { name: 'Approve', color: 'var(--tick)', icon: <CircleCheck aria-hidden="true" /> },
+    approve: { name: 'Approve', color: 'var(--claim)', icon: <Sparkle aria-hidden="true" /> },
     action: {
         name: 'Run',
-        color: 'var(--danger)',
+        color: 'var(--done)',
         icon: (
             <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M5 3.2v9.6L12.6 8z" fill="currentColor" />
+                <path d="M5 3v10l8-5z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
             </svg>
         ),
     },
