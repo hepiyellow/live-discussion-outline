@@ -1,6 +1,6 @@
 import { CircleHelp, Sparkle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { INDICATOR_LAYOUT, KEY_TITLE, markOfKey, type Box, type BoxState, type KindKey, type Mark } from '@/lib/status'
+import { INDICATOR_LAYOUT, KEY_TITLE, markOfKey, type Box, type BoxState, type KindKey, type Mark, type MarksChange } from '@/lib/status'
 
 function Tick({ state, radio }: { state: BoxState; radio: boolean }) {
     if (state === 'open') return null
@@ -93,6 +93,8 @@ interface MarksProps {
     /** An option's bubbles say "Below", a parent's "Under it". */
     below?: boolean
     isRunning: (num: string) => boolean
+    /** The marks that changed as a change was opened: they grow and shrink once, and what went is drawn until then. */
+    pulse?: MarksChange
     /** A bubble's click: shows the first node under the parent with that kind. */
     onShow: (num: string, key: KindKey) => void
 }
@@ -104,7 +106,7 @@ interface MarksProps {
  * outlined bubble: a button that shows the first node under the parent with that kind, with the count of them after
  * the icon when there are more than one, and a ring turning while an action among them runs.
  */
-export function Marks({ box, ownRole, ownRunning, columns, below, isRunning, onShow }: MarksProps) {
+export function Marks({ box, ownRole, ownRunning, columns, below, isRunning, pulse, onShow }: MarksProps) {
     const byKey = new Map(box.extras.map(i => [i.key, i]))
     const own = box.mark
     const table = INDICATOR_LAYOUT === 'indicators-table'
@@ -115,13 +117,15 @@ export function Marks({ box, ownRole, ownRunning, columns, below, isRunning, onS
             style={table ? { width: `calc(var(--kcell) * ${columns.length})` } : undefined}
         >
             {columns.map(key => {
-                if (own && key === box.markKey) return <OwnMark key={key} box={box} kindKey={key} role={ownRole} running={ownRunning} />
+                if (own && key === box.markKey) return <OwnMark key={key} box={box} kindKey={key} role={ownRole} running={ownRunning} pulse={pulse?.keys.has(key)} />
                 const item = byKey.get(key)
-                if (!item) return table ? <span key={key} className="km-cell" aria-hidden="true" /> : null
-                const { mark, nums } = item
+                const gone = pulse?.gone[key]
+                if (!item && !gone) return table ? <span key={key} className="km-cell" aria-hidden="true" /> : null
+                const mark = item?.mark ?? markOfKey(key)
+                const nums = item?.nums ?? []
                 const running = mark === 'action' && nums.some(isRunning)
                 const where = below ? 'Below' : 'Under it'
-                const count = nums.length
+                const count = item ? nums.length : gone!
                 const what = running ? RUNNING_TITLE : KEY_TITLE[key].toLowerCase()
                 return (
                     <span key={key} className="km-cell">
@@ -131,11 +135,12 @@ export function Marks({ box, ownRole, ownRunning, columns, below, isRunning, onS
                             data-kind={mark}
                             data-key={key}
                             data-running={running || undefined}
+                            data-pulse={(pulse?.keys.has(key) || !item) && pulse ? '' : undefined}
                             title={`${where}${count > 1 ? ` (${count})` : ''}: ${what} — click to show ${count > 1 ? 'the first' : 'it'}`}
                             aria-label={`${where}: ${count} × ${KEY_TITLE[key]}`}
                             onClick={e => {
                                 e.stopPropagation()
-                                onShow(nums[0], key)
+                                if (item) onShow(nums[0], key)
                             }}
                         >
                             <span className="km-i">{keyIcon(key)}</span>
@@ -149,9 +154,9 @@ export function Marks({ box, ownRole, ownRunning, columns, below, isRunning, onS
 }
 
 /** A row's own kind, in its kind's cell: the action indicator of an action, or a plain mark. */
-function OwnMark({ box, kindKey, role, running }: { box: Box; kindKey: KindKey; role: OwnRole; running?: boolean }) {
+function OwnMark({ box, kindKey, role, running, pulse }: { box: Box; kindKey: KindKey; role: OwnRole; running?: boolean; pulse?: boolean }) {
     const icon = <span className="km-i">{keyIcon(kindKey)}</span>
-    const shared = { className: 'km small', 'data-kind': box.mark, 'data-key': kindKey, 'data-own': true, 'data-running': running || undefined }
+    const shared = { className: 'km small', 'data-kind': box.mark, 'data-key': kindKey, 'data-own': true, 'data-running': running || undefined, 'data-pulse': pulse ? '' : undefined }
     if (role.as === 'point') {
         const title = running ? RUNNING_TITLE : `${KEY_TITLE[kindKey]} — click to see the button that runs it`
         return (

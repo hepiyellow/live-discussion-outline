@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { UNTITLED, allNodes, currentPath } from '@/lib/outline'
-import { SHOW_TITLE_CHECKBOX, Statuses, kindColumnsInView } from '@/lib/status'
+import { KIND_COLUMNS, SHOW_TITLE_CHECKBOX, Statuses, kindColumnsInView, marksChanged, type KindKey, type MarksChange } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
 import { cn } from '@/lib/utils'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
@@ -14,6 +14,9 @@ export type OpenNodes = Record<string, boolean>
 
 /** How long a parent the viewer had opened stays open after it becomes settled, in milliseconds. */
 const SETTLE_PAUSE = 700
+
+/** How long the kind marks that changed as a change was opened are drawn pulsing, a little over one grow and shrink. */
+const PULSE_MS = 700
 
 export const isOpenIn = (open: OpenNodes, statuses: Statuses) => (node: OutlineNode) => (node.num in open ? open[node.num] : statuses.startsOpen(node))
 
@@ -44,9 +47,11 @@ const EMPTY = {
 export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
     const root = useRef<HTMLDivElement>(null)
     const [historyOf, setHistoryOf] = useState<OutlineNode | null>(null)
+    // A change being opened counts as read: its box turns done as the animation starts.
+    const unopened = useMemo(() => new Set([...actions.unread.keys()].filter(num => !actions.opening.has(num))), [actions.unread, actions.opening])
+    // The kind marks that changed as a change was opened.
+    const [pulse, setPulse] = useState<Map<string, MarksChange>>(new Map())
     const ctx = useMemo<OutlineContext>(() => {
-        // A change being opened counts as read: its box turns done as the animation starts.
-        const unopened = new Set([...actions.unread.keys()].filter(num => !actions.opening.has(num)))
         const statuses = new Statuses(outline.nodes, viewer.overrides, outline.mode, new Set(outline.unacked), unopened)
         const isOpen = isOpenIn(viewer.open, statuses)
         return {
@@ -61,12 +66,34 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
                     .map(q => [q.item.num, q.item]),
             ),
             isOpen,
-            kindColumns: kindColumnsInView(outline.nodes, statuses, isOpen),
+            kindColumns: withGone(kindColumnsInView(outline.nodes, statuses, isOpen), pulse),
+            pulse,
             toggle: node => onToggle(node, !isOpen(node)),
             current: currentPath(outline.nodes),
             runs: viewer.runs,
         }
-    }, [outline, viewer.open, viewer.overrides, viewer.runs, viewer.seen, actions, onToggle])
+    }, [outline, viewer.open, viewer.overrides, viewer.runs, viewer.seen, actions, unopened, pulse, onToggle])
+
+    // Opening a change turns the marks it held back: each one that differs from before grows and shrinks once. What it
+    // was is the same outline with the change still unopened, so only the click makes a difference.
+    const prevUnopened = useRef<Set<string> | null>(null)
+    const pulseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+    useEffect(() => () => clearTimeout(pulseTimer.current), [])
+    useLayoutEffect(() => {
+        const before = prevUnopened.current
+        prevUnopened.current = unopened
+        if (!before) return
+        const opened = [...before].filter(num => !unopened.has(num))
+        if (!opened.length) return
+        const was = new Statuses(outline.nodes, viewer.overrides, outline.mode, new Set(outline.unacked), new Set([...unopened, ...opened]))
+        const changes = marksChanged(was, ctx.statuses, outline.nodes)
+        if (!changes.size) return
+        clearTimeout(pulseTimer.current)
+        setPulse(changes)
+        pulseTimer.current = setTimeout(() => setPulse(new Map()), PULSE_MS)
+        // Only a change of what is unopened matters.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [unopened])
 
     // A parent that becomes settled collapses, also one the viewer had opened themselves: such a parent would stay
     // open by their choice, so it is closed here. After a pause, since a click that settles a parent closes it itself,
@@ -120,7 +147,7 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
 
     return (
         <OutlineCtx.Provider value={ctx}>
-            {historyOf && <NodeHistory project={outline.project} file={outline.file} node={historyOf} onClose={() => setHistoryOf(null)} />}
+            {historyOf && <NodeHistory project={outline.project} file={outline.file} node={historyOf} bottom={actions.linked ? 'var(--composer-h, 60px)' : '0px'} onClose={() => setHistoryOf(null)} />}
             <div ref={root} className="outline-tab" data-ck={SHOW_TITLE_CHECKBOX ? undefined : 'hidden'}>
                 {outline.untitled && (
                     <h1 data-untitled className="mt-10 text-center text-xl font-semibold">
@@ -141,4 +168,11 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
             </div>
         </OutlineCtx.Provider>
     )
+}
+
+/** The columns, and those of the marks that went and are still drawn while they pulse, in column order. */
+function withGone(columns: KindKey[], pulse: Map<string, MarksChange>): KindKey[] {
+    const gone = new Set<KindKey>()
+    for (const c of pulse.values()) for (const key of Object.keys(c.gone) as KindKey[]) gone.add(key)
+    return gone.size ? KIND_COLUMNS.filter(k => columns.includes(k) || gone.has(k)) : columns
 }

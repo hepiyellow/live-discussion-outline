@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/send'
 import type { Statuses } from '@/lib/status'
 import { DONE_PILL, FAILED_PILL, liveHtml, type NodeContent } from '@/lib/content'
-import type { Box, KindKey } from '@/lib/status'
+import type { Box, KindKey, MarksChange } from '@/lib/status'
 import type { Message, OutlineNode, QueueItem } from '@/types'
 import { NodeMessages } from './Inbox'
 import { useNotify } from './Notice'
@@ -47,6 +47,8 @@ export interface OutlineContext {
     onReveal: (num: string, then?: (el: HTMLElement) => void, inside?: boolean) => void
     /** The columns of the kind marks of the rows in view, in the order they are drawn (`kindColumnsInView`). */
     kindColumns: KindKey[]
+    /** Node number → the kind marks that changed as a change was opened: they pulse once. */
+    pulse: Map<string, MarksChange>
 }
 
 export const OutlineCtx = createContext<OutlineContext | null>(null)
@@ -364,7 +366,7 @@ function QueueMark({ node }: { node: OutlineNode }) {
  * action's button, or that node's own icon.
  */
 function RowMarks({ node, box }: { node: OutlineNode; box: Box }) {
-    const { runs, onReveal, kindColumns, statuses, isOpen, toggle } = useOutlineCtx()
+    const { runs, onReveal, kindColumns, pulse, statuses, isOpen, toggle } = useOutlineCtx()
     const leaf = !node.children.length
     const option = statuses.isOption(node)
     const mark = box.mark
@@ -385,6 +387,7 @@ function RowMarks({ node, box }: { node: OutlineNode; box: Box }) {
             ownRole={ownRole}
             ownRunning={mark === 'action' && !!runs[node.num]}
             columns={kindColumns}
+            pulse={pulse.get(node.num)}
             below={option}
             isRunning={num => !!runs[num]}
             onShow={(num, key) =>

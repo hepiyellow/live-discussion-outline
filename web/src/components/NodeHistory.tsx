@@ -50,8 +50,11 @@ function HistoryTree({ nodes }: { nodes: OutlineNode[] }) {
  * The history of a node: its changes, newest first, with their times on the left; the node as it was at the chosen
  * change on the right, its children included. What the user did on the node (approved it, took that back, picked it,
  * ran it) is said under the time it happened at.
+ *
+ * The window is the outline area: from the top bar to the input box, and from the outlines pane to the window's right
+ * edge. `bottom` is the room the input box takes, when the page has one.
  */
-export function NodeHistory({ project, file, node, onClose }: { project: string; file: string; node: OutlineNode; onClose: () => void }) {
+export function NodeHistory({ project, file, node, bottom, onClose }: { project: string; file: string; node: OutlineNode; bottom: string; onClose: () => void }) {
     const [entries, setEntries] = useState<HistoryEntry[] | null>(null)
     const [picked, setPicked] = useState<number | null>(null)
     const [error, setError] = useState('')
@@ -71,7 +74,10 @@ export function NodeHistory({ project, file, node, onClose }: { project: string;
     const entry = entries?.[at]
     return (
         <Dialog open onOpenChange={open => !open && onClose()}>
-            <DialogContent className="flex max-h-[85vh] max-w-4xl flex-col gap-3">
+            <DialogContent
+                className="flex h-auto w-auto max-w-none translate-x-0 translate-y-0 flex-col gap-3 rounded-none border-0 sm:max-w-none"
+                style={{ top: 'var(--barh)', left: 'var(--pane-w)', right: 0, bottom }}
+            >
                 <DialogHeader>
                     <DialogTitle>History of {node.num}</DialogTitle>
                     <DialogDescription className="truncate">{node.title}</DialogDescription>

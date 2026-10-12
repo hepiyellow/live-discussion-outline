@@ -351,3 +351,40 @@ export function kindColumnsInView(nodes: OutlineNode[], statuses: Statuses, isOp
     walk(nodes, true)
     return KIND_COLUMNS.filter(k => found.has(k))
 }
+
+/**
+ * What changed in a node's kind marks: the columns that gained a mark or whose count changed (they pulse), and what
+ * went: the count a column had. What went is drawn until the pulse ends. A node's own mark that moved to another
+ * column is not drawn twice: the new one pulses.
+ */
+export interface MarksChange {
+    keys: Set<KindKey>
+    gone: Partial<Record<KindKey, number>>
+}
+
+/** The nodes whose kind marks differ between two statuses of one outline, with what differs. */
+export function marksChanged(before: Statuses, after: Statuses, nodes: OutlineNode[]): Map<string, MarksChange> {
+    const changes = new Map<string, MarksChange>()
+    const walk = (list: OutlineNode[], topic: boolean) => {
+        for (const n of list) {
+            const was = topic ? before.topicBox(n) : before.box(n)
+            const now = topic ? after.topicBox(n) : after.box(n)
+            const change: MarksChange = { keys: new Set(), gone: {} }
+            if (was.markKey !== now.markKey && now.markKey) change.keys.add(now.markKey)
+            const counts = (box: Box) => new Map(box.extras.map(e => [e.key, e.nums.length]))
+            const from = counts(was)
+            const to = counts(now)
+            for (const key of new Set([...from.keys(), ...to.keys()])) {
+                const had = from.get(key) ?? 0
+                const has = to.get(key) ?? 0
+                if (had === has) continue
+                if (has) change.keys.add(key)
+                else change.gone[key] = had
+            }
+            if (change.keys.size || Object.keys(change.gone).length) changes.set(n.num, change)
+            walk(n.children, false)
+        }
+    }
+    walk(nodes, true)
+    return changes
+}
