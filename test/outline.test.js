@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { test } from 'node:test'
 import { countCheckboxProgress, outlinePayload } from '../outline.js'
+import { parseOutline, serializeOutline } from '../model.js'
 import { FIXTURES, SESSION } from './helpers.js'
 
 const sample = outlinePayload(fs.readFileSync(path.join(FIXTURES, 'outlines/demo/sample.md'), 'utf8'))
@@ -25,6 +26,15 @@ test('header lines that are not valid are dropped', () => {
     assert.equal(p.terminal, '')
     assert.equal(p.session, '')
     assert.equal(p.nodes.length, 1)
+})
+
+test('the Archived line says the outline is archived, and the server keeps it when it writes the outline', () => {
+    assert.equal(sample.archived, '')
+    const text = 'Title: x\nMode: server\nArchived: 2026-10-12\n\n# 1. A\n'
+    const p = outlinePayload(text)
+    assert.deepEqual([p.archived, p.mode, p.nodes.length], ['2026-10-12', 'server', 1])
+    assert.match(serializeOutline(parseOutline(text)), /^Title: x\nMode: server\nArchived: 2026-10-12\n\n# 1\. A\n/)
+    assert.doesNotMatch(serializeOutline(parseOutline('Title: x\nMode: server\n\n# 1. A\n')), /Archived/)
 })
 
 test('the Mode line says who writes the outline; without it, or with any other value, its agent does', () => {
@@ -183,4 +193,19 @@ test('the queue', () => {
 test('the Markdown tab', () => {
     assert.match(sample.markdown, /<h1>1. @user-approved Goals<\/h1>/)
     assert.doesNotMatch(sample.markdown, /Title: |@queue/)
+})
+
+test('a node carries its markdown with everything under it, when the payload asks for it', () => {
+    const source = '# 1. @user-approved First\n\nIntro.\n\n## 1.1 Child\n\nChild text.\n\n### 1.1.1 Deep\n\nDeep text.\n\n## 1.2 @options Pick\n\n### 1.2.1 @option_A Alpha\n\nA text.\n\n# 2. Second\n\nLast.\n'
+    const p = outlinePayload(source, { markdown: true })
+    const byNum = num => all(p.nodes).find(n => n.num === num).markdown
+    // A node's markdown ends where the next node of its level or above begins.
+    assert.equal(byNum('1.1'), '## 1.1 Child\n\nChild text.\n\n### 1.1.1 Deep\n\nDeep text.')
+    assert.equal(byNum('1.1.1'), '### 1.1.1 Deep\n\nDeep text.')
+    assert.equal(byNum('2'), '# 2. Second\n\nLast.')
+    assert.match(byNum('1'), /^# 1\. @user-approved First\n\nIntro\.\n\n## 1\.1 Child[\s\S]*A text\.$/)
+    // An option reads as it does in the Markdown tab.
+    assert.equal(byNum('1.2.1'), '### 1.2.1 (A) Alpha\n\nA text.')
+    // The node history keeps the plain payload, which has none.
+    assert.ok(all(outlinePayload(source).nodes).every(n => !('markdown' in n)))
 })

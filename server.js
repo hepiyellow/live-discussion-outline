@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload } from './outline.js'
 import { HISTORY_DIR, createHistory } from './history.js'
 import { loadConfig } from './config.js'
-import { attachTerminals, fromLocalPage, hasSession, sendToTerminal, stopInTerminal } from './terminal.js'
+import { attachTerminals, endTerminal, fromLocalPage, hasSession, sendToTerminal, stopInTerminal } from './terminal.js'
 import { followSession, isSessionId, streamActivity, streamMessages } from './transcript.js'
 import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolder, startedSessions, startSession } from './start.js'
 import { slashCommands } from './commands.js'
@@ -237,7 +237,7 @@ function outlineFile(project, file) {
 function readOutline(project, file) {
     const full = outlineFile(project, file)
     if (!full) return null
-    const outline = outlinePayload(fs.readFileSync(full, 'utf8'))
+    const outline = outlinePayload(fs.readFileSync(full, 'utf8'), { markdown: true })
     // In server mode a tick is pending until the agent acknowledges it (agent.js); in file mode the page works it out.
     const unacked = outline.mode === 'server' ? agent.unacknowledged(project, file) : []
     return { project, file, ...outline, unacked, folder: (outline.session && sessionFolder(outline.session)) || '', terminalTab: terminalEnabled && !!outline.terminal }
@@ -440,7 +440,7 @@ const STATUS_KEYS = ['✅', '❓', '🔥']
 
 /** Title from the `Title:` line, plus counts of approved and open topics. */
 function summarize(file, fallback) {
-    const { title, resume, terminal, session, mode, source } = extractHeaders(fs.readFileSync(file, 'utf8'))
+    const { title, resume, terminal, session, mode, archived, source } = extractHeaders(fs.readFileSync(file, 'utf8'))
     const lines = source.split('\n')
     const counts = { done: 0, open: 0, now: 0 }
     for (const line of lines) {
@@ -450,7 +450,7 @@ function summarize(file, fallback) {
         else if (text.startsWith(STATUS_KEYS[1])) counts.open++
         else if (text.startsWith(STATUS_KEYS[2])) counts.now++
     }
-    return { title: title || fallback, counts, checkbox: countCheckboxProgress(source), resume, terminal, session, mode }
+    return { title: title || fallback, counts, checkbox: countCheckboxProgress(source), resume, terminal, session, mode, archived }
 }
 
 function json(res, status, value) {
@@ -507,6 +507,7 @@ async function startApi(req, res, pathname, url) {
             return json(res, 200, { terminal: started.terminal, outline })
         }
         if (pathname === '/api/delete' && write) return json(res, 200, trashOutline(await readJson(req)))
+        if (pathname === '/api/archive' && write) return json(res, 200, archiveOutline(await readJson(req)))
         if (pathname === '/api/rename' && write) return json(res, 200, renameOutline(await readJson(req)))
         if (pathname === '/api/outline-for') {
             const m = listMaps().find(o => o.terminal && o.terminal === url.searchParams.get('terminal'))
@@ -572,17 +573,65 @@ function renameOutline({ project, file, title }) {
     return { title: name }
 }
 
-/** Delete on an outline's row: moves the outline into <dir>/.trash/<project>/, where it can be moved back by hand. */
+const OUTLINE_HEADER = /^(Title|Resume|Model|Terminal|Session|Mode): /
+
+/**
+ * Archive on an outline's row, and Unarchive: writes the outline's `Archived:` line, with the day, after its other
+ * header lines, or takes it out. The rest of the file stays as it is, and so does its time of last change, which
+ * orders the outline list: the outline is where it was once it is back. Nothing else changes: its link, its linked
+ * session and its agent's operations work as before.
+ */
+function archiveOutline({ project, file, archived }) {
+    if (!safeName(project) || !safeName(file)) throw new Error('bad outline name')
+    if (typeof archived !== 'boolean') throw new Error('bad archived')
+    const full = path.join(ROOT, project, `${file}.md`)
+    if (!fs.existsSync(full)) throw new Error('no such outline')
+    const lines = fs.readFileSync(full, 'utf8').split('\n')
+    const was = lines.slice(0, 8).findIndex(line => line.startsWith('Archived: '))
+    if (was >= 0) lines.splice(was, 1)
+    if (archived) {
+        let at = 0
+        while (OUTLINE_HEADER.test(lines[at] ?? '')) at++
+        const d = new Date()
+        const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        lines.splice(at, 0, `Archived: ${day}${lines[0]?.endsWith('\r') ? '\r' : ''}`)
+    }
+    // In seconds, as numbers: a Date would round the times to the millisecond.
+    const { atimeMs, mtimeMs } = fs.statSync(full)
+    fs.writeFileSync(full, lines.join('\n'))
+    fs.utimesSync(full, atimeMs / 1000, mtimeMs / 1000)
+    return { archived }
+}
+
+/**
+ * Delete on an outline's row: ends the outline's session terminal, and with it its agent's session, then moves the
+ * outline into <dir>/.trash/<project>/, where it can be moved back by hand. Left running, the session terminal would
+ * have no outline naming it, and the pane would list it as a session still starting.
+ * Only a session terminal New started is ended, and only when no other outline names it: a tmux session the user
+ * started may hold more than the agent, so it is theirs to close, like a session that runs in no tmux session at all.
+ * When the session terminal cannot be ended, nothing is moved.
+ */
 function trashOutline({ project, file }) {
     if (!safeName(project) || !safeName(file)) throw new Error('bad outline name')
     const from = path.join(ROOT, project, `${file}.md`)
     if (!fs.existsSync(from)) throw new Error('no such outline')
+    const { terminal } = extractHeaders(fs.readFileSync(from, 'utf8'))
+    const ours = terminal && startedSessions().some(s => s.terminal === terminal)
+    const shared = ours && listMaps().some(o => o.terminal === terminal && (o.project !== project || o.file !== file))
+    let ended = false
+    if (ours && !shared) {
+        try {
+            ended = endTerminal(terminal)
+        } catch (e) {
+            throw new Error(`Its session in tmux session ${terminal} could not be ended, so nothing was moved: ${e.message}`)
+        }
+    }
     const dir = path.join(ROOT, TRASH, project)
     fs.mkdirSync(dir, { recursive: true })
     let to = path.join(dir, `${file}.md`)
     if (fs.existsSync(to)) to = path.join(dir, `${file}-${Date.now()}.md`)
     fs.renameSync(from, to)
-    return { trashed: to }
+    return { trashed: to, ended }
 }
 
 function listMaps() {

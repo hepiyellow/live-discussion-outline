@@ -60,8 +60,13 @@
 .row.done {
     color: var(--settled);
 }
+/* The marker line is inset, as a parent row's is: a border would add to the head's padding and push the checkbox right. */
 .topic-head.current {
-    border-left: 3px solid var(--current);
+    box-shadow: inset 3px 0 0 var(--current);
+}
+/* Stuck, a head's divider is a shadow too (see .sticky-head[data-stuck]), so it keeps both. */
+.topic-head.current[data-stuck] {
+    box-shadow: inset 3px 0 0 var(--current), 0 1px 0 var(--border);
 }
 
 .tri {
@@ -460,10 +465,9 @@ button.ck[data-state='claim']:hover { border-color: var(--approved); color: var(
     .qicon[data-pulse] { animation: none; box-shadow: 0 0 0 3px var(--foreground); }
 }
 .row.leaf > .qicon { align-self: start; margin-top: 13px; }
-/* A topic has no indent: its icon sits in the page's margin, as far left of the topic as a node's is of the node. */
+/* A topic has no indent: its icon sits in the page's margin, as far left of the topic as a node's is of the node. The
+   current topic's line is inset, so it moves nothing and the icon needs no offset for it. */
 .topic-head > .qicon { position: absolute; left: -18px; top: 50%; margin: 0; transform: translateY(-50%); }
-/* The current topic's line is a border, which moves what `left` is measured from. */
-.topic-head.current > .qicon { left: -21px; }
 
 /* The diff animation: words are units (a word and the space after it) that grow in or collapse. Words about to go are
    marked first: red for removed ones, orange for rewritten ones, whose new words come in orange too; added ones in green. */

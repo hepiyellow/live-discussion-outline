@@ -48,6 +48,16 @@ export function stopInTerminal(name) {
     execFileSync('tmux', ['send-keys', '-t', `=${name}:`, 'Escape'])
 }
 
+/**
+ * Ends the tmux session, and with it the agent running there: its session stops, and its transcript stays. False when
+ * there is no such tmux session.
+ */
+export function endTerminal(name) {
+    if (!isSessionName(name) || !hasSession(name)) return false
+    execFileSync('tmux', ['kill-session', '-t', `=${name}`], { stdio: 'ignore' })
+    return true
+}
+
 /** npm unpacks node-pty's prebuilt spawn-helper without its execute bit on macOS, and every spawn then fails. */
 function fixSpawnHelper(require) {
     const helper = path.join(path.dirname(require.resolve('node-pty/package.json')), 'prebuilds', `${process.platform}-${process.arch}`, 'spawn-helper')

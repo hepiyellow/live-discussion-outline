@@ -23,8 +23,9 @@ function extractHeader(source, label, maxLength) {
 /**
  * The outline's header lines, and the source without them: `Title:` (the outline session's name), `Resume:` (link or
  * command the page copies), `Model:` (shown as written), `Terminal:` (the tmux session the Terminal tab attaches to),
- * `Session:` (the agent's session id, whose transcript the Transcript tab shows) and `Mode:` (who writes the outline:
- * `server` is server mode, and anything else, or no line, file mode). The queue is taken out too.
+ * `Session:` (the agent's session id, whose transcript the Transcript tab shows), `Mode:` (who writes the outline:
+ * `server` is server mode, and anything else, or no line, file mode) and `Archived:` (the day the user archived the
+ * outline, which keeps it out of the pane's groups; no line, not archived). The queue is taken out too.
  */
 export function extractHeaders(text) {
     const title = extractHeader(text, 'Title', TITLE_MAX)
@@ -33,7 +34,8 @@ export function extractHeaders(text) {
     const terminal = extractHeader(model.source, 'Terminal', 64)
     const session = extractHeader(terminal.source, 'Session', 36)
     const mode = extractHeader(session.source, 'Mode', 20)
-    const queue = extractQueue(mode.source)
+    const archived = extractHeader(mode.source, 'Archived', 40)
+    const queue = extractQueue(archived.source)
     return {
         title: title.value,
         resume: resume.value,
@@ -41,6 +43,7 @@ export function extractHeaders(text) {
         terminal: isSessionName(terminal.value) ? terminal.value : '',
         session: isSessionId(session.value) ? session.value : '',
         mode: mode.value === 'server' ? 'server' : 'file',
+        archived: archived.value,
         queue: queue.items,
         source: queue.source,
     }
@@ -104,13 +107,16 @@ function headNode(text, level) {
         } else for (const name of TAG_NAMES[t[1].toLowerCase()] ?? [t[1].toLowerCase()]) tags.add(name)
     }
     // The title reads as outlines wrote it before the tag, `(A) Title`, so the page and the messages it sends name the option the same way.
-    return { level, num: m ? m[1] : '', title: option ? `(${option}) ${rest.trim()}` : rest.trim(), option, tags, body: [], children: [] }
+    return { level, num: m ? m[1] : '', title: option ? `(${option}) ${rest.trim()}` : rest.trim(), option, tags, body: [], children: [], start: 0, end: 0 }
 }
 
-/** The outline as a tree of markdown tokens: the root holds any text before the first topic, and the topics. */
+/**
+ * The outline as a tree of markdown tokens: the root holds any text before the first topic, and the topics. A node also
+ * keeps the lines of the source it spans, from its heading to the next heading of its level or above (`start` to `end`).
+ */
 function parseOutline(source) {
     const tokens = md.parse(source, {})
-    const root = { level: 0, num: '', title: '', tags: new Set(), body: [], children: [] }
+    const root = { level: 0, num: '', title: '', tags: new Set(), body: [], children: [], start: 0, end: 0 }
     const stack = [root]
     for (let i = 0; i < tokens.length; i++) {
         const t = tokens[i]
@@ -119,11 +125,14 @@ function parseOutline(source) {
             continue
         }
         const node = headNode(tokens[i + 1].content, Number(t.tag.slice(1)))
-        while (stack[stack.length - 1].level >= node.level) stack.pop()
+        node.start = t.map[0]
+        while (stack[stack.length - 1].level >= node.level) stack.pop().end = node.start
         stack[stack.length - 1].children.push(node)
         stack.push(node)
         i += 2
     }
+    const lines = source.split('\n').length
+    for (const node of stack) node.end = lines
     return root
 }
 
@@ -223,7 +232,12 @@ function bodyJson(tokens) {
     return { html, closing }
 }
 
-function nodeJson(node) {
+/** The node's own markdown and everything under it, as a handoff to another session reads it: the Markdown tab's `(A)` for an option. */
+function markdownOf(node, lines) {
+    return optionLetters(lines.slice(node.start, node.end).join('\n')).trimEnd()
+}
+
+function nodeJson(node, lines) {
     const { html, closing } = bodyJson(node.body)
     return {
         num: node.num,
@@ -235,7 +249,9 @@ function nodeJson(node) {
         titleHtml: md.renderInline(node.title),
         html,
         closing,
-        children: node.children.map(nodeJson),
+        // Left out of the history's copy of a node: it would repeat every child's text in each ancestor's entries.
+        ...(lines ? { markdown: markdownOf(node, lines) } : {}),
+        children: node.children.map(n => nodeJson(n, lines)),
     }
 }
 
@@ -254,14 +270,18 @@ function optionLetters(source) {
         .join('\n')
 }
 
-/** What the page shows of an outline (web/src/types.ts describes it): its header lines, nodes, queue and Markdown tab. */
-export function outlinePayload(text) {
+/**
+ * What the page shows of an outline (web/src/types.ts describes it): its header lines, nodes, queue and Markdown tab.
+ * With `markdown`, each node also carries its markdown (the copy button's); the node history does not keep it.
+ */
+export function outlinePayload(text, { markdown = false } = {}) {
     const { source, ...headers } = extractHeaders(text)
     const root = parseOutline(source)
+    const lines = markdown ? source.split('\n') : null
     return {
         ...headers,
         intro: md.renderer.render(root.body, md.options, {}),
-        nodes: root.children.map(nodeJson),
+        nodes: root.children.map(n => nodeJson(n, lines)),
         markdown: renderPlain(optionLetters(source)),
     }
 }

@@ -1,10 +1,12 @@
 import { createContext, useContext, useLayoutEffect, useRef, type KeyboardEvent, type MouseEvent } from 'react'
-import { ChevronDown, Copy, History, Reply, Trash2 } from 'lucide-react'
+import { ChevronDown, ClipboardCopy, Copy, History, Reply, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { copyText } from '@/lib/send'
 import type { Statuses } from '@/lib/status'
 import { DONE_PILL, FAILED_PILL, liveHtml, type NodeContent } from '@/lib/content'
 import type { Message, OutlineNode, QueueItem } from '@/types'
 import { NodeMessages } from './Inbox'
+import { useNotify } from './Notice'
 import { DIFF_ICON, KINDS, readId } from './queue'
 import { Extras, StatusBox } from './StatusBox'
 
@@ -199,6 +201,29 @@ function Ask({ node }: { node: OutlineNode }) {
     )
 }
 
+/** Copies the node's markdown, with everything under it, to paste into another session as a handoff. */
+function CopyMarkdownButton({ node }: { node: OutlineNode }) {
+    const notify = useNotify()
+    if (node.markdown === undefined) return null
+    const label = node.children.length ? 'Copy the markdown of this item and everything under it' : 'Copy the markdown of this item'
+    return (
+        <button
+            type="button"
+            className="ask"
+            data-copy-markdown
+            title={label}
+            aria-label={`Copy the markdown of ${node.num}`}
+            onClick={async e => {
+                e.stopPropagation()
+                const ok = await copyText(node.markdown ?? '')
+                notify(ok ? `Copied ${node.num} as markdown` : 'The clipboard is not available', !ok)
+            }}
+        >
+            <ClipboardCopy className="size-3.5" />
+        </button>
+    )
+}
+
 /** The node's history, on hover: its changes, with the node as it was at each. */
 function HistoryButton({ node }: { node: OutlineNode }) {
     const { onHistory } = useOutlineCtx()
@@ -239,13 +264,14 @@ function RemoveButton({ node }: { node: OutlineNode }) {
     )
 }
 
-/** A parent's buttons on hover: the reference, the history, the trash, and the diff of everything changed under it. */
+/** A parent's buttons on hover: the reference, the markdown copy, the history, the trash, and the diff of everything changed under it. */
 function Asks({ node }: { node: OutlineNode }) {
     const { unreadUnder, onOpenUnreadUnder } = useOutlineCtx()
     const under = unreadUnder(node.num).length
     return (
         <span className="asks">
             <Ask node={node} />
+            <CopyMarkdownButton node={node} />
             <HistoryButton node={node} />
             <RemoveButton node={node} />
             {under > 0 && (
@@ -413,6 +439,7 @@ function Leaf({ node }: { node: OutlineNode }) {
             <Title node={node} titleHtml={shown.titleHtml} />
             <span className="asks">
                 <Ask node={node} />
+                <CopyMarkdownButton node={node} />
                 <HistoryButton node={node} />
                 <RemoveButton node={node} />
             </span>

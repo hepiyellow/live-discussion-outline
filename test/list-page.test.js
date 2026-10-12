@@ -81,6 +81,62 @@ describe('the outline list', () => {
         assert.ok(fs.existsSync(path.join(server.dir, '.trash', 'demo', 'doomed.md')))
     })
 
+    test('the archive button moves the row to Archived and writes the Archived line; Unarchive brings it back', async () => {
+        const file = path.join(server.dir, 'demo', 'shelved.md')
+        fs.copyFileSync(path.join(server.dir, 'demo', 'sample.md'), file)
+        const group = page.locator('nav[aria-label="Outlines"] section[data-project="demo"]')
+        const archived = page.locator('nav[aria-label="Outlines"] section[data-archived]')
+        try {
+            await group.locator('[data-pane-outline="demo/shelved"]').waitFor()
+            assert.equal(await archived.count(), 0)
+            const changed = fs.statSync(file).mtimeMs
+            await row('shelved').hover()
+            await row('shelved').getByRole('button', { name: 'Archive', exact: true }).click()
+            // One click, nothing asked: the row leaves its project's group, and Archived, closed, counts it.
+            await row('shelved').waitFor({ state: 'detached' })
+            assert.match(await archived.getByRole('button', { name: /Archived/ }).textContent(), /Archived\s*1/)
+            assert.match(fs.readFileSync(file, 'utf8'), /^Archived: \d{4}-\d\d-\d\d$/m)
+            // The outline is where it was, with its time of last change, and the list still has it.
+            assert.ok(Math.abs(fs.statSync(file).mtimeMs - changed) < 1, 'the time of last change')
+            const listed = (await (await fetch(`${server.url}/api/outlines`)).json()).outlines.find(o => o.file === 'shelved')
+            assert.match(listed.archived, /^\d{4}-\d\d-\d\d$/)
+            // A search that matches it opens Archived; so does the group's own line.
+            await page.getByRole('searchbox', { name: 'Search outlines' }).fill('caching')
+            await archived.locator('[data-pane-outline="demo/shelved"]').waitFor()
+            await page.getByRole('searchbox', { name: 'Search outlines' }).fill('')
+            await row('shelved').waitFor({ state: 'detached' })
+            await archived.getByRole('button', { name: /Archived/ }).click()
+            assert.match(await row('shelved').textContent(), /demo/)
+            await row('shelved').hover()
+            await row('shelved').getByRole('button', { name: 'Unarchive' }).click()
+            await group.locator('[data-pane-outline="demo/shelved"]').waitFor()
+            await archived.waitFor({ state: 'detached' })
+            assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /^Archived:/m)
+            assert.equal(fs.readFileSync(file, 'utf8'), fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8'))
+        } finally {
+            fs.rmSync(file, { force: true })
+        }
+    })
+
+    test('an archived outline still opens: its page says so, marks its row under Archived, and can unarchive it', async () => {
+        const file = path.join(server.dir, 'demo', 'shelved.md')
+        fs.writeFileSync(file, fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8').replace(/^(Title: .*\n)/, '$1Archived: 2026-10-12\n'))
+        try {
+            await page.goto(`${server.url}/demo/shelved`)
+            const mark = page.locator('[data-topbar] [data-archived]')
+            await mark.waitFor()
+            assert.match(await mark.getAttribute('title'), /Archived on 2026-10-12/)
+            assert.ok(await page.locator('[data-num]').count())
+            await page.locator('nav[aria-label="Outlines"] section[data-archived] [aria-current="page"][data-pane-outline="demo/shelved"]').waitFor()
+            await mark.getByRole('button', { name: 'Unarchive' }).click()
+            await mark.waitFor({ state: 'detached' })
+            await page.locator('nav[aria-label="Outlines"] section[data-project="demo"] [aria-current="page"][data-pane-outline="demo/shelved"]').waitFor()
+            assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /^Archived:/m)
+        } finally {
+            fs.rmSync(file, { force: true })
+        }
+    })
+
     test('the new-session dialog lists folders and past sessions', async () => {
         await page.locator('nav[aria-label="Outlines"]').getByRole('button', { name: 'New', exact: true }).click()
         const dialog = page.getByRole('dialog', { name: 'New session' })

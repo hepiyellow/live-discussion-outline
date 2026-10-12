@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { ChevronRight, Folder, Layers, List, LoaderCircle, Plus, Search, Trash2, X } from 'lucide-react'
+import { Archive as ArchiveIcon, ArchiveRestore, ChevronRight, Folder, Layers, List, LoaderCircle, Plus, Search, Trash2, X } from 'lucide-react'
 import { api, liveHref, outlineHref } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { OutlineList } from '@/types'
@@ -18,11 +18,13 @@ interface Row {
     mtime: number
     /** A starting session's tmux session. */
     starting?: string
+    /** The user archived the outline: it is listed under Archived, not in its project's group. */
+    archived?: boolean
 }
 
 /** The pane's rows: the starting sessions as well as the outlines. */
 const rowsOf = (list: OutlineList | null): Row[] => [
-    ...(list?.outlines ?? []).map(o => ({ key: `${o.project}/${o.file}`, project: o.project, file: o.file, title: o.title, href: outlineHref(o.project, o.file), mtime: o.mtime })),
+    ...(list?.outlines ?? []).map(o => ({ key: `${o.project}/${o.file}`, project: o.project, file: o.file, title: o.title, href: outlineHref(o.project, o.file), mtime: o.mtime, archived: !!o.archived })),
     ...(list?.starting ?? []).map(s => ({ key: `starting:${s.terminal}`, project: s.project, title: s.title, href: liveHref(s.terminal), mtime: s.started, starting: s.terminal })),
 ]
 
@@ -43,7 +45,8 @@ export function byProject(rows: Row[], workspaces: string[] = []) {
 
 /**
  * The trash button of an outline's row, shown while the row is hovered: the first click asks "Move to trash?", the
- * second moves the outline to the outlines folder's `.trash/`. Asking ends after five seconds or a click elsewhere.
+ * second ends the outline's session (the session terminal New started for it) and moves the outline to the outlines
+ * folder's `.trash/`. Asking ends after five seconds or a click elsewhere.
  */
 function Trash({ project, file }: { project: string; file: string }) {
     const [armed, setArmed] = useState(false)
@@ -66,7 +69,7 @@ function Trash({ project, file }: { project: string; file: string }) {
             type="button"
             disabled={busy}
             aria-label={armed ? 'Move to trash?' : 'Move to trash'}
-            title={error || (armed ? 'Click again to move it to the trash' : 'Move to trash')}
+            title={error || (armed ? 'Click again to end its session and move it to the trash' : 'Move to trash: ends its session')}
             onClick={async () => {
                 if (!armed) return setArmed(true)
                 setBusy(true)
@@ -84,6 +87,38 @@ function Trash({ project, file }: { project: string; file: string }) {
             )}
         >
             <Trash2 className="size-3.5" />
+        </button>
+    )
+}
+
+/**
+ * The archive button of an outline's row, shown while the row is hovered: one click archives the outline, which moves
+ * its row from its project's group to Archived, or brings an archived one back. It asks nothing, since the same click
+ * undoes it; the outline itself, its link and its linked session stay as they are.
+ */
+function ArchiveToggle({ project, file, archived }: { project: string; file: string; archived: boolean }) {
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState('')
+    const label = archived ? 'Unarchive' : 'Archive'
+    return (
+        <button
+            type="button"
+            disabled={busy}
+            aria-label={label}
+            title={error || label}
+            onClick={async () => {
+                setBusy(true)
+                setError('')
+                try {
+                    await api('/api/archive', { project, file, archived: !archived })
+                } catch (e) {
+                    setError((e as Error).message)
+                }
+                setBusy(false)
+            }}
+            className={cn('hidden shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground group-focus-within/row:inline-flex group-hover/row:inline-flex', error && 'text-danger')}
+        >
+            {archived ? <ArchiveRestore className="size-3.5" /> : <ArchiveIcon className="size-3.5" />}
         </button>
     )
 }
@@ -125,7 +160,10 @@ function NewInProject({ project, workspace }: { project: string; workspace: bool
     )
 }
 
-/** A row of the pane: the outline's title (renamed with its pencil, removed with its trash, both on hover), or a starting session. */
+/**
+ * A row of the pane: the outline's title (renamed with its pencil, archived or brought back with its archive button,
+ * removed with its trash, all on hover), or a starting session. An archived outline's row also names its project.
+ */
 function PaneRow({ row: o, on, marked }: { row: Row; on: boolean; marked: RefObject<HTMLAnchorElement | null> }) {
     const when = new Date(o.mtime).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     const link = (
@@ -134,11 +172,12 @@ function PaneRow({ row: o, on, marked }: { row: Row; on: boolean; marked: RefObj
             href={o.href}
             {...(o.starting ? { 'data-pane-starting': o.starting } : { 'data-pane-outline': o.key })}
             aria-current={on ? 'page' : undefined}
-            title={o.starting ? `${o.title}\nStarting: waiting for the agent to write the outline (tmux ${o.starting}, ${when})` : `${o.title}\n${o.project} · ${when}`}
+            title={o.starting ? `${o.title}\nStarting: waiting for the agent to write the outline (tmux ${o.starting}, ${when})` : `${o.title}\n${o.project} · ${when}${o.archived ? ' · archived' : ''}`}
             className={cn('flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-2 text-[13px] text-sidebar-foreground no-underline', on && 'font-medium', o.starting && 'text-muted-foreground')}
         >
             {o.starting && <LoaderCircle className="size-3 shrink-0 animate-spin" aria-label="Starting" />}
             <span className="truncate">{o.title}</span>
+            {o.archived && <span className="ml-auto max-w-[40%] shrink-0 truncate pl-1 text-[11px] text-muted-foreground">{o.project}</span>}
         </a>
     )
     return (
@@ -148,6 +187,7 @@ function PaneRow({ row: o, on, marked }: { row: Row; on: boolean; marked: RefObj
                     <RenameTitle project={o.project} file={o.file} title={o.title} className="flex min-w-0 flex-1 items-center" buttonClassName="ml-0.5 hidden group-focus-within/row:inline-flex group-hover/row:inline-flex">
                         {link}
                     </RenameTitle>
+                    <ArchiveToggle project={o.project} file={o.file} archived={!!o.archived} />
                     <Trash project={o.project} file={o.file} />
                 </>
             ) : (
@@ -246,6 +286,27 @@ function useCollapsed() {
     return [collapsed, toggle] as const
 }
 
+const ARCHIVED_KEY = 'outlines-pane-archived-open'
+
+/** Whether the viewer opened the Archived group, kept in this browser; a failure leaves it closed. */
+function useArchivedOpen() {
+    const [open, setOpen] = useState(() => {
+        try {
+            return localStorage.getItem(ARCHIVED_KEY) === '1'
+        } catch {
+            return false
+        }
+    })
+    const toggle = () =>
+        setOpen(prev => {
+            try {
+                localStorage.setItem(ARCHIVED_KEY, prev ? '0' : '1')
+            } catch {}
+            return !prev
+        })
+    return [open, toggle] as const
+}
+
 const QUERY_KEY = 'outlines-pane-search'
 
 /** The search, kept for this tab while the viewer opens outlines from the filtered list (each opens a new page). */
@@ -280,15 +341,22 @@ interface Props {
 /**
  * The pane on the left of every page: the way to all outlines, then every outline, grouped by project, the way Claude's
  * sidebar lists sessions, workspaces first. The search box at the top hides the outlines that do not match, and groups left empty; New
- * under it starts a session, from any page, which shows as a row at once until its outline appears. The outline (or
- * starting session) the page shows is marked and scrolled into view. Its right edge resizes it.
+ * under it starts a session, from any page, which shows as a row at once until its outline appears. The outlines the
+ * user archived are under the groups, in one group, Archived, closed until the user opens it, searches for one of them
+ * or is on one of them. The outline (or starting session) the page shows is marked and scrolled into view. Its right
+ * edge resizes it.
  */
 export function OutlinesPane({ list, current, starting, home }: Props) {
     const [query, setQuery] = useQuery()
     const [collapsed, toggleCollapsed] = useCollapsed()
+    const [archivedOpened, toggleArchived] = useArchivedOpen()
     const all = rowsOf(list)
-    const groups = byProject(query.trim() ? all.filter(o => matches(o, query.trim())) : all, list?.workspaces)
+    const shown = query.trim() ? all.filter(o => matches(o, query.trim())) : all
+    const groups = byProject(shown.filter(o => !o.archived), list?.workspaces)
+    const archived = shown.filter(o => o.archived).sort((a, b) => b.mtime - a.mtime)
     const currentKey = current ? `${current.project}/${current.file}` : starting ? `starting:${starting}` : ''
+    // Archived opens anyway for a search that matches there, and for the shown outline, so its row stays in view.
+    const archivedOpen = archivedOpened || !!query.trim() || archived.some(o => o.key === currentKey)
     // The marked row is scrolled into view once, when it first shows; later changes of the list leave the pane as it is.
     const marked = useRef<HTMLAnchorElement>(null)
     const shownFor = useRef('')
@@ -342,7 +410,7 @@ export function OutlinesPane({ list, current, starting, home }: Props) {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
                 {!list && <p className="px-2 py-1 text-[13px] text-muted-foreground">Loading…</p>}
-                {list && !groups.length && <p className="mt-3 px-2 py-1 text-[13px] text-muted-foreground">{all.length ? 'No outlines match.' : 'No outlines yet.'}</p>}
+                {list && !groups.length && !archived.length && <p className="mt-3 px-2 py-1 text-[13px] text-muted-foreground">{all.length ? 'No outlines match.' : 'No outlines yet.'}</p>}
                 {groups.map(g => {
                     // A group holding the shown outline opens anyway, so its row stays in view.
                     const isCollapsed = collapsed.includes(g.project) && !g.rows.some(o => o.key === currentKey)
@@ -372,6 +440,31 @@ export function OutlinesPane({ list, current, starting, home }: Props) {
                         </section>
                     )
                 })}
+                {archived.length > 0 && (
+                    <section data-archived data-collapsed={!archivedOpen || undefined} className="mt-3">
+                        <h2 className="flex items-center px-2 pb-1 text-xs font-medium text-muted-foreground">
+                            <button
+                                type="button"
+                                aria-expanded={archivedOpen}
+                                onClick={toggleArchived}
+                                title={`Archived outlines: click to ${archivedOpen ? 'collapse' : 'expand'}`}
+                                className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-0.5 text-left hover:text-foreground"
+                            >
+                                <ChevronRight className={cn('size-3 shrink-0 transition-transform', archivedOpen && 'rotate-90')} aria-hidden="true" />
+                                <ArchiveIcon className="size-3 shrink-0" aria-hidden="true" />
+                                <span className="truncate">Archived</span>
+                                <span className="font-normal">{archived.length}</span>
+                            </button>
+                        </h2>
+                        {archivedOpen && (
+                            <ul>
+                                {archived.map(o => (
+                                    <PaneRow key={o.key} row={o} on={o.key === currentKey} marked={marked} />
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+                )}
             </div>
             <ResizeHandle />
         </nav>

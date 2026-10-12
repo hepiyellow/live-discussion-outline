@@ -89,6 +89,48 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         fs.rmSync(file)
     })
 
+    test('the trash ends the session terminal with its outline: no row is left, neither the outline nor a session starting', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        const { terminal, outline } = await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic: 'Thrown away', mode: 'server' })
+        const row = pane().locator('li').filter({ has: page.locator(`[data-pane-outline="proj/${outline.file}"]`) })
+        await row.waitFor()
+        tmux('has-session', '-t', `=${terminal}`)
+        // Archiving leaves the session terminal running; only the trash ends it.
+        await row.hover()
+        await row.getByRole('button', { name: 'Archive', exact: true }).click()
+        await pane().locator(`section[data-archived]`).getByRole('button', { name: /Archived/ }).click()
+        await pane().locator(`section[data-archived] [data-pane-outline="proj/${outline.file}"]`).waitFor()
+        tmux('has-session', '-t', `=${terminal}`)
+        await row.hover()
+        await row.getByRole('button', { name: 'Move to trash' }).click()
+        await row.getByRole('button', { name: 'Move to trash?' }).click()
+        await row.waitFor({ state: 'detached' })
+        assert.throws(() => tmux('has-session', '-t', `=${terminal}`), 'the tmux session is gone')
+        assert.ok(fs.existsSync(path.join(server.dir, '.trash', 'proj', `${outline.file}.md`)))
+        const list = await (await fetch(`${server.url}/api/outlines`)).json()
+        assert.equal(list.outlines.some(o => o.file === outline.file), false)
+        assert.equal(list.starting.some(s => s.terminal === terminal), false)
+        assert.equal(await pane().locator(`[data-pane-starting="${terminal}"]`).count(), 0)
+    })
+
+    test('a session terminal another outline names, or one the user started, is not ended by the trash', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        const trash = (project, file) =>
+            page.evaluate(async body => (await fetch('/api/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json(), { project, file })
+        const { terminal, outline } = await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic: 'Two outlines', mode: 'server' })
+        fs.writeFileSync(path.join(server.dir, 'proj', 'second.md'), `Title: Second\nTerminal: ${terminal}\n\n# 1. A\n`)
+        assert.equal((await trash('proj', 'second')).ended, false)
+        tmux('has-session', '-t', `=${terminal}`)
+        assert.equal((await trash('proj', outline.file)).ended, true)
+        assert.throws(() => tmux('has-session', '-t', `=${terminal}`))
+        // A tmux session New did not start is the user's own.
+        tmux('new-session', '-d', '-s', 'my-own', 'sleep 600')
+        fs.writeFileSync(path.join(server.dir, 'proj', 'mine.md'), 'Title: Mine\nTerminal: my-own\n\n# 1. A\n')
+        assert.equal((await trash('proj', 'mine')).ended, false)
+        tmux('has-session', '-t', '=my-own')
+        tmux('kill-session', '-t', '=my-own')
+    })
+
     test('without a topic the outline has no name yet: its file is named after an id, and the agent is told not to ask for a subject', async () => {
         page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
         const { terminal, outline } = await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic: '', mode: 'server' })

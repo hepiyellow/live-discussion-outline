@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Check, ChevronDown, Copy, Crosshair, Folder, ListCollapse, ListTree, Undo2 } from 'lucide-react'
+import { Archive, Check, ChevronDown, Copy, Crosshair, Folder, ListCollapse, ListTree, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { api } from '@/lib/api'
 import type { Outline, TabName } from '@/types'
 import { PaneToggle } from './PaneToggle'
 
@@ -39,7 +40,37 @@ function ResumeCopy({ resume }: { resume: string }) {
     )
 }
 
-/** The bar over every tab: the session's name, the Outline tab's tools, then the project, resume link and the tab dropdown. */
+/** The mark of an archived outline, which the pane lists under Archived only, and the button that brings it back. */
+function Archived({ outline }: { outline: Outline }) {
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState('')
+    return (
+        <span data-archived className="mr-2 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground" title={error || `Archived on ${outline.archived}: the pane lists it under Archived`}>
+            <Archive className="size-3.5" aria-hidden="true" />
+            Archived
+            <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                disabled={busy}
+                onClick={async () => {
+                    setBusy(true)
+                    setError('')
+                    try {
+                        await api('/api/archive', { project: outline.project, file: outline.file, archived: false })
+                    } catch (e) {
+                        setError((e as Error).message)
+                    }
+                    setBusy(false)
+                }}
+            >
+                Unarchive
+            </Button>
+        </span>
+    )
+}
+
+/** The bar over every tab: the session's name, the mark of an archived outline, the Outline tab's tools, then the project, resume link and the tab dropdown. */
 export function TopBar({ outline, tab, onTab, onExpandAll, onCollapseAll, onJump, undoSteps, onUndo }: Props) {
     return (
         <header data-topbar className="sticky top-0 z-40 -ml-(--pane-w) flex h-11 items-center gap-1 border-b bg-background pr-2 whitespace-nowrap">
@@ -47,6 +78,7 @@ export function TopBar({ outline, tab, onTab, onExpandAll, onCollapseAll, onJump
             <span data-title className="mr-2 min-w-0 max-w-[40%] truncate text-sm font-medium" title={outline.title || outline.file}>
                 {outline.title || outline.file}
             </span>
+            {outline.archived && <Archived outline={outline} />}
             {tab === 'outline' && (
                 <>
                     <Button variant="ghost" size="icon-sm" title="Expand all" aria-label="Expand all" onClick={onExpandAll}>

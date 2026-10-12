@@ -33,6 +33,8 @@ export interface OutlineNode {
     html: string
     /** Closing lines, in the order summary, recommendation, action. */
     closing: ClosingLine[]
+    /** The node's markdown with everything under it, for the copy button. Not in a history entry's nodes. */
+    markdown?: string
     children: OutlineNode[]
 }
 
@@ -72,6 +74,8 @@ export interface Outline {
     session: string
     /** The `Mode:` line: `server` when it says so, else `file`. */
     mode: Mode
+    /** The `Archived:` line: the day the user archived the outline. Empty when it is not archived. */
+    archived: string
     /** Server mode: the nodes whose tick the user changed and the agent has not acknowledged yet. They show as pending. */
     unacked: string[]
     /** The folder the linked session runs in, from its transcript. */
@@ -199,6 +203,8 @@ export interface OutlineSummary {
     terminal: string
     session: string
     mode: Mode
+    /** The day the user archived the outline; empty when it is not archived. The pane lists an archived outline under Archived only. */
+    archived: string
     /** Last change, in ms since the epoch. */
     mtime: number
 }

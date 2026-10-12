@@ -45,7 +45,7 @@ Where a node stands: **open** (no tag), an **agent claim**, or claim for short (
 _Avoid_: Checkbox, resolved, agent-approved, done, and a bare "approved" (it does not say who approved), pending human approval (the human has approved; the agent has not recorded it)
 
 **Question**:
-A node that asks the user to choose exactly one of the options under it.
+A node that asks the user to choose exactly one of the options under it. When the agent recommends one of them it is a claim, a fuller one that also shows what the agent chose not to claim, and it waits for the user like any other claim. Without a recommendation it is an **unresolved question**: the agent cannot decide, or leaves the decision to the user, and it is the one kind of node that needs the user. Something the agent asks and answers itself, with no options to show (a yes or no), is not a question but a claim, however it is phrased.
 _Avoid_: Choice, poll, decision (a decide item is a queue item)
 
 **Option**:
@@ -59,6 +59,14 @@ _Avoid_: Answer, conclusion, bottom line
 **Outlines folder**:
 The one folder outlines are kept in, with one subfolder per project. It is the Outline app's own storage, not the agent's. In file mode the agent writes there itself; in server mode only the server does.
 _Avoid_: Dir, output folder
+
+**Archived**:
+An outline session the user put aside: the pane lists it under Archived, not in its project's group. Nothing else about it changes: its outline, its link and its linked session work as before (the session keeps running), and it stays archived until the user unarchives it.
+_Avoid_: Hidden, closed, done (that is an action), deleted
+
+**Trash**:
+Where an outline goes when the user deletes it from the pane: it is no longer an outline the page knows, and is kept in the outlines folder until moved back by hand. Deleting also ends the outline session's work: the session terminal the app started for it is ended, and with it the linked session, whose transcript stays. That is how it differs from archiving, which leaves the linked session running.
+_Avoid_: Archive, remove (that is for a node)
 
 **Outline app**:
 The Mac application that runs the server while it is open and shows outline sessions in one window of its own. Its name in the Dock and the Finder is **Outline Only**.
