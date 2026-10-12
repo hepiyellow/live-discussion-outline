@@ -4,6 +4,20 @@ import { drawTree, transitionTree } from '@/lib/historyTree'
 import type { HistoryEntry, OutlineNode } from '@/types'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 
+/** What the user did on a node, in words: an approval says what it approved. */
+const didText = ({ what, kind }: NonNullable<HistoryEntry['did']>[number]) =>
+    what === 'ran'
+        ? 'You ran it'
+        : what === 'picked'
+          ? 'You picked this option'
+          : what === 'took-back'
+            ? kind === 'option'
+                ? 'You took your pick back'
+                : 'You took your approval back'
+            : kind === 'claim'
+              ? 'You approved this claim'
+              : 'You approved this node'
+
 const when = (at: number) => new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 /**
@@ -34,7 +48,8 @@ function HistoryTree({ nodes }: { nodes: OutlineNode[] }) {
 
 /**
  * The history of a node: its changes, newest first, with their times on the left; the node as it was at the chosen
- * change on the right, its children included.
+ * change on the right, its children included. What the user did on the node (approved it, took that back, picked it,
+ * ran it) is said under the time it happened at.
  */
 export function NodeHistory({ project, file, node, onClose }: { project: string; file: string; node: OutlineNode; onClose: () => void }) {
     const [entries, setEntries] = useState<HistoryEntry[] | null>(null)
@@ -73,6 +88,11 @@ export function NodeHistory({ project, file, node, onClose }: { project: string;
                                 >
                                     {when(e.at)}
                                     {i === newest && <span className="ml-1.5 text-xs text-muted-foreground">latest</span>}
+                                    {e.did?.map((d, j) => (
+                                        <span key={j} data-did={d.what} className="block text-xs font-normal text-approved">
+                                            {didText(d)}
+                                        </span>
+                                    ))}
                                 </button>
                             </li>
                         ))}

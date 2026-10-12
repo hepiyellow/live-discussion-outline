@@ -42,6 +42,8 @@ export interface OutlineNode {
 export interface HistoryEntry {
     at: number
     node: OutlineNode
+    /** What the user did on the node then, from the approval log: the kind is the one the node had. */
+    did?: { what: 'approved' | 'took-back' | 'picked' | 'ran'; kind: 'claim' | 'action' | 'done' | 'failed' | 'option' | 'plain' }[]
 }
 
 /** An item of the queue: what the agent advises the user to handle next. */

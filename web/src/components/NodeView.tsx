@@ -1,14 +1,15 @@
 import { createContext, useContext, useLayoutEffect, useRef, type KeyboardEvent, type MouseEvent } from 'react'
-import { ChevronDown, ClipboardCopy, Copy, History, Reply, Trash2 } from 'lucide-react'
+import { ChevronDown, ClipboardCopy, Copy, History, Reply, Sparkle, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { copyText } from '@/lib/send'
 import type { Statuses } from '@/lib/status'
 import { DONE_PILL, FAILED_PILL, liveHtml, type NodeContent } from '@/lib/content'
+import type { Box, KindKey } from '@/lib/status'
 import type { Message, OutlineNode, QueueItem } from '@/types'
 import { NodeMessages } from './Inbox'
 import { useNotify } from './Notice'
 import { DIFF_ICON, KINDS, readId } from './queue'
-import { Extras, StatusBox } from './StatusBox'
+import { Marks, StatusBox, type OwnRole } from './StatusBox'
 
 /** What every node of the Outline tab needs: statuses, which nodes are open, the current path, and the user's actions. */
 export interface OutlineContext {
@@ -42,7 +43,10 @@ export interface OutlineContext {
     messagesFor: (num: string) => Message[]
     seen: Record<string, number>
     onSeen: (ids: string[]) => void
-    onReveal: (num: string) => void
+    /** Opens the way to a node and scrolls to it; `then` runs once it is there, and `inside` opens the node itself too. */
+    onReveal: (num: string, then?: (el: HTMLElement) => void, inside?: boolean) => void
+    /** The columns of the kind marks of the rows in view, in the order they are drawn (`kindColumnsInView`). */
+    kindColumns: KindKey[]
 }
 
 export const OutlineCtx = createContext<OutlineContext | null>(null)
@@ -77,7 +81,7 @@ function Title({ node, titleHtml }: { node: OutlineNode; titleHtml: string }) {
             )}
             {statuses.isOption(node) && node.tags.includes('recommended') && (
                 <span className="pill pill-recommended" title="The option the agent recommends">
-                    💡 Recommended
+                    <Sparkle aria-hidden="true" /> Recommended
                 </span>
             )}
             {/* An action the agent ran says so on its Action line; without that line, here. */}
@@ -94,26 +98,28 @@ function pointAtRun(num: string) {
         const button = document.querySelector(`.outline-tab [data-text-of="${CSS.escape(num)}"] [data-run]`)
         if (!button) return
         button.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        button.removeAttribute('data-pulse')
+        void (button as HTMLElement).offsetWidth
         button.setAttribute('data-pulse', '')
-        setTimeout(() => button.removeAttribute('data-pulse'), 1700)
     }, 0)
 }
 
 /**
- * The red triangle of an action still to run. It runs nothing itself: a click opens the node and points at the button
- * in its text that does, as the diff button leads to the diff.
+ * The red triangle of an action the agent asks the user to run: one still to run that is in the queue. An action out
+ * of the queue asks nothing, and has its kind mark alone. The triangle runs nothing itself: a click opens the node and
+ * points at the button in its text that does, as the diff button leads to the diff.
  */
 function Play({ node }: { node: OutlineNode }) {
-    const { isOpen, toggle, runs } = useOutlineCtx()
+    const { isOpen, toggle, runs, queued } = useOutlineCtx()
     if (!node.tags.includes('action') || node.tags.includes('ran')) return null
-    // From the click on Run until the agent marks the action done or failed, a ring turns in place of the triangle.
-    const running = !!runs[node.num]
+    // From the click on Run until the agent marks the action done or failed, the node's kind mark turns a ring instead.
+    if (runs[node.num] || !queued.has(node.num)) return null
     return (
         <button
             type="button"
-            className={cn('play', running && 'running')}
-            title={running ? 'Running: waiting for the agent to finish it' : 'An action: click to see the button that runs it'}
-            aria-label={running ? `${node.num} is running` : `Show the button that runs ${node.num}`}
+            className="play"
+            title="An action: click to see the button that runs it"
+            aria-label={`Show the button that runs ${node.num}`}
             onClick={e => {
                 e.stopPropagation()
                 if (!isOpen(node)) toggle(node)
@@ -127,7 +133,7 @@ function Play({ node }: { node: OutlineNode }) {
     )
 }
 
-/** Makes a checkbox grow and shrink three times, ringed in green: this is where to click. */
+/** Makes a checkbox, or a row's own kind icon, grow and shrink: this is where to look, or to click. */
 function pulseBox(box: HTMLElement) {
     box.removeAttribute('data-pulse')
     void box.offsetWidth
@@ -317,8 +323,8 @@ function Diff({ node }: { node: OutlineNode }) {
 
 /**
  * The icon of the node's queue item, as the queue column shows it, so the item and its node are recognized as one: a red
- * question mark on both, say. It shares the place of the diff button, which comes first (what the node shows is not
- * its text yet); an action's own icon is its play button.
+ * question mark on both, say. It is just right of the title, where the diff button is, which comes first (what the
+ * node shows is not its text yet). An item to run an action has none: the action's own mark is its indicator.
  */
 function QueueMark({ node }: { node: OutlineNode }) {
     const { queued, unread, opening, onSeen } = useOutlineCtx()
@@ -351,10 +357,65 @@ function QueueMark({ node }: { node: OutlineNode }) {
     )
 }
 
+/**
+ * The kind marks at the right of a row's title: every kind mark a row has is there, and none is at its left. An
+ * action's triangle is the action indicator, which runs nothing: a click opens the node and shows the button in its
+ * text that does. A parent's bubbles show the first node under it of their kind, and then what there is to act on: an
+ * action's button, or that node's own icon.
+ */
+function RowMarks({ node, box }: { node: OutlineNode; box: Box }) {
+    const { runs, onReveal, kindColumns, statuses, isOpen, toggle } = useOutlineCtx()
+    const leaf = !node.children.length
+    const option = statuses.isOption(node)
+    const mark = box.mark
+    const action = mark === 'action' || mark === 'failed'
+    const ownRole: OwnRole =
+        leaf && action
+            ? {
+                  as: 'point',
+                  onPoint: () => {
+                      if (!isOpen(node)) toggle(node)
+                      pointAtRun(node.num)
+                  },
+              }
+            : { as: 'mark' }
+    return (
+        <Marks
+            box={box}
+            ownRole={ownRole}
+            ownRunning={mark === 'action' && !!runs[node.num]}
+            columns={kindColumns}
+            below={option}
+            isRunning={num => !!runs[num]}
+            onShow={(num, key) =>
+                onReveal(
+                    num,
+                    el => {
+                        if (key === 'action' || key === 'failed') return pointAtRun(num)
+                        const own = el.querySelector<HTMLElement>(':scope > .marks [data-own]')
+                        if (own) pulseBox(own)
+                    },
+                    true,
+                )
+            }
+        />
+    )
+}
+
 /** A node's envelope, when the agent has messages about it. */
 function Messages({ node }: { node: OutlineNode }) {
     const { messagesFor, seen, onSeen, onReveal } = useOutlineCtx()
     return <NodeMessages num={node.num} messages={messagesFor(node.num)} seen={seen} onSeen={onSeen} onReveal={onReveal} />
+}
+
+/**
+ * Whether the row calls for the user: its node is in the queue, or it is an option of a question that is, since the
+ * options are where that question is answered. Only such a row draws its empty box in full; elsewhere the box is faint.
+ */
+const useAsked = (node: OutlineNode) => {
+    const { queued, statuses } = useOutlineCtx()
+    const parent = statuses.parent(node)
+    return queued.has(node.num) || (!!parent && statuses.isOption(node) && queued.has(parent.num)) || undefined
 }
 
 /** What a node shows: what the viewer read, while the change is unread. */
@@ -376,6 +437,7 @@ function Group({ node }: { node: OutlineNode }) {
     const open = isOpen(node)
     const box = statuses.box(node)
     const shown = useShown(node)
+    const asked = useAsked(node)
     const count = node.children.length
     const onKey = (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -388,6 +450,7 @@ function Group({ node }: { node: OutlineNode }) {
             <div
                 className={cn('row parent sticky-head', box.done && 'done', current.has(node.num) && 'current')}
                 data-num={node.num}
+                data-asked={asked}
                 data-sticky
                 aria-expanded={open}
                 onClick={e => isRowClick(e) && toggle(node)}
@@ -399,12 +462,12 @@ function Group({ node }: { node: OutlineNode }) {
                 <ChevronDown className="tri size-4" aria-hidden="true" />
                 <span className="num">{node.num}</span>
                 <Title node={node} titleHtml={shown.titleHtml} />
-                <Asks node={node} />
                 <Messages node={node} />
                 <span className="kc" role="button" tabIndex={0} title={`${count} direct child${count === 1 ? '' : 'ren'} — click the row to collapse or expand`} onKeyDown={onKey}>
                     <span>{count}</span>
                 </span>
-                <Extras kinds={box.extras} below={statuses.isOption(node)} />
+                <RowMarks node={node} box={box} />
+                <Asks node={node} />
             </div>
             <div className="kids" hidden={!open}>
                 {/* Kept when empty: the diff animation may fill it. */}
@@ -420,6 +483,7 @@ function Leaf({ node }: { node: OutlineNode }) {
     const { statuses, isOpen, toggle, current, onCheck } = useOutlineCtx()
     const box = statuses.box(node)
     const shown = useShown(node)
+    const asked = useAsked(node)
     const open = isOpen(node)
     // Only a node with text has something to hide.
     const text = !!shown.html
@@ -427,6 +491,7 @@ function Leaf({ node }: { node: OutlineNode }) {
         <div
             className={cn('row leaf', text && 'has-text', text && !open && 'closed', box.done && 'done', current.has(node.num) && 'current')}
             data-num={node.num}
+            data-asked={asked}
             aria-expanded={text ? open : undefined}
             onClick={e => text && isRowClick(e) && toggle(node)}
         >
@@ -437,13 +502,14 @@ function Leaf({ node }: { node: OutlineNode }) {
             {text && <ChevronDown className="tri size-4" aria-hidden="true" />}
             <span className="num">{node.num}</span>
             <Title node={node} titleHtml={shown.titleHtml} />
+            <Messages node={node} />
+            <RowMarks node={node} box={box} />
             <span className="asks">
                 <Ask node={node} />
                 <CopyMarkdownButton node={node} />
                 <HistoryButton node={node} />
                 <RemoveButton node={node} />
             </span>
-            <Messages node={node} />
             <NodeText node={node} className="node-html" html={shown.html} hidden={!open} />
         </div>
     )
@@ -454,12 +520,14 @@ export function Topic({ node }: { node: OutlineNode }) {
     const { statuses, isOpen, toggle, current, onTopicCheck } = useOutlineCtx()
     const open = isOpen(node)
     const box = statuses.topicBox(node)
+    const asked = useAsked(node)
     const html = liveHtml(node)
     return (
         <section className={cn('topic', !open && 'closed', box.done && 'done')}>
             <div
                 className={cn('topic-head sticky-head', current.has(node.num) && 'current')}
                 data-num={node.num}
+                data-asked={asked}
                 data-sticky
                 aria-expanded={open}
                 onClick={e => isRowClick(e) && toggle(node)}
@@ -469,7 +537,7 @@ export function Topic({ node }: { node: OutlineNode }) {
                 <ChevronDown className="tri size-4" aria-hidden="true" />
                 <span className="node-title" dangerouslySetInnerHTML={{ __html: `${node.num}. ${node.titleHtml}` }} />
                 <Messages node={node} />
-                <Extras kinds={box.extras} />
+                <RowMarks node={node} box={box} />
                 <Asks node={node} />
             </div>
             <div className="topic-body" hidden={!open}>

@@ -55,65 +55,164 @@ for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mod
         assert.equal(await bar.getByRole('button', { name: 'Copy the link that reopens this chat' }).count(), 1)
     })
 
-    test('status icons, rolled up over children', async () => {
+    test('approval boxes, rolled up over children, and kind marks', async () => {
+        // A box is ticked by the user's approval alone: a claim, a recommended option and an action done have an empty one.
         const states = {
             1: 'approved',
+            // The user approved some of what is under it.
             2: 'mixed',
-            '2.1': 'claim',
+            '2.1': 'open',
             '2.1.1': 'open',
-            '2.1.2': 'claim',
+            '2.1.2': 'open',
             '2.2': 'approved',
             '2.2.1': 'approved',
-            // The recommended option of a question already decided reads as open.
             '2.2.2': 'open',
-            '2.3': 'claim',
+            '2.3': 'open',
             '2.4': 'open',
-            // An action the agent has carried out: a yellow outlined tick.
-            '2.5': 'done',
-            3: 'mixed',
-            '3.2': 'claim',
-            4: 'claim',
-            '4.1': 'claim',
+            '2.5': 'open',
+            3: 'open',
+            '3.2': 'open',
+            4: 'open',
+            '4.1': 'open',
         }
         for (const [num, state] of Object.entries(states)) assert.equal(await box(num).getAttribute('data-state'), state, num)
-        // A mixed topic shows each kind below it once, lowest first: nothing, a claim, an approval, an action done.
-        assert.deepEqual(await node('2').locator('.extras .ck').evaluateAll(els => els.map(e => e.dataset.state)), ['open', 'claim', 'approved', 'done'])
-        // A topic whose nodes are all claims is settled: it starts collapsed, and shows that one kind with nothing beside it.
+        // The approval box stands in front of the triangle and the number; no kind mark is left of it.
+        for (const num of ['2', '2.1', '2.3', '2.4']) assert.equal(await node(num).evaluate(el => { const next = el.querySelector(':scope > .ck').nextElementSibling; return next.classList.contains('tri') || next.classList.contains('num') }), true, num)
+        assert.equal(await node('2.3').locator('> .km').count(), 0)
+        // The kind mark says what the node is on the agent's side: a claim (a question with a recommended option is
+        // one, answered or not), an action proposed or done. A node with no stance has an empty place.
+        const marks = { 1: null, '1.1': null, '2.1': 'claim', '2.1.1': null, '2.1.2': 'claim', '2.2': 'claim', '2.3': 'claim', '2.4': 'action', '2.5': 'done', 3: null, '3.2': 'claim', '3.3': null, '4.1': 'claim' }
+        // Every row has its own mark at its right, in its kind's column, and none at its left.
+        const ownMark = num => node(num).evaluate(el => el.querySelector(':scope > .marks .km[data-own]')?.dataset.kind ?? null)
+        for (const [num, mark] of Object.entries(marks)) assert.equal(await ownMark(num), mark, num)
+        assert.equal(await node('2.1').locator(':scope > .km').count(), 0)
+        assert.equal(await node('2.1').locator(':scope > .extras .km[data-own]').count(), 1)
+        // A parent shows each kind mark found under it once, small: an action proposed, one done, a claim.
+        const under = num => node(num).locator('.extras .km:not([data-own])').evaluateAll(els => els.map(e => e.dataset.key))
+        assert.deepEqual(await under('2'), ['claim', 'claim-approved', 'action', 'done'])
+        // A topic whose nodes are all claims is settled: it starts collapsed, with the one mark beside it.
         assert.equal(await node('4').getAttribute('aria-expanded'), 'false')
-        assert.equal(await node('4').locator('.extras .ck').count(), 0)
+        assert.deepEqual(await under('4'), ['claim'])
         assert.equal(await node('2').getAttribute('aria-expanded'), 'true')
         // Options are radio buttons.
         assert.equal(await box('2.1.2').getAttribute('role'), 'radio')
         assert.equal(await box('2.3').getAttribute('role'), 'checkbox')
     })
 
+    test('only a row in the queue calls for the user: its empty box is drawn in full, and its action has the triangle', async () => {
+        const asked = num => node(num).getAttribute('data-asked')
+        const border = num => box(num).evaluate(e => getComputedStyle(e).borderTopColor)
+        // In the queue: 2.3 to approve, 2.4 to run, and the question 2.1, whose options are where it is answered.
+        assert.deepEqual([await asked('2.3'), await asked('2.4'), await asked('2.1'), await asked('2.1.1')], ['true', 'true', 'true', 'true'])
+        // Not in it: a claim, a node with no stance, an action done, the option of a question that is not asked.
+        assert.deepEqual([await asked('3.2'), await asked('3.3'), await asked('2.5'), await asked('2.2.2')], [null, null, null, null])
+        assert.notEqual(await border('2.3'), await border('3.2'))
+        assert.equal(await border('3.2'), await border('3.3'))
+        assert.equal(await border('2.3'), await border('2.1.1'))
+        assert.equal(await node('2.4').locator('> .play').count(), 1)
+        // An action has the indicator among its kind marks at the right, in or out of the queue.
+        const indicator = () => node('2.4').locator('> .marks [data-point]')
+        assert.equal(await indicator().getAttribute('data-kind'), 'action')
+        // Out of the queue the action asks nothing: no red triangle. It keeps its indicator, and the button that runs it.
+        const file = path.join(server.dir, 'demo', 'sample.md')
+        fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^- 2\.4 @action .*\n/m, ''))
+        await node('2.4').locator('> .play').waitFor({ state: 'detached' })
+        assert.equal(await asked('2.4'), null)
+        assert.equal(await indicator().count(), 1)
+        assert.equal(await node('2.4').locator('.closing [data-run]').count(), 1)
+    })
+
+    test('an action done that the agent queued asks for the user like any item to approve', async () => {
+        const file = path.join(server.dir, 'demo', 'sample.md')
+        fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('# @queue\n', '# @queue\n- 2.5 @approve Check the metrics on the dashboard.\n'))
+        const item = page.locator('[aria-label="Your queue"] [data-queue="2.5"]')
+        await item.waitFor()
+        assert.equal(await item.getAttribute('data-kind'), 'approve')
+        assert.equal(await node('2.5').getAttribute('data-asked'), 'true')
+        assert.deepEqual(await node('2.5').locator('> .qicon').evaluateAll(els => els.map(e => e.dataset.queueKind)), ['approve'])
+        assert.equal(await node('2.5').locator('> .marks .km[data-own]').getAttribute('data-kind'), 'done')
+    })
+
     test('tags and closing-line tags', async () => {
         const text = async num => node(num).locator('.node-title').textContent()
         assert.match(await text('2.1'), /◉ Pick one/)
         assert.match(await text('2.2'), /◉ Pick one/)
-        assert.match(await text('2.1.2'), /💡 Recommended/)
+        assert.match(await text('2.1.2'), /Recommended/)
+        assert.equal(await node('2.1.2').locator('.pill-recommended svg').count(), 1)
         assert.doesNotMatch(await text('2.1.1'), /Recommended/)
         // An action the agent ran is Done, in yellow; one still to run is not.
         assert.match(await text('2.5'), /Done/)
         assert.equal(await node('2.5').locator('.node-title .pill-done').count(), 1)
         assert.doesNotMatch(await text('2.4'), /Done/)
         const closing = async num => node(num).locator('.closing .pill').allTextContents()
-        assert.deepEqual(await closing('2.3'), ['Summary', '💡 Recommendation'])
+        assert.deepEqual((await closing('2.3')).map(t => t.trim()), ['Summary', 'Recommendation'])
         assert.deepEqual((await closing('2.4')).map(t => t.trim()), ['Action'])
-        assert.deepEqual(await closing('3.2'), ['💡 Recommendation'])
+        assert.deepEqual((await closing('3.2')).map(t => t.trim()), ['Recommendation'])
+        // The Done tag has the filled triangle of an action done, not a tick: the tick is the user's approval alone.
+        assert.equal(await node('2.5').locator('.pill-done svg path[fill="currentColor"]').count(), 1)
         assert.match(await node('2.3').locator('.node-html').innerHTML(), /<li>Normalize case and whitespace<\/li>/)
+    })
+
+    test('the kind bubbles of parents line up in one column per kind in view', async () => {
+        await page.getByRole('button', { name: 'Collapse all' }).click()
+        // With everything collapsed only the topics are rows of the view; each draws the same cells, in the same order.
+        const topics = await page.locator('.outline-tab .topic-head').evaluateAll(heads =>
+            heads.map(h => ({
+                keys: [...h.querySelectorAll('.extras .km-cell:not(.km-box)')].map(c => c.querySelector('.km')?.dataset.key ?? null),
+                lefts: [...h.querySelectorAll('.extras .km-cell:not(.km-box)')].map(c => Math.round(c.getBoundingClientRect().left)),
+            })),
+        )
+        assert.ok(topics.length > 1)
+        const columns = topics[0].keys.length
+        assert.ok(columns >= 3, 'the sample has a claim, an action and a done action in view')
+        for (const t of topics) {
+            assert.equal(t.keys.length, columns)
+            assert.deepEqual(t.lefts, topics[0].lefts)
+        }
+        // A kind that no row in view shows has no column: every cell is a kind some topic has.
+        for (let i = 0; i < columns; i++) assert.ok(topics.some(t => t.keys[i]), `column ${i} is used`)
+        // The columns follow the fixed order: claim, claim approved, question, answered, action, done, failed.
+        const order = ['claim', 'claim-approved', 'question', 'answered', 'action', 'done', 'failed']
+        const seen = topics.flatMap(t => t.keys.filter(Boolean)).filter((k, i, all) => all.indexOf(k) === i)
+        assert.deepEqual([...seen].sort((a, b) => order.indexOf(a) - order.indexOf(b)), seen.slice().sort((a, b) => order.indexOf(a) - order.indexOf(b)))
+        // The buttons are at the far right of every parent row, and its bubbles end where they begin.
+        const right = await page.locator('.outline-tab .topic-head .asks').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().right)))
+        assert.equal(new Set(right).size, 1)
+        // A parent nested under a topic is laid out the same: its cells and its buttons are where the topic's are.
+        await page.getByRole('button', { name: 'Expand all' }).click()
+        const cellLefts = el => [...el.querySelectorAll('.extras .km-cell:not(.km-box)')].map(c => Math.round(c.getBoundingClientRect().left))
+        const asksRight = el => Math.round(el.querySelector('.asks').getBoundingClientRect().right)
+        const topic = await node('2').evaluate(cellLefts)
+        const nested = await node('2.1').evaluate(cellLefts)
+        assert.deepEqual(nested, topic)
+        // A node without children too: its own mark is in the same column. Its approval box is where its sibling's is.
+        assert.deepEqual(await node('2.3').evaluate(cellLefts), topic)
+        const boxLeft = el => Math.round(el.querySelector(':scope > .ck').getBoundingClientRect().left)
+        assert.equal(await node('2.3').evaluate(boxLeft), await node('2.1').evaluate(boxLeft))
+        assert.equal(await node('2.1').evaluate(asksRight), await node('2').evaluate(asksRight))
+    })
+
+    test('a node\'s tags come first, before its text', async () => {
+        // Each tagged line is a child of the node's content ahead of every piece of its prose.
+        for (const num of ['2.3', '2.4', '3.2']) {
+            const kinds = await node(num).locator('.node-html').first().evaluate(el => [...el.children].map(c => (c.classList.contains('closing') ? 'tag' : 'text')))
+            const firstText = kinds.indexOf('text')
+            assert.ok(kinds.includes('tag'), `${num} has tags`)
+            assert.ok(firstText === -1 || kinds.lastIndexOf('tag') < firstText, `${num}: ${kinds.join(',')}`)
+        }
     })
 
     test('approved topics and parents start collapsed; rows collapse and expand', async () => {
         assert.equal(await visible('1.1'), false)
         assert.equal(await visible('2.2.1'), false)
         assert.equal(await visible('3.1.1'), true)
-        await node('3.1').click()
+        // On the title: the middle of a row may hold the buttons that show on hover.
+        await node('3.1').locator('.node-title').click()
         assert.equal(await visible('3.1.1'), false)
         assert.equal(await node('3.1').getAttribute('aria-expanded'), 'false')
-        await node('3.1').click()
+        await node('3.1').locator('.node-title').click()
         assert.equal(await visible('3.1.1'), true)
-        await node('1').click()
+        await node('1').locator('.node-title').click()
         assert.equal(await visible('1.1'), true)
     })
 
@@ -201,8 +300,8 @@ for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mod
 
     test('an edit of the file re-renders in place, keeping what the viewer collapsed', async () => {
         await page.evaluate(() => (window.notReloaded = true))
-        await node('3.1').click()
-        await node('1').click()
+        await node('3.1').locator('.node-title').click()
+        await node('1').locator('.node-title').click()
         assert.equal(await visible('3.1.1'), false)
         server.swap('demo/sample', 'demo/sample-edited', mode)
         await node('3.4').waitFor()

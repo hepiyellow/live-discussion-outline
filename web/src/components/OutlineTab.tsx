@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { allNodes, currentPath } from '@/lib/outline'
-import { Statuses } from '@/lib/status'
+import { Statuses, kindColumnsInView } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
 import { NodeHistory } from './NodeHistory'
@@ -56,6 +56,7 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
                     .map(q => [q.item.num, q.item]),
             ),
             isOpen,
+            kindColumns: kindColumnsInView(outline.nodes, statuses, isOpen),
             toggle: node => onToggle(node, !isOpen(node)),
             current: currentPath(outline.nodes),
             runs: viewer.runs,

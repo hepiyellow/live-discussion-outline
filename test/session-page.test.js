@@ -56,7 +56,7 @@ describe('inbox, input box and spinner', () => {
         return sent[n - 1]
     }
 
-    test('the @message shows in the inbox with a closed envelope, and is read once it is clicked', async () => {
+    test('the @message shows in the inbox with a count, and opening the list reads it', async () => {
         const inbox = page.getByRole('button', { name: 'Messages from the agent' })
         await inbox.waitFor()
         assert.equal((await inbox.textContent()).trim(), '1')
@@ -64,13 +64,18 @@ describe('inbox, input box and spinner', () => {
         const list = page.locator('[data-slot="popover-content"]')
         assert.match(await list.textContent(), /The staging replay finished with an 82% hit rate\./)
         assert.match(await list.textContent(), /2\.4/)
-        // Opening the list reads nothing: the envelope is closed and the count stays.
+        // Opening the list reads every message: the count clears and the envelope is open. The message keeps its
+        // unread bar while the list is open, so what was new can still be told apart.
         const message = list.locator('[data-message]')
-        assert.equal(await message.getAttribute('data-read'), null)
-        assert.equal((await inbox.textContent()).trim(), '1')
-        await message.getByRole('button', { name: /Unread/ }).click()
-        await message.locator('[data-read]').or(page.locator('[data-message][data-read]')).first().waitFor()
+        await message.and(page.locator('[data-read]')).waitFor()
         assert.equal((await inbox.textContent()).trim(), '')
+        assert.match(await message.getAttribute('class'), /inset_3px_0_0_var\(--danger\)/)
+        await page.keyboard.press('Escape')
+        await list.waitFor({ state: 'detached' })
+        // Closed and opened again, nothing is new.
+        await inbox.click()
+        await message.and(page.locator('[data-read]')).waitFor()
+        assert.doesNotMatch(await message.getAttribute('class'), /inset_3px_0_0_var\(--danger\)/)
         await page.keyboard.press('Escape')
         // Seen marks live in the viewer state.
         await page.reload()

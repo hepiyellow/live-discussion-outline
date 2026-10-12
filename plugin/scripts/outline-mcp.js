@@ -39,6 +39,7 @@ const TOOLS = [
                 title: { ...text, description: "The conversation's subject, as the outline's name. Leave it out when nothing has been discussed yet, and call start again with it once there is a subject. Ignored once the outline has a name: the user renames it on the page." },
                 model: { ...text, description: 'Your model name and reasoning effort as you know them, e.g. "Claude Opus 5.5, high". Leave out what you do not know; never guess.' },
                 outline: { ...text, description: 'Only to attach this session to an existing outline: its "project/file".' },
+                workflow: { ...text, description: 'Only when the user named a workflow skill for this outline: its name as you load it, e.g. "my-plugin:my-workflow". Leave it out otherwise: the answer says which workflow skill the outline has.' },
             },
         },
     },
@@ -51,7 +52,7 @@ const TOOLS = [
     {
         name: 'change',
         description: [
-            'Change the outline: a list of operations applied together, all or none. Make one call per turn, after your answer is decided. The result carries what the user did on the page since you were last told, a map of the outline, and what waits on the user outside the queue.',
+            'Change the outline: a list of operations applied together, all or none. Make one call per turn, after your answer is decided. The result carries what the user did on the page since you were last told, and a map of the outline.',
             'Operations (op):',
             '- add { num, title, text?, summary?, recommendation?, status?, action?, outcome?, failed?, options?, children? }: a new node. num is its full path (2.4), the next free number under its parent. options makes it a question the user answers by picking one; children are nodes under it, numbered in order. outcome adds it as an action you already carried out, because the user asked for it in chat.',
             '- update { num, title?, text?, summary?, recommendation?, action?, status?, recommended? }: each field given replaces that whole field ("" clears it), so write the full new text.',
@@ -105,7 +106,7 @@ async function callTool(name, args) {
     const port = await findServer({ start: true })
     if (!port) return { content: [{ type: 'text', text: NO_SERVER }], isError: true }
     const who = { session: SESSION, cwd: CWD, outline: (name === 'start' && args.outline) || outline }
-    const body = name === 'start' ? { ...who, project: PROJECT, terminal: tmuxSession(), title: args.title, model: args.model } : name === 'read' ? { ...who, num: args.num } : { ...who, ops: args.ops }
+    const body = name === 'start' ? { ...who, project: PROJECT, terminal: tmuxSession(), title: args.title, model: args.model, workflow: args.workflow } : name === 'read' ? { ...who, num: args.num } : { ...who, ops: args.ops }
     const result = await call(port, name, body)
     if (result.outline) outline = result.outline
     return { content: [{ type: 'text', text: result.text || '' }], isError: !result.ok }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { contentHtml, parseVersion, readVersion, type NodeContent } from '@/lib/content'
+import { contentHtml, legacyReadVersion, parseVersion, readVersion, type NodeContent } from '@/lib/content'
 import { animateTo } from '@/lib/diffAnimation'
 import { allNodes } from '@/lib/outline'
 import type { Outline, OutlineNode, StatePatch, ViewerState } from '@/types'
@@ -13,6 +13,8 @@ import type { Outline, OutlineNode, StatePatch, ViewerState } from '@/types'
 export function useUnread(outline: Outline, viewer: ViewerState, stateLoaded: boolean, patch: (p: StatePatch) => Promise<void>) {
     // Topics are not tracked, as on the old page.
     const versions = useMemo(() => new Map(allNodes(outline.nodes).filter(n => n.level > 1).map(n => [n.num, readVersion(n)])), [outline])
+    // Each node as it was read before the tags came first: still read, when it has not changed since.
+    const legacy = useMemo(() => new Map(allNodes(outline.nodes).filter(n => n.level > 1).map(n => [n.num, legacyReadVersion(n)])), [outline])
     const [opening, setOpening] = useState<Set<string>>(new Set())
     const latest = useRef(outline)
     latest.current = outline
@@ -25,18 +27,18 @@ export function useUnread(outline: Outline, viewer: ViewerState, stateLoaded: bo
     useEffect(() => {
         if (!stateLoaded) return
         const change: Record<string, string | null> = {}
-        for (const [num, v] of versions) if (!(num in viewer.read) || (viewer.read[num] !== v && readAs.has(v))) change[num] = v
+        for (const [num, v] of versions) if (!(num in viewer.read) || (viewer.read[num] !== v && (readAs.has(v) || viewer.read[num] === legacy.get(num)))) change[num] = v
         for (const num of Object.keys(viewer.read)) if (!versions.has(num)) change[num] = null
         if (Object.keys(change).length) patch({ read: change })
-    }, [versions, viewer.read, readAs, stateLoaded, patch])
+    }, [versions, legacy, viewer.read, readAs, stateLoaded, patch])
 
     const unread = useMemo(() => {
         const map = new Map<string, NodeContent>()
         if (!stateLoaded) return map
         // A node being opened keeps its old HTML as far as React knows: the animation owns its DOM until it ends.
-        for (const [num, v] of versions) if (num in viewer.read && viewer.read[num] !== v && !readAs.has(v)) map.set(num, parseVersion(viewer.read[num]))
+        for (const [num, v] of versions) if (num in viewer.read && viewer.read[num] !== v && !readAs.has(v) && viewer.read[num] !== legacy.get(num)) map.set(num, parseVersion(viewer.read[num]))
         return map
-    }, [versions, viewer.read, readAs, stateLoaded])
+    }, [versions, legacy, viewer.read, readAs, stateLoaded])
 
     const openUnread = useCallback(
         async (node: OutlineNode) => {

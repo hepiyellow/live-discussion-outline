@@ -51,6 +51,10 @@ describe('approvals, picks, runs and undo in file mode', () => {
     const node = num => page.locator(`.outline-tab [data-num="${num}"]`)
     const box = num => ({ click: () => click(node(num).locator('> .ck')), getAttribute: name => node(num).locator('> .ck').getAttribute(name) })
     const state = num => box(num).getAttribute('data-state')
+    /** A node's kind mark (null when it has none: at its left, or on a parent first among the bubbles at its right), and the kind marks found under a parent. */
+    const mark = num => node(num).evaluate(el => el.querySelector(':scope > .marks .km[data-own]')?.dataset.kind ?? null)
+    /** The columns of the kinds under a parent, in the order they are drawn: a claim you approved is its own column. */
+    const below = num => node(num).locator('.extras .km:not([data-own])').evaluateAll(els => els.map(e => e.dataset.key))
     /** Waits until a topic or parent shows open or collapsed. */
     const expanded = (num, want) => page.waitForFunction(([n, w]) => document.querySelector(`.outline-tab [data-num="${n}"]`).getAttribute('aria-expanded') === w, [num, String(want)])
     /** Opens a topic or parent the page shows collapsed (one whose nodes are all settled starts that way). */
@@ -70,10 +74,10 @@ describe('approvals, picks, runs and undo in file mode', () => {
     const viewerState = async () => (await fetch(`${server.url}/api/state/demo/sample`)).json()
 
     test('ticking an open node sends its approval, and it shows pending', async () => {
-        await box('2.4').click()
-        assert.equal(await state('2.4'), 'pending')
-        assert.equal(await nextSent(), 'Approved in the outline: 2.4 Measure the hit rate on staging.')
-        assert.equal(await state('2.4'), 'pending')
+        await box('3.3').click()
+        assert.equal(await state('3.3'), 'pending')
+        assert.equal(await nextSent(), 'Approved in the outline: 3.3 Who can flush the cache by hand.')
+        assert.equal(await state('3.3'), 'pending')
     })
 
     test('a click on a claim approves it', async () => {
@@ -85,11 +89,13 @@ describe('approvals, picks, runs and undo in file mode', () => {
     test('the file stays as its agent wrote it: the server records no tick in it', async () => {
         const file = path.join(server.dir, 'demo', 'sample.md')
         const before = fs.readFileSync(file, 'utf8')
-        // The pick first: the tick on 2.4 leaves nothing open in its topic, which then collapses.
+        // A pick, a tick and an undo.
         await box('2.1.1').click()
         await nextSent()
-        await box('2.4').click()
+        await box('3.3').click()
         await nextSent()
+        // The page notes what it sent a moment after sending it; an undo before that would have nothing to take back.
+        await until(async () => '3.3' in (await viewerState()).sent, { what: 'the sent tick to be noted' })
         await page.keyboard.press('Control+z')
         await nextSent()
         assert.equal(fs.readFileSync(file, 'utf8'), before)
@@ -97,11 +103,11 @@ describe('approvals, picks, runs and undo in file mode', () => {
     })
 
     test('a burst of ticks goes as one message', async () => {
-        // 2.4 last: its tick leaves nothing open in its topic, which then collapses.
+        // The one under 3.1 last: with 3.3 ticked, its tick leaves nothing open in its topic, which then collapses.
         await box('2.3').click()
         await box('3.3').click()
-        await box('2.4').click()
-        assert.equal(await nextSent(), 'Approved in the outline: 2.3 Cache key; 2.4 Measure the hit rate on staging; 3.3 Who can flush the cache by hand.')
+        await box('3.1.1.1.1.1').click()
+        assert.equal(await nextSent(), 'Approved in the outline: 2.3 Cache key; 3.1.1.1.1.1 Drop only that shard\'s entries; 3.3 Who can flush the cache by hand.')
         await page.waitForTimeout(1500)
         assert.equal(sent.length, 1)
     })
@@ -128,7 +134,7 @@ describe('approvals, picks, runs and undo in file mode', () => {
         await play.click()
         await page.waitForTimeout(300)
         assert.equal(sent.length, 1)
-        // A node already run has no triangle and no button.
+        // A node already run has no indicator to click and no button.
         assert.equal(await node('2.5').locator('.play, [data-run]').count(), 0)
         // Once the agent marks it @ran, the run request is forgotten.
         await until(async () => '2.4' in (await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read, { what: 'the first visit to be recorded' })
@@ -136,21 +142,22 @@ describe('approvals, picks, runs and undo in file mode', () => {
             path.join(server.dir, 'demo', 'sample.md'),
             fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8').replace('## 2.4 @action Measure', '## 2.4 @action-done Measure'),
         )
-        // Nothing under the topic is open any more: it collapses as the change arrives, showing the highest of its
-        // nodes' ticks, done, with each kind found under it beside it.
+        // Nothing under the topic is open any more: it collapses as the change arrives. Its box rolls up approvals
+        // only (the user approved some of what is under it), with each kind mark found under it beside it; 2.4 keeps
+        // the mark of an action proposed until the viewer opens the change that says it is done.
         await expanded('2', false)
-        assert.equal(await state('2'), 'done')
-        assert.deepEqual(await node('2').locator('.extras .ck').evaluateAll(els => els.map(e => e.dataset.state)), ['claim', 'approved', 'done'])
+        assert.equal(await state('2'), 'mixed')
+        assert.deepEqual(await below('2'), ['claim', 'claim-approved', 'action', 'done'])
         await expand('2')
-        // The node has changed: its triangle goes, and opening the change turns its Action tag into Done. Until then
-        // its own box keeps what it showed.
+        // The node has changed: opening the change turns its Action tag into Done. Until then
+        // its kind mark keeps what it showed. Its box stays empty: the user has not approved it.
         await node('2.4').locator('> .env').waitFor()
-        assert.equal(await state('2.4'), 'open')
-        assert.equal(await node('2.4').locator('.play').count(), 0)
+        assert.equal(await mark('2.4'), 'action')
         assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Action'])
         await node('2.4').locator('> .env').click()
         await node('2.4').locator('.closing .pill-done').waitFor()
-        assert.equal(await state('2.4'), 'done')
+        assert.equal(await mark('2.4'), 'done')
+        assert.equal(await state('2.4'), 'open')
         await page.locator('.tx-cur').waitFor({ state: 'detached' })
         assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Done'])
         // The Action line says it: no second tag on the title.
@@ -159,11 +166,11 @@ describe('approvals, picks, runs and undo in file mode', () => {
     })
 
     test('undo sends the approval back', async () => {
-        await box('2.4').click()
+        await box('3.3').click()
         await nextSent()
         await page.getByRole('button', { name: 'Undo your last approval' }).click()
-        assert.equal(await state('2.4'), 'open')
-        assert.equal(await nextSent(), 'Reopened in the outline: 2.4 Measure the hit rate on staging.')
+        assert.equal(await state('3.3'), 'open')
+        assert.equal(await nextSent(), 'Reopened in the outline: 3.3 Who can flush the cache by hand.')
         assert.equal(await page.getByRole('button', { name: 'Undo your last approval' }).isDisabled(), true)
     })
 
@@ -173,18 +180,21 @@ describe('approvals, picks, runs and undo in file mode', () => {
             await nextSent(),
             'Approved in the outline: 3.1 Events that drop entries; 3.1.1 Index updates; 3.1.1.1 Reindexing; 3.1.1.1.1 Partial reindex of one shard; 3.1.1.1.1.1 Drop only that shard\'s entries; 3.2 Time to live; 3.3 Who can flush the cache by hand.',
         )
-        // ⌘Z (Ctrl+Z) undoes too.
+        // ⌘Z (Ctrl+Z) undoes too. (The page notes what it sent a moment after sending it.)
+        await until(async () => '3.3' in (await viewerState()).sent, { what: 'the sent ticks to be noted' })
         await page.keyboard.press('Control+z')
         assert.equal(
             await nextSent(),
             'Reopened in the outline: 3.1 Events that drop entries; 3.1.1 Index updates; 3.1.1.1 Reindexing; 3.1.1.1.1 Partial reindex of one shard; 3.1.1.1.1.1 Drop only that shard\'s entries; 3.3 Who can flush the cache by hand.\nBack to claim in the outline: 3.2 Time to live.',
         )
-        assert.equal(await state('3.2'), 'claim')
-        assert.equal(await state('3'), 'mixed')
+        // A claim again: its box is empty, and its kind mark was the claim's all along.
+        assert.equal(await state('3.2'), 'open')
+        assert.equal(await mark('3.2'), 'claim')
+        assert.equal(await state('3'), 'open')
     })
 
     test('undoing a change not sent yet sends nothing', async () => {
-        await box('2.4').click()
+        await box('3.3').click()
         await page.keyboard.press('Control+z')
         await page.waitForTimeout(1600)
         assert.deepEqual(sent, [])
@@ -195,17 +205,17 @@ describe('approvals, picks, runs and undo in file mode', () => {
         assert.equal(await state('2'), 'mixed')
         await box('2.4').click()
         await expanded('2', false)
-        // Settled, it shows the highest of its nodes' ticks: the done action's.
-        assert.equal(await state('2'), 'done')
+        // Settled, its box still says that the user approved only some of what is under it.
+        assert.equal(await state('2'), 'mixed')
         await page.keyboard.press('Control+z')
         await expanded('2', true)
         assert.equal(await state('2'), 'mixed')
     })
 
-    test('a parent whose nodes are all claims starts collapsed, with the claim tick; a click on it approves them', async () => {
+    test('a parent whose nodes are all claims starts collapsed, with an empty box and the claim mark beside it; a click on the box approves them', async () => {
         assert.equal(await node('4').getAttribute('aria-expanded'), 'false')
-        assert.equal(await state('4'), 'claim')
-        assert.equal(await node('4').locator('.extras .ck').count(), 0)
+        assert.equal(await state('4'), 'open')
+        assert.deepEqual(await below('4'), ['claim'])
         await box('4').click()
         assert.equal(await nextSent(), 'Approved in the outline: 4.1 Behind a feature flag per tenant; 4.2 Start with internal tenants.')
     })
@@ -234,15 +244,15 @@ describe('approvals, picks, runs and undo in file mode', () => {
         await box('4.1').click()
         await nextSent()
         assert.equal(await state('4.1'), 'pending')
-        // A green outlined tick, fading in and out until the agent records the approval.
-        const drawn = () => node('4.1').locator('> .ck').evaluate(e => (({ animationName, borderColor, backgroundColor }) => ({ animationName, borderColor, backgroundColor }))(getComputedStyle(e)))
+        // 4.1 is a claim: its checkbox is its sparkle, filled, fading in and out until the agent records the approval.
+        const drawn = () => node('4.1').locator('> .ck').evaluate(e => (({ animationName, backgroundColor }) => ({ animationName, backgroundColor }))(getComputedStyle(e)))
         const pending = await drawn()
         assert.equal(pending.animationName, 'ckpending')
         assert.deepEqual((await viewerState()).overrides, { 4.1: true })
         server.swap('demo/sample', 'demo/sample-edited')
         await node('3.4').waitFor()
         assert.equal(await state('4.1'), 'approved')
-        // Recorded: the same tick, still, and not filled.
+        // Recorded: still now, and its bubble is not filled.
         assert.deepEqual(await drawn(), { ...pending, animationName: 'none' })
         assert.equal(pending.backgroundColor, 'rgba(0, 0, 0, 0)')
         await until(async () => Object.keys((await (await fetch(`${server.url}/api/state/demo/sample`)).json()).overrides).length === 0, { what: 'overrides to clear' })
@@ -296,18 +306,19 @@ describe('approvals, picks, runs and undo in file mode', () => {
         assert.equal(await node('2.1.2').isVisible(), true)
     })
 
-    test('a done action shows a yellow outlined tick, which a click turns into an approval; approved, it is yellow still', async () => {
-        assert.equal(await state('2.5'), 'done')
+    test('a done action has the filled yellow triangle as its kind mark and an empty box, which a click ticks; approved, it has both', async () => {
+        assert.equal(await mark('2.5'), 'done')
+        assert.equal(await state('2.5'), 'open')
         await box('2.5').click()
         assert.equal(await state('2.5'), 'pending')
         assert.equal(await nextSent(), 'Approved in the outline: 2.5 Add cache metrics to the dashboard.')
-        // Once the agent records the approval, done supersedes approved on the node's own box, and its tooltip says both.
+        // Once the agent records the approval, the box is the user's tick, and the kind mark still says done.
         const file = path.join(server.dir, 'demo', 'sample.md')
         fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('## 2.5 @action-done Add', '## 2.5 @user-approved @action-done Add'))
-        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.5"] > .ck').dataset.state === 'done')
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.5"] > .ck').dataset.state === 'approved')
+        assert.equal(await mark('2.5'), 'done')
         assert.equal(await box('2.5').getAttribute('title'), 'Done: the agent carried out this action, and you approved it')
-        // Its topic lists done among the kinds under it all the same: done is the highest of them.
-        assert.equal((await node('2').locator('.extras .ck').evaluateAll(els => els.map(e => e.dataset.state))).includes('done'), true)
+        assert.equal((await below('2')).includes('done'), true)
     })
 
     test('queue items hide once handled here, and open their node', async () => {
@@ -364,15 +375,15 @@ describe('approvals in file mode without a linked session', () => {
     })
 
     test('ticks are copied, and listed until copied', async () => {
-        await click(page.locator('.outline-tab [data-num="2.4"] > .ck'))
+        await click(page.locator('.outline-tab [data-num="2.3"] > .ck'))
         await until(async () => (await page.evaluate(() => navigator.clipboard.readText())).startsWith('Approved'), { what: 'the clipboard' })
-        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Approved in the outline: 2.4 Measure the hit rate on staging.')
+        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Approved in the outline: 2.3 Cache key.')
         const bar = page.getByRole('region', { name: 'Approvals to copy' })
-        assert.match(await bar.textContent(), /✓ 2\.4 Measure the hit rate on staging/)
+        assert.match(await bar.textContent(), /✓ 2\.3 Cache key/)
         await click(page.locator('.outline-tab [data-num="3.3"] > .ck'))
         await bar.getByRole('button', { name: 'Copy to clipboard' }).click()
         await until(async () => (await page.evaluate(() => navigator.clipboard.readText())).includes('3.3'), { what: 'the clipboard' })
-        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Approved in the outline: 2.4 Measure the hit rate on staging; 3.3 Who can flush the cache by hand.')
+        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Approved in the outline: 2.3 Cache key; 3.3 Who can flush the cache by hand.')
         await bar.waitFor({ state: 'detached' })
     })
 
@@ -380,12 +391,12 @@ describe('approvals in file mode without a linked session', () => {
         server.resetState()
         await page.reload()
         await page.locator('[data-topbar] [data-title]').waitFor()
-        await click(page.locator('.outline-tab [data-num="2.4"] > .ck'))
+        await click(page.locator('.outline-tab [data-num="2.3"] > .ck'))
         const ref = page.locator('.outline-tab [data-num="3.2"]')
         await ref.evaluate(e => e.scrollIntoView({ block: 'center' }))
         await ref.hover()
         await ref.locator('.ask').first().click()
-        const expected = 'Approved in the outline: 2.4 Measure the hit rate on staging.\nRe: outline "Caching for the search service" › 3. Invalidation › 3.2 Time to live — '
+        const expected = 'Approved in the outline: 2.3 Cache key.\nRe: outline "Caching for the search service" › 3. Invalidation › 3.2 Time to live — '
         await until(async () => (await page.evaluate(() => navigator.clipboard.readText())) === expected, { what: 'the reference on the clipboard' })
     })
 })

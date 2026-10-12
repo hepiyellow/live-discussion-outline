@@ -122,7 +122,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
             messagesFor,
             seen: viewer.seen,
             onSeen,
-            onReveal: (num: string) => revealRef.current(num),
+            onReveal: (num: string, then?: (el: HTMLElement) => void, inside?: boolean) => revealRef.current(num, then, inside),
         }),
         [linked, clickNode, clickTopic, run, onReference, onRemove, unread, opening, openUnread, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen],
     )

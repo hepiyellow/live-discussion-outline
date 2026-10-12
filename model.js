@@ -141,9 +141,9 @@ function headingLine(node) {
 
 /** The model as the outline's text: what the page's reader (outline.js) and the Markdown tab read. */
 export function serializeOutline(model) {
-    const { title, resume, model: agentModel, terminal, session, mode, archived } = model.headers
+    const { title, resume, model: agentModel, terminal, session, mode, workflow, archived } = model.headers
     // File mode has no line: a file without one is its agent's to write.
-    const out = [['Title', title], ['Resume', resume], ['Model', agentModel], ['Terminal', terminal], ['Session', session], ['Mode', mode === 'server' ? mode : ''], ['Archived', archived]]
+    const out = [['Title', title], ['Resume', resume], ['Model', agentModel], ['Terminal', terminal], ['Session', session], ['Mode', mode === 'server' ? mode : ''], ['Workflow', workflow], ['Archived', archived]]
         .filter(([, v]) => v)
         .map(([k, v]) => `${k}: ${v}`)
     out.push('')
@@ -204,10 +204,15 @@ function statusesUnder(node, seen = new Set()) {
     for (const n of node.children) {
         if (isQuestion(n)) seen.add(questionStatus(n))
         else if (n.children.length) statusesUnder(n, seen)
+        // A task takes no approval: one still to run (or to run again) is open, and one carried out waits for nothing.
+        else if (n.action) n.action !== 'done' && seen.add('open')
         else seen.add(ownStatus(n))
     }
     return seen
 }
+
+/** A task takes no approval; an option that is a task is picked like any other option, and a pick is not an approval. */
+const takesNoApproval = (node, parent) => !!node.action && !(parent && isQuestion(parent))
 
 /** The status a node shows: its own for a leaf, a question's from its options, a parent's from what is under it. */
 export function statusOf(node) {
@@ -299,9 +304,32 @@ export function queueText(model) {
 /** The hash of what an agent writes of a node: an update is stale when this changed since the agent last saw the node. */
 export const nodeHash = node => crypto.createHash('sha1').update(JSON.stringify([node.title, node.text, node.summary, node.recommendation, node.actionLine])).digest('hex').slice(0, 12)
 
-/** What a queue item asks of the user, from its node; '' when it asks nothing more (the user handled it, or it is done). */
+/** A node is a claim or an action, never both: what the agent is told when a change would make one node both. */
+const ONE_KIND = 'A node is a claim or an action, never both'
+
+/** What a node is on the agent's side, as the approval log names it: an action (proposed), done, failed, an option, a claim, or plain. */
+const kindOf = (node, parent) =>
+    node.action === 'done' ? 'done' : node.action === 'failed' ? 'failed' : node.action ? 'action' : parent && isQuestion(parent) ? 'option' : node.claim || node.recommendation ? 'claim' : 'plain'
+
+/**
+ * An entry of the approval log for something the user did on a node (`what`: approved, took-back, picked or ran): the
+ * node's number and title, the kind it had and the hash of the wording the user saw. Undefined when there is no such node.
+ */
+export function userEntry(model, num, what) {
+    const found = indexOf(model).get(num)
+    return found && { num, what, kind: kindOf(found.node, found.parent), hash: nodeHash(found.node), title: found.node.title }
+}
+
+/**
+ * What a queue item asks of the user, from its node; '' when it asks nothing more: the user approved it. Which nodes
+ * are in the queue is the agent's choice alone. A task the agent carried out can be there, as something to read: a
+ * task takes no approval.
+ */
 function queueKind(node, item) {
-    if (node.action) return node.action === 'done' ? '' : 'action'
+    // An action still to run, or one that failed and can be run again.
+    if (node.action && node.action !== 'done') return 'action'
+    // The item asked the user to run the action, and it has run. To ask for its result too, the agent queues it again.
+    if (node.action === 'done') return item?.kind === 'action' ? '' : 'read'
     const status = isQuestion(node) ? questionStatus(node) : node.children.length ? parentStatus(node) : ownStatus(node)
     if (status === 'approved') return ''
     if (item?.read) return 'read'
@@ -310,24 +338,10 @@ function queueKind(node, item) {
 
 function parentStatus(node) {
     const seen = statusesUnder(node)
+    // Nothing under it takes an approval or is still to run: it asks nothing.
+    if (!seen.size) return 'approved'
     if (seen.size === 1) return [...seen][0]
     return seen.has('open') ? 'open' : 'claim'
-}
-
-/** Nodes that wait on the user and are not in the queue: `{ num, kind, title }`. */
-export function waitingNotQueued(model) {
-    const queued = new Set(model.queue.map(i => i.num))
-    const out = []
-    const walk = (nodes, parent) =>
-        nodes.forEach(n => {
-            const option = parent && isQuestion(parent)
-            const waits = n.action ? n.action !== 'done' : isQuestion(n) ? questionStatus(n) !== 'approved' : !n.children.length && !option && ownStatus(n) === 'claim'
-            if (waits && n.num && !queued.has(n.num)) out.push({ num: n.num, kind: queueKind(n), title: n.title })
-            // An option's own children are part of the question: what waits is the question.
-            if (!isQuestion(n)) walk(n.children, n)
-        })
-    walk(model.nodes)
-    return out
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -357,7 +371,8 @@ export function normalize(model, touched = '') {
         if (!node.children.length || (parent && isQuestion(parent))) return
         const seen = statusesUnder(node)
         node.approved = seen.size === 1 && seen.has('approved')
-        node.claim = !node.approved && !seen.has('open')
+        // A parent that is itself a task stays one: a node is never a claim and a task at once.
+        node.claim = !node.action && !node.approved && seen.size > 0 && !seen.has('open')
     }
     model.nodes.forEach(n => roll(n))
 
@@ -453,6 +468,7 @@ function buildNode(spec, num, level, option = '') {
         node.action = spec.failed ? 'failed' : 'done'
         node.text = [node.text, outcome].filter(Boolean).join('\n\n')
     }
+    if (node.claim && node.action) throw new OpError(`${where} is added as a claim and as an action.`, `${ONE_KIND}: add the claim, and the action as a node of its own beside it.`)
     if (option) node.recommended = !!spec.recommended
     else if (spec.recommended) throw new OpError(`${where} is marked recommended, and it is not an option.`, 'For a recommendation on a node that is not a choice, use the recommendation field.')
     if (spec.options !== undefined) {
@@ -489,11 +505,12 @@ const depthOf = node => 1 + Math.max(0, ...node.children.map(depthOf))
  * (for the stale-write guard) and is kept up to date. Throws an OpError naming the operation that broke a rule; the
  * caller applies the operations to a copy, so a refused change leaves nothing behind.
  *
- * Returns what the result reports: the node last touched, notes, the numbers that changed, and the messages to post.
+ * Returns what the result reports: the node last touched, notes, the numbers that changed, the messages to post, and
+ * what the user decided in chat (`decisions`: approval log entries, each with its `node`, whose number may change yet).
  */
 export function applyOperations(model, ops, shown = {}) {
     if (!Array.isArray(ops) || !ops.length) throw new OpError('A change needs a list of operations.', 'Pass ops: [{ op: "add", … }, …].')
-    const result = { touched: '', touchedAll: [], notes: [], renumbered: new Map(), messages: [], removed: [] }
+    const result = { touched: '', touchedAll: [], notes: [], renumbered: new Map(), messages: [], removed: [], decisions: [] }
     const touch = num => {
         result.touched = num
         result.touchedAll.push(num)
@@ -563,6 +580,8 @@ export function applyOperations(model, ops, shown = {}) {
             if (op.recommendation !== undefined) node.recommendation = checkLine(op.recommendation, where, 'recommendation') ?? ''
             if (op.action !== undefined) {
                 const line = op.action === false ? '' : checkAction(op.action, where)
+                if (line && !node.action && !node.children.length && node.claim)
+                    throw new OpError(`${op.num} is a claim, so it cannot become an action too.`, `${ONE_KIND}: add the action as a node of its own beside ${op.num}.`)
                 node.actionLine = line ?? ''
                 if (!line) node.action = ''
                 else node.action ||= 'proposed'
@@ -576,15 +595,19 @@ export function applyOperations(model, ops, shown = {}) {
                 if (op.status !== 'open' && op.status !== 'claim')
                     throw new OpError(`An update can make ${op.num} open or a claim, not ${JSON.stringify(op.status)}.`, 'Only the user approves: when they did so in chat, use { op: "record", decision: "approve" }.')
                 if (node.children.length) throw new OpError(`${op.num} has nodes under it, so its status follows theirs.`, 'Set the status of the nodes under it.')
+                if (op.status === 'claim' && node.action && !node.claim) throw new OpError(`${op.num} is an action, so it cannot be a claim too.`, `${ONE_KIND}: state the claim in a node of its own beside ${op.num}.`)
                 if (node.approved) result.notes.push(`${op.num} was user-approved; you set its status, so the user's approval no longer stands.`)
                 node.approved = false
                 node.claim = op.status === 'claim'
             }
+            // A task takes no approval: one that an older outline left on it goes.
+            if (takesNoApproval(node, parent)) node.approved = false
             // The user approved the words that were there: new words are the agent's again until the user approves them.
             if (node.approved && nodeHash(node) !== before && !(parent && isQuestion(parent))) {
                 node.approved = false
-                node.claim = true
-                result.notes.push(`${op.num} was user-approved; its wording changed, so it is a claim again until the user approves the new wording.`)
+                // An action stays an action: a node is never both.
+                node.claim = !node.action
+                result.notes.push(`${op.num} was user-approved; its wording changed, so ${node.action ? 'the approval no longer stands' : 'it is a claim again'} until the user approves the new wording.`)
             }
             shown[op.num] = nodeHash(node)
             touch(op.num)
@@ -634,19 +657,28 @@ export function applyOperations(model, ops, shown = {}) {
                 if (!option) throw new OpError(`${op.num} is not an option of a question.`, 'To record an approval of a node, use decision "approve".')
                 parent.children.forEach(c => (c.approved = false))
                 node.approved = true
+                result.decisions.push({ ...userEntry(model, node.num, 'picked'), node })
             } else if (op.decision === 'approve') {
                 if (option) throw new OpError(`${op.num} is an option.`, 'Record the user’s choice with decision "pick".')
                 if (isQuestion(node)) throw new OpError(`${op.num} is a question: the user answers it by picking an option.`, 'Record the option they picked with decision "pick".')
+                if (node.action) throw new OpError(`${op.num} is a task, and a task takes no approval.`, 'The user runs a task and reads what came of it. If what they approved is a claim about it, state that claim in a node of its own beside it and record the approval there.')
                 const leaves = node.children.length ? leavesToApprove(node) : [node]
-                leaves.forEach(n => (n.approved = true))
+                for (const n of leaves) {
+                    if (!n.approved) result.decisions.push({ ...userEntry(model, n.num, 'approved'), node: n })
+                    n.approved = true
+                }
             } else if (op.decision === 'reopen') {
-                allNodes([node]).forEach(n => (n.approved = false))
+                for (const n of allNodes([node])) {
+                    // A parent's tick follows what is under it: what the user took back is each node's own.
+                    if (n.approved && (!n.children.length || n.option)) result.decisions.push({ ...userEntry(model, n.num, 'took-back'), node: n })
+                    n.approved = false
+                }
             } else throw new OpError(`A record's decision is "approve", "reopen" or "pick", not ${JSON.stringify(op.decision)}.`)
             touch(op.num)
         },
 
         finish(op) {
-            const { node } = get(op.num)
+            const { node, parent } = get(op.num)
             // A node that was never proposed as an action is finished too: the user asked for it in chat, and it is done.
             if (isQuestion(node)) throw new OpError(`${op.num} is a question: the user answers it by picking an option.`, 'Finish the option you carried out, or add what you did as a node with its outcome.')
             const outcome = checkText(op.outcome, `node ${op.num}`, 'outcome')
@@ -658,8 +690,12 @@ export function applyOperations(model, ops, shown = {}) {
                     `${op.num} has ${unsettled.length === 1 ? 'an action' : 'actions'} under it that ${unsettled.length === 1 ? 'is' : 'are'} not settled: ${unsettled.map(n => `${label(n)} (${n.action === 'failed' ? 'failed' : 'not run'})`).join('; ')}.`,
                     `Settle each one before ${op.num}, in this same change: finish it with its outcome if you carried it out, finish it with failed if you tried and could not, or, when it is no longer needed, take its action off ({ op: "update", action: "" }) and say why in its text.`,
                 )
+            if (!node.action && !node.children.length && node.claim)
+                throw new OpError(`${op.num} is a claim, so it is not finished as an action.`, `${ONE_KIND}: add what you did as a node of its own beside ${op.num}, with its outcome.`)
             node.action = op.failed ? 'failed' : 'done'
             node.text = [node.text, outcome].filter(Boolean).join('\n\n')
+            // A task takes no approval: one that an older outline left on it goes. An option's tick is the user's pick, which stands.
+            if (takesNoApproval(node, parent)) node.approved = false
             shown[op.num] = nodeHash(node)
             touch(op.num)
         },
@@ -716,12 +752,12 @@ function unsettledActions(node, out = []) {
     return out
 }
 
-/** What approving a parent approves: the leaves under it, leaving questions (the user picks those) as they are. */
+/** What approving a parent approves: the leaves under it, leaving questions (the user picks those) and tasks (they take no approval) as they are. */
 function leavesToApprove(node, out = []) {
     for (const n of node.children) {
         if (isQuestion(n)) continue
         if (n.children.length) leavesToApprove(n, out)
-        else out.push(n)
+        else if (!n.action) out.push(n)
     }
     return out
 }
@@ -738,9 +774,14 @@ export function applyUserSet(model, set) {
         const entry = index.get(change?.num)
         if (!entry || typeof change.approved !== 'boolean') throw new OpError(`no node ${change?.num}`)
         const { node, parent } = entry
+        const option = parent && isQuestion(parent)
+        // A task takes no approval: a tick sent for one is not recorded, and one an older outline left on it goes.
+        if (takesNoApproval(node, parent)) {
+            node.approved = false
+            continue
+        }
         if (node.approved === change.approved) continue
         node.approved = change.approved
-        const option = parent && isQuestion(parent)
         // A question's own tick follows its options, and a parent's follows what is under it: neither is an event.
         if (isQuestion(node) || (node.children.length && !option)) continue
         events.push({ kind: change.approved ? (option ? 'picked' : 'approved') : 'reopened', num: node.num, title: `${node.option ? `(${node.option}) ` : ''}${node.title}` })

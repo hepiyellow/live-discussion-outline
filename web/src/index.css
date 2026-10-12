@@ -43,6 +43,7 @@
     --color-sidebar-ring: var(--sidebar-ring);
     --color-claim: var(--claim);
     --color-approved: var(--approved);
+    --color-tick: var(--tick);
     --color-danger: var(--danger);
     --color-current: var(--current);
     --color-settled: var(--settled);
@@ -86,6 +87,8 @@
     /* The outline's own colors: the agent's claims in blue, the user's approvals in green, the current path in white (dark ink on the light theme, so it stays visible). */
     --claim: #0969da;
     --approved: #2da44e;
+    /* The user's approval tick: white, like the current path (dark ink on the light theme, so it stays visible). */
+    --tick: #1f2328;
     --danger: #d1242f;
     --current: #1f2328;
     --settled: #8c959f;
@@ -129,6 +132,7 @@
         --sidebar-ring: oklch(0.556 0 0);
         --claim: #58a6ff;
         --current: #ffffff;
+        --tick: #ffffff;
         --settled: #6e7681;
         --done: #e3b341;
         --changed: #f0883e;

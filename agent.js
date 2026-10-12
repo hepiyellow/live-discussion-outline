@@ -1,8 +1,9 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { extractHeaders, renderPlain } from './outline.js'
-import { OpError, allNodes, applyOperations, applyUserSet, findNode, mapText, nodeHash, normalize, parseOutline, queueText, readText, serializeOutline, waitingNotQueued } from './model.js'
+import { WORKFLOW_NAME, extractHeaders, renderPlain } from './outline.js'
+import { OpError, allNodes, applyOperations, applyUserSet, findNode, mapText, nodeHash, normalize, parseOutline, queueText, readText, serializeOutline, userEntry } from './model.js'
+import { createApprovalLog } from './approvals.js'
 import { isSessionName } from './terminal.js'
 import { isSessionId, localCommandsSince } from './transcript.js'
 
@@ -53,6 +54,12 @@ class Refusal extends Error {}
 
 const HEADER_LINE = /^(Title|Resume|Model|Terminal|Session): /
 
+/** The workflow skill an outline is given when nobody named one: the plugin's own. */
+export const DEFAULT_WORKFLOW = 'outline-only:outline-workflow'
+
+/** What an agent is told about its outline's workflow skill, with every start and after compaction. */
+const workflowText = name => `Workflow skill of this outline: ${name}. Load it if you do not have its text, and follow it; where it and the outline skill disagree, the outline skill holds.`
+
 /**
  * Outlines the server kept before outlines had a mode have a ledger and no `Mode:` line, and would read as file mode:
  * each gets the line, after its other header lines, where the server writes it. The file keeps its time of last change,
@@ -98,6 +105,8 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
     /** When this server started, as the transcripts write times. */
     const started = new Date().toISOString()
     const ledgerOf = (project, file) => path.join(root, LEDGER_DIR, project, `${file}.json`)
+    /** What the user did on each node, kept for good (approvals.js). */
+    const approvalLog = createApprovalLog(root)
 
     /**
      * An outline's ledger:
@@ -256,14 +265,6 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         telling.set(key, timer)
     }
 
-    function waitingText(model) {
-        const waiting = waitingNotQueued(model)
-        if (!waiting.length) return ''
-        const lines = waiting.slice(0, 10).map(w => `- ${w.num} [${w.kind}] ${w.title}`)
-        if (waiting.length > 10) lines.push(`- … and ${waiting.length - 10} more`)
-        return `Waiting on the user and not in the queue:\n${lines.join('\n')}`
-    }
-
     const sections = (...parts) => parts.filter(Boolean).join('\n\n')
 
     const resumeOf = sessionId => (sessionId && config.resumeTemplate ? config.resumeTemplate.replaceAll('{session}', sessionId) : '')
@@ -273,19 +274,24 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
      * Writes a new, empty outline in server mode with its ledger, and returns `{ project, file }`. Its file is named
      * after its title; without one, after an id, since the title it gets later would not rename the file.
      */
-    function create({ project, cwd, name, resume, agentModel = '', terminal, session }) {
+    function create({ project, cwd, name, resume, agentModel = '', terminal, session, workflow = DEFAULT_WORKFLOW }) {
         const folder = safeName(project) ? project : path.basename(cwd || '') || 'outlines'
         if (!safeName(folder)) throw new Refusal(`${JSON.stringify(folder)} cannot be a project name.`)
         const base = `${today()}-${(name && slug(name)) || crypto.randomBytes(4).toString('hex')}`
         let file = base
         for (let i = 2; fs.existsSync(fileOf(folder, file)); i++) file = `${base}-${i}`
-        writeModel(folder, file, { headers: { title: name || UNTITLED, resume, model: String(agentModel).slice(0, 100), terminal, session, mode: 'server' }, intro: '', nodes: [], queue: [] })
+        writeModel(folder, file, { headers: { title: name || UNTITLED, resume, model: String(agentModel).slice(0, 100), terminal, session, mode: 'server', workflow }, intro: '', nodes: [], queue: [] })
         writeLedger(folder, file, { events: [], shown: {}, messages: [], cwd, untitled: !name, commandsAt: new Date().toISOString() })
         return { project: folder, file }
     }
 
-    /** start: opens an outline for the session, or reattaches to the one it has. */
-    function start({ session = '', terminal = '', cwd = '', project = '', title = '', model: agentModel = '', outline = '' }) {
+    /**
+     * start: opens an outline for the session, or reattaches to the one it has. `workflow` is the workflow skill the
+     * user named, if they named one: it becomes the outline's. An outline that has none gets the default. The answer
+     * says which one the outline has, for the agent to load.
+     */
+    function start({ session = '', terminal = '', cwd = '', project = '', title = '', model: agentModel = '', outline = '', workflow = '' }) {
+        const asked = typeof workflow === 'string' && WORKFLOW_NAME.test(workflow) ? workflow : ''
         const sessionId = isSessionId(session) ? session : ''
         const term = isSessionName(terminal) ? terminal : ''
         const found = locate({ outline, session: sessionId, cwd, terminal: term })
@@ -305,6 +311,9 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             if (term) model.headers.terminal = term
             if (resume) model.headers.resume = resume
             if (agentModel) model.headers.model = String(agentModel).slice(0, 100)
+            // The workflow the user names now replaces the outline's; an outline from before workflows gets the default.
+            if (asked) model.headers.workflow = asked
+            else model.headers.workflow ||= DEFAULT_WORKFLOW
             if (JSON.stringify(model.headers) !== before) writeModel(found.project, found.file, model)
             if (cwd) ledger.cwd = cwd
             const events = takeEvents(ledger)
@@ -319,6 +328,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                         : ledger.untitled
                           ? `Attached to this session's outline, which is not named yet. It is filed under the project "${found.project}".\nPage: ${urlOf(found)}\n${UNNAMED_NEXT}`
                           : `Reattached to the outline "${model.headers.title || found.file}", filed under the project "${found.project}". Its name is the user's to change: keep it.\nPage: ${urlOf(found)}`,
+                    workflowText(model.headers.workflow),
                     map ? `Map:\n${map}` : ledger.untitled ? '' : 'It has no nodes yet: add them with change.',
                     model.queue.length ? `Queue:\n${queueText(model)}` : '',
                     events,
@@ -326,14 +336,17 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 ),
             }
         }
-        const created = create({ project, cwd, name, resume, agentModel, terminal: term, session: sessionId })
+        const created = create({ project, cwd, name, resume, agentModel, terminal: term, session: sessionId, workflow: asked || DEFAULT_WORKFLOW })
         const where = `It is filed under the project "${created.project}", which the session it started from decides: say nothing else about where it is.`
         return {
             outline: `${created.project}/${created.file}`,
             url: urlOf(created),
-            text: name
-                ? `Opened the outline "${name}".\nPage: ${urlOf(created)}\n${where}\nIt is empty: build it from the conversation so far with one change, then give the user the page link.`
-                : `Opened an outline that is not named yet.\nPage: ${urlOf(created)}\n${where}\n${UNNAMED_NEXT}`,
+            text: sections(
+                name
+                    ? `Opened the outline "${name}".\nPage: ${urlOf(created)}\n${where}\nIt is empty: build it from the conversation so far with one change, then give the user the page link.`
+                    : `Opened an outline that is not named yet.\nPage: ${urlOf(created)}\n${where}\n${UNNAMED_NEXT}`,
+                workflowText(asked || DEFAULT_WORKFLOW),
+            ),
         }
     }
 
@@ -407,6 +420,14 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         const queuedBefore = model.queue.map(i => i.num)
         const dropped = normalize(model, result.touched)
         writeModel(at.project, at.file, model)
+        // The approval log: first what became of the numbers, then what the user decided in chat, by the numbers the
+        // nodes have now.
+        approvalLog.renumber(at.project, at.file, result)
+        approvalLog.record(
+            at.project,
+            at.file,
+            result.decisions.filter(d => findNode(model, d.node.num) === d.node).map(({ node, ...entry }) => ({ ...entry, num: node.num })),
+        )
 
         // Children of a renumbered or rolled-up node keep the hash they had; nodes that are gone lose theirs.
         const live = new Set(allNodes(model.nodes).map(n => n.num))
@@ -451,7 +472,6 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 events,
                 `Map:\n${mapText(model, result.touchedAll)}`,
                 model.queue.length ? `Queue:\n${queueText(model)}` : '',
-                waitingText(model),
             ),
         }
     }
@@ -512,6 +532,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         return {
             text: sections(
                 `This conversation is mirrored into the outline "${model.headers.title || at.file}" (${urlOf(at)}) with the outline tools: keep doing so after each answer, with one change call. Your picture of it did not survive: this is its map. Read a node before you update it.`,
+                model.headers.workflow ? workflowText(model.headers.workflow) : '',
                 map ? `Map:\n${map}` : 'It has no nodes yet.',
                 model.queue.length ? `Queue:\n${queueText(model)}` : '',
                 events,
@@ -531,6 +552,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             const events = applyUserSet(model, set)
             normalize(model)
             writeModel(project, file, model)
+            approvalLog.record(project, file, events.map(e => userEntry(model, e.num, { approved: 'approved', picked: 'picked', reopened: 'took-back' }[e.kind])), at)
             for (const e of events) {
                 ledger.events.push({ at, ...e })
                 // Pending on the page from this moment, until the agent acknowledges it.
@@ -553,6 +575,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 }
             }
             if (!typed) ledger.events.push({ at, kind: 'run', num: node.num, title })
+            approvalLog.record(project, file, [userEntry(model, node.num, 'ran')], at)
         }
         ledger.events = ledger.events.slice(-MAX_EVENTS)
         writeLedger(project, file, ledger)
@@ -636,5 +659,5 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         }
     }
 
-    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, messages, unacknowledged, commands, outlineOf, note }
+    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, messages, unacknowledged, commands, outlineOf, note, approvals: approvalLog.read }
 }

@@ -27,6 +27,35 @@ function run(server, script, { env = {}, input = '' } = {}) {
     })
 }
 
+describe('the plugin’s skills for server mode', () => {
+    const skill = name => fs.readFileSync(path.join(ROOT, 'plugin', 'skills', name, 'SKILL.md'), 'utf8')
+
+    test('the outline skill holds the mechanics and has the agent load a workflow skill, by default the plugin’s own', () => {
+        const mechanics = skill('outline')
+        assert.match(mechanics, /^---\nname: outline\n/)
+        // Only the user starts an outline.
+        assert.match(mechanics, /\ndisable-model-invocation: true\n/)
+        assert.match(mechanics, /An outline has one workflow skill, and `start` tells you which/)
+        assert.match(mechanics, /Load it before your first `change`/)
+        assert.match(mechanics, /Never pass a `workflow` the user did not name/)
+        assert.match(mechanics, /`outline-only:outline-workflow`/)
+        assert.match(mechanics, /read `\.\.\/outline-workflow\/SKILL\.md` beside this file/)
+        assert.match(mechanics, /A workflow skill the user names replaces it/)
+        // What the server enforces is said here, not left to a workflow.
+        for (const rule of [/Only the user approves/, /A node is never a claim and an action at once/, /Acknowledge every tick you were told of/, /Never finish what you did not do/]) assert.match(mechanics, rule)
+        // When to act and what to ask are the workflow’s.
+        for (const choice of [/Run only when asked/, /Recommend before you queue a question/]) assert.doesNotMatch(mechanics, choice)
+    })
+
+    test('the default workflow skill is there for the agent to load, and holds the choices', () => {
+        const workflow = skill('outline-workflow')
+        assert.match(workflow, /^---\nname: outline-workflow\n/)
+        // The agent loads it itself, on the outline skill’s word.
+        assert.doesNotMatch(workflow, /disable-model-invocation/)
+        for (const choice of [/Run only when asked/, /Recommend before you queue a question/, /Queue a result only when it needs the user's eyes/, /A request with no node gets one before you start/]) assert.match(workflow, choice)
+    })
+})
+
 describe('the plugin, for file mode', () => {
     let server
     before(async () => (server = await startServer()))

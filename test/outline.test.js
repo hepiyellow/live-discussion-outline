@@ -37,6 +37,15 @@ test('the Archived line says the outline is archived, and the server keeps it wh
     assert.doesNotMatch(serializeOutline(parseOutline('Title: x\nMode: server\n\n# 1. A\n')), /Archived/)
 })
 
+test('the Workflow line names the outline’s workflow skill, and the server keeps it', () => {
+    assert.equal(sample.workflow, '')
+    const text = 'Title: x\nMode: server\nWorkflow: my-plugin:my-workflow\n\n# 1. A\n'
+    assert.equal(outlinePayload(text).workflow, 'my-plugin:my-workflow')
+    assert.match(serializeOutline(parseOutline(text)), /^Title: x\nMode: server\nWorkflow: my-plugin:my-workflow\n\n# 1\. A\n/)
+    // Anything that is not a skill's name is dropped.
+    assert.equal(outlinePayload('Title: x\nWorkflow: two words\n\n# 1. A\n').workflow, '')
+})
+
 test('the Mode line says who writes the outline; without it, or with any other value, its agent does', () => {
     // sample.md has no Mode line, as every outline an agent writes itself.
     assert.equal(sample.mode, 'file')

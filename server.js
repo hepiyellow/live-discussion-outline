@@ -12,6 +12,7 @@ import { slashCommands } from './commands.js'
 import { STATE_DIR, createStateStore } from './state.js'
 import { installLogging } from './log.js'
 import { LEDGER_DIR, createAgentApi, markLedgered } from './agent.js'
+import { APPROVALS_DIR } from './approvals.js'
 import { createPermissions } from './permission.js'
 import { OpError } from './model.js'
 
@@ -44,8 +45,8 @@ const TRASH = '.trash'
 let debounce
 const viewerState = createStateStore(ROOT)
 const history = createHistory(ROOT)
-// Writes to the viewer state, the trash, the node history and the ledgers are not outline changes.
-const IGNORED = new Set([STATE_DIR, TRASH, HISTORY_DIR, LEDGER_DIR])
+// Writes to the viewer state, the trash, the node history, the ledgers and the approval logs are not outline changes.
+const IGNORED = new Set([STATE_DIR, TRASH, HISTORY_DIR, LEDGER_DIR, APPROVALS_DIR])
 // Outline files that changed since the last recording of their history: `project/file`.
 const touched = new Set()
 const changed = () => {
@@ -243,6 +244,26 @@ function readOutline(project, file) {
     return { project, file, ...outline, unacked, folder: (outline.session && sessionFolder(outline.session)) || '', terminalTab: terminalEnabled && !!outline.terminal }
 }
 
+/**
+ * A node's history with what the user did on the node (approvals.js) among its changes: `did` on an entry lists what
+ * they did then, as `{ what, kind }`. A tick changes the outline, so it has an entry already, written right after it;
+ * a press of Run changes nothing, and gets an entry of its own, with the node as it was then.
+ */
+function withUserActs(entries, acts) {
+    const out = entries.map(e => ({ ...e }))
+    for (const { at, what, kind } of acts) {
+        const did = { what, kind }
+        const written = out.find(e => e.at >= at && e.at - at < 1500)
+        if (written) (written.did ??= []).push(did)
+        else {
+            const before = out.findLast(e => e.at <= at) ?? out[0]
+            if (before) out.push({ at, node: before.node, did: [did] })
+        }
+        out.sort((a, b) => a.at - b.at)
+    }
+    return out
+}
+
 /** Sends each outline stream its outline again if it changed, or `gone` once the file is no longer there. */
 function pushOutlines() {
     for (const [key, streams] of outlineStreams) {
@@ -332,8 +353,11 @@ function outlineApi(req, res, parts, url) {
     if (!outline) return send(res, 404, 'text/plain', 'no such outline')
     if (events === 'act') return actApi(req, res, outline)
     if (events === 'permission') return answerPermission(req, res, outline)
-    // A node's history: its entries, oldest first (`?num=2.1`).
-    if (events === 'history') return send(res, 200, 'application/json', JSON.stringify(history.read(project, file, url.searchParams.get('num') ?? '')))
+    // A node's history: its entries, oldest first (`?num=2.1`), with what the user did on the node among them.
+    if (events === 'history') {
+        const num = url.searchParams.get('num') ?? ''
+        return send(res, 200, 'application/json', JSON.stringify(withUserActs(history.read(project, file, num), agent.approvals(project, file, num))))
+    }
     const data = JSON.stringify(outline)
     if (!events) return send(res, 200, 'application/json', data)
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
@@ -573,7 +597,7 @@ function renameOutline({ project, file, title }) {
     return { title: name }
 }
 
-const OUTLINE_HEADER = /^(Title|Resume|Model|Terminal|Session|Mode): /
+const OUTLINE_HEADER = /^(Title|Resume|Model|Terminal|Session|Mode|Workflow): /
 
 /**
  * Archive on an outline's row, and Unarchive: writes the outline's `Archived:` line, with the day, after its other

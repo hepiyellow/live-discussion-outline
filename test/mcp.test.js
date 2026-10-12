@@ -88,7 +88,9 @@ describe('an agent keeps an outline through the MCP tools', () => {
         const link = /Page: (\S+)/.exec(started.text)[1]
         assert.match(link, /\/shop\/\d{4}-\d\d-\d\d-rate-limiting$/)
         file = path.join(server.dir, 'shop', `${link.split('/').pop()}.md`)
-        assert.match(outlineText(), /^Title: Rate limiting\nModel: Claude Opus 5\.5, high\nSession: 7a1d2c3b-[0-9a-f-]+\nMode: server\n$/)
+        // Nobody named a workflow skill: the outline records the plugin's own, and the agent is told which to load.
+        assert.match(outlineText(), /^Title: Rate limiting\nModel: Claude Opus 5\.5, high\nSession: 7a1d2c3b-[0-9a-f-]+\nMode: server\nWorkflow: outline-only:outline-workflow\n$/)
+        assert.match(started.text, /Workflow skill of this outline: outline-only:outline-workflow\. Load it/)
         // Starting again reattaches: the session has one outline.
         const again = await mcp.tool('start', { title: 'Another name' })
         assert.match(again.text, /Reattached to the outline "Rate limiting"/)
@@ -365,8 +367,94 @@ describe('an agent keeps an outline through the MCP tools', () => {
         }
     })
 
-    test('the outline keeps its Mode line through every change', () => {
-        assert.match(outlineText(), /^Title: [^\n]*\n(?:[A-Z][a-z]+: [^\n]*\n)*Mode: server\n\n/)
+    test('the queue holds what the agent puts in it: a task done is there to be read, and a task takes no approval', async () => {
+        const n = (outlineText().match(/^# \d+\./gm) || []).length + 1
+        const built = await mcp.tool('change', {
+            ops: [
+                { op: 'add', num: `${n}`, title: 'Results', children: [{ title: 'Add a retry', outcome: 'Added.' }, { title: 'Write the runbook', outcome: 'Written.' }, { title: 'Retries are safe', status: 'claim' }] },
+                { op: 'queue', items: [{ num: `${n}.1` }, { num: `${n}.2`, read: true }] },
+            ],
+        })
+        assert.equal(built.error, false, built.text)
+        // Queued by the agent, a task done is an item to read, marked so or not.
+        assert.match(outlineText(), new RegExp(`# @queue\\n- ${n}\\.1 @read Add a retry\\n- ${n}\\.2 @read Write the runbook\\n`))
+        // Which nodes to ask the user about is the agent's choice: the server lists nothing else as waiting, not the claim either.
+        assert.doesNotMatch(built.text, /Waiting on the user/)
+        assert.doesNotMatch(built.text, /left out of the queue/)
+        const text = outlineText()
+        // An approval the user gives in chat cannot be recorded on a task, and a tick sent for one is not kept.
+        const refused = await mcp.tool('change', { ops: [{ op: 'record', num: `${n}.1`, decision: 'approve' }] })
+        assert.match(refused.text, new RegExp(`${n}\\.1 is a task, and a task takes no approval`))
+        assert.equal((await act({ set: [{ num: `${n}.1`, approved: true }] })).status, 200)
+        assert.equal(outlineText(), text)
+        // Approving the parent approves the claim under it and passes over the tasks: nothing under it is left to approve.
+        const all = await mcp.tool('change', { ops: [{ op: 'record', num: `${n}`, decision: 'approve' }] })
+        assert.equal(all.error, false, all.text)
+        assert.match(outlineText(), new RegExp(`^# ${n}\\. @user-approved @current Results$`, 'm'))
+        assert.match(outlineText(), new RegExp(`^## ${n}\\.1 @action-done Add a retry$`, 'm'))
+        assert.match(outlineText(), new RegExp(`^## ${n}\\.3 @user-approved @agent-claim Retries are safe$`, 'm'))
+        assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}` }] })).error, false)
+    })
+
+    test('a node is a claim or an action, never both: the change that would make it both is refused', async () => {
+        const n = (outlineText().match(/^# \d+\./gm) || []).length + 1
+        const built = await mcp.tool('change', { ops: [{ op: 'add', num: `${n}`, title: 'Kinds', children: [{ title: 'Retries are safe', status: 'claim' }, { title: 'Add a retry', action: 'Adds the retry.' }] }] })
+        assert.equal(built.error, false, built.text)
+        const text = outlineText()
+        const refused = async ops => (await mcp.tool('change', { ops })).text
+        assert.match(await refused([{ op: 'update', num: `${n}.1`, action: 'Adds the retry.' }]), /is a claim, so it cannot become an action too[\s\S]*add the action as a node of its own beside/)
+        assert.match(await refused([{ op: 'update', num: `${n}.2`, status: 'claim' }]), /is an action, so it cannot be a claim too/)
+        assert.match(await refused([{ op: 'finish', num: `${n}.1`, outcome: 'Done.' }]), /is a claim, so it is not finished as an action/)
+        assert.match(await refused([{ op: 'add', num: `${n}.3`, title: 'Both', status: 'claim', action: 'Does it.' }]), /is added as a claim and as an action/)
+        assert.equal(outlineText(), text)
+        assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}` }] })).error, false)
+    })
+
+    test('what the user does on a node is kept in the approval log, with the kind it had, and follows the node when numbers shift', async () => {
+        const slug = path.basename(file, '.md')
+        const history = async num => (await (await fetch(`${server.url}/api/outline/shop/${slug}/history?num=${num}`)).json()).flatMap(e => e.did ?? [])
+        const n = (outlineText().match(/^# \d+\./gm) || []).length + 1
+        const built = await mcp.tool('change', {
+            ops: [{ op: 'add', num: `${n}`, title: 'Log', children: [{ title: 'Goes first' }, { title: 'Retries are safe', status: 'claim' }, { title: 'Add a retry', action: 'Adds the retry.' }] }],
+        })
+        assert.equal(built.error, false, built.text)
+        // On the page: the claim approved, and the task run. A tick sent for the task is not an approval, and is not logged.
+        assert.equal((await act({ set: [{ num: `${n}.2`, approved: true }, { num: `${n}.3`, approved: true }] })).status, 200)
+        assert.equal((await act({ run: `${n}.3` })).status, 200)
+        assert.deepEqual(await history(`${n}.2`), [{ what: 'approved', kind: 'claim' }])
+        assert.deepEqual(await history(`${n}.3`), [{ what: 'ran', kind: 'action' }])
+        // The agent finishes the task. The claim keeps its approval: it is another node.
+        const finished = await mcp.tool('change', { ops: [{ op: 'finish', num: `${n}.3`, outcome: 'Added.' }] })
+        assert.equal(finished.error, false, finished.text)
+        assert.match(outlineText(), new RegExp(`^## ${n}\\.3 @current @action-done Add a retry$`, 'm'))
+        assert.match(outlineText(), new RegExp(`^## ${n}\\.2 @user-approved @agent-claim Retries are safe$`, 'm'))
+        // The user takes the claim back on the page.
+        assert.equal((await act({ set: [{ num: `${n}.2`, approved: false }] })).status, 200)
+        assert.deepEqual(await history(`${n}.2`), [{ what: 'approved', kind: 'claim' }, { what: 'took-back', kind: 'claim' }])
+        // A node before them goes: the numbers shift, and each node's entries go with it.
+        const removed = await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}.1` }] })
+        assert.equal(removed.error, false, removed.text)
+        assert.deepEqual(await history(`${n}.2`), [{ what: 'ran', kind: 'action' }])
+        assert.deepEqual((await history(`${n}.1`)).map(d => d.what), ['approved', 'took-back'])
+        assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}` }] })).error, false)
+    })
+
+    test('the outline keeps its workflow: the one the user names replaces it, a resumed or compacted session is told it', async () => {
+        // The user names a workflow skill, and the agent passes it on.
+        const named = await mcp.tool('start', { workflow: 'my-plugin:my-workflow' })
+        assert.match(named.text, /Workflow skill of this outline: my-plugin:my-workflow\./)
+        assert.match(outlineText(), /^Workflow: my-plugin:my-workflow$/m)
+        // A later start that names none keeps it, and so does anything that is not a skill's name.
+        assert.match((await mcp.tool('start', {})).text, /Workflow skill of this outline: my-plugin:my-workflow\./)
+        assert.match((await mcp.tool('start', { workflow: 'not a skill name!' })).text, /Workflow skill of this outline: my-plugin:my-workflow\./)
+        // After compaction the agent is told which one to load again.
+        assert.match(await runHook(server, { hook_event_name: 'SessionStart', source: 'compact' }), /Workflow skill of this outline: my-plugin:my-workflow\. Load it if you do not have its text/)
+        assert.equal((await mcp.tool('start', { workflow: 'outline-only:outline-workflow' })).error, false)
+        assert.match(outlineText(), /^Workflow: outline-only:outline-workflow$/m)
+    })
+
+    test('the outline keeps its Mode and Workflow lines through every change', () => {
+        assert.match(outlineText(), /^Title: [^\n]*\n(?:[A-Z][a-z]+: [^\n]*\n)*Mode: server\nWorkflow: outline-only:outline-workflow\n\n/)
     })
 
     test('a web page cannot call the agent’s API', async () => {

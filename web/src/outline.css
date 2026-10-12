@@ -7,6 +7,14 @@
     --barh: 44px;
     /* How far a node sits right of its parent. The diff button lives in this space (see `.row .env`). */
     --indent: 24px;
+    /* The width of one column of a parent's kind bubbles: room for the icon and a count of up to three digits. */
+    --kcell: 46px;
+}
+
+/* The input box is fixed over the bottom of the window (InputBox keeps its height in --composer-h). Without this,
+   scrollIntoView stops short of it, and a tag or button it scrolls to can end up behind the box. */
+html {
+    scroll-padding-bottom: calc(var(--composer-h, 0px) + 12px);
 }
 
 /* Headers stick below the top bar and their ancestors' headers (--top, set by the page), until their block ends. */
@@ -89,21 +97,24 @@
     padding: 4px 8px 0 12px;
 }
 .group-text {
-    margin-left: 56px;
+    margin-left: 76px;
     padding: 4px 14px 4px 0;
 }
 
 /* A node with children: a header row that sticks and collapses its children. */
 .row.parent {
     display: grid;
-    grid-template-columns: 28px 22px auto minmax(0, max-content) auto minmax(0, 1fr) auto auto auto;
-    grid-template-areas: 'ck tri num title ask . msg kc tags';
+    /* The first cell holds the approval box, 20px in; the kind marks are in the kind columns at the right. After the
+       title, as on a topic's head: the messages, the count of its children and its marks, and its buttons at the far
+       right. */
+    grid-template-columns: 48px 22px auto minmax(0, max-content) minmax(0, 1fr) auto auto auto auto;
+    grid-template-areas: 'ck tri num title . msg kc tags ask';
     align-items: center;
     padding: 6px 0 6px 12px;
     border-bottom: 1px solid var(--border);
     cursor: pointer;
 }
-.row.parent > .ck { grid-area: ck; }
+.row.parent > .ck { grid-area: ck; margin-left: 20px; }
 .row.parent > .tri { grid-area: tri; }
 .row.parent > .num {
     grid-area: num;
@@ -113,7 +124,7 @@
 }
 .row.parent > .node-title { grid-area: title; padding-left: 8px; font-weight: 600; }
 .row.parent > .kc { grid-area: kc; margin-right: 8px; }
-.row.parent > .extras { grid-area: tags; margin-right: 10px; }
+.row.parent > .extras { grid-area: tags; }
 .row.parent.current {
     box-shadow: inset 3px 0 0 var(--current), 0 1px 0 var(--border);
 }
@@ -126,15 +137,17 @@
 .row.leaf {
     position: relative;
     display: grid;
-    grid-template-columns: 28px auto minmax(0, 1fr) auto;
-    grid-template-areas: 'ck num title ask' 'ck body body body';
+    /* The first cell holds the approval box, 20px in. The triangle's place stays empty on a node without text, so that
+       every row starts its number in one column. */
+    grid-template-columns: 48px 22px auto minmax(0, max-content) minmax(0, 1fr) auto auto auto;
+    grid-template-areas: 'ck tri num title . msg tags ask' 'ck . body body body body body body';
     align-items: baseline;
     margin: 0 0 4px;
     padding-left: 12px;
 }
 .row.leaf::before {
     content: '';
-    grid-area: 1 / 1 / 2 / 5;
+    grid-area: 1 / 1 / 2 / -1;
     /* From the row's own left edge, as a parent's row is drawn: its divider and the marker line (current, or the
        queue's flash) are there, clear of the checkbox, which starts 12px in. */
     margin-left: -12px;
@@ -144,21 +157,21 @@
 .row.leaf.current::before {
     box-shadow: inset 3px 0 0 var(--current), 0 1px 0 var(--border);
 }
-.row.leaf > .ck { grid-area: ck; align-self: start; margin-top: 12px; }
+.row.leaf > .ck { grid-area: ck; align-self: start; margin: 12px 0 0 20px; }
+.row.leaf > .extras { grid-area: tags; align-self: start; margin-top: 10px; }
 /* The triangle of a node with text: in the 22px before the number that a parent's triangle has. */
 .row.leaf.has-text { cursor: pointer; }
-.row.leaf > .tri { position: absolute; left: 40px; top: 12px; }
+.row.leaf > .tri { grid-area: tri; align-self: start; margin-top: 12px; }
 .row.leaf.closed > .tri { transform: rotate(-90deg); }
 .row.leaf > .num {
     grid-area: num;
     position: relative;
-    /* Level with a parent's number: it has a triangle's 22px before it, a leaf has none. */
-    padding: 10px 0 8px 28px;
+    padding: 10px 0 8px 6px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
 .row.leaf > .node-title { grid-area: title; position: relative; padding: 10px 8px 8px; font-weight: 600; }
-.row.leaf > .node-html { grid-area: body; position: relative; padding: 4px 14px 4px 40px; color: var(--muted-foreground); }
+.row.leaf > .node-html { grid-area: body; position: relative; padding: 4px 14px 4px 38px; color: var(--muted-foreground); }
 .row.leaf.done > .node-html { color: var(--settled); }
 
 /* The circled count of a parent's direct children, filled while it is collapsed. */
@@ -199,12 +212,16 @@
 }
 .pill svg { display: inline; width: 9px; height: 9px; vertical-align: -1px; }
 .pill-pick, .pill-summary { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 12%, transparent); }
-.pill-options, .pill-action { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.pill-options { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+/* An action's tag is yellow, as its kind mark is: outlined play triangle to run, filled once it is done. */
+.pill-action { color: var(--done); background: color-mix(in srgb, var(--done) 18%, transparent); }
 .pill-recommended, .pill-recommendation { color: var(--claim); background: color-mix(in srgb, var(--claim) 16%, transparent); }
 .pill-done { color: var(--done); background: color-mix(in srgb, var(--done) 18%, transparent); }
 .pill-failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
 .closing { display: block; margin-top: 6px; }
 .closing .pill { margin: 0 6px 0 0; }
+/* The tags come first, so the text below them is set off from the last tag. */
+.node-html .closing + :not(.closing) { margin-top: 6px; }
 
 /* Server-rendered markdown inside a node: no outer margins in its cell. */
 .node-html > :first-child { margin-top: 0; }
@@ -239,7 +256,84 @@
 .markdown ol { list-style: decimal; }
 .outline-intro p { margin: 0.4em 0; }
 
-/* The checkbox: a box or (for an option) a radio, drawn by state. */
+/* A kind mark: what the node is on the agent's side. Never a tick. Drawn in the kind columns at the right of the row. */
+.km {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    color: var(--muted-foreground);
+}
+.km svg { width: 14px; height: 14px; }
+.km[data-kind='claim'] { color: var(--claim); }
+.km:is([data-kind='question'], [data-kind='failed']) { color: var(--danger); }
+.km:is([data-kind='action'], [data-kind='done']) { color: var(--done); }
+/* Running: a ring turns around the outlined triangle. */
+.km { position: relative; }
+.km[data-running] svg { width: 8px; height: 8px; }
+.km[data-running]::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    border: 1.5px solid color-mix(in srgb, var(--done) 25%, transparent);
+    border-top-color: var(--done);
+    border-radius: 50%;
+    animation: playwait 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .km[data-running]::after { animation-duration: 3s; }
+}
+/* A parent's small marks are buttons to the first node under it of their kind, drawn as an outlined bubble in the kind's
+   color: the icon on the left and, when more than one node has the kind, their count on the right. */
+.km.small {
+    box-sizing: border-box;
+    width: auto;
+    height: 16px;
+    gap: 3px;
+    margin-left: 4px;
+    padding: 0 4px;
+    border: 1px solid color-mix(in srgb, currentColor 60%, transparent);
+    border-radius: 8px;
+    background: none;
+    cursor: pointer;
+}
+.km.small:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+/* The parent's own kind: first among them, and not a button. */
+span.km.small, span.km.small:hover { cursor: default; background: none; }
+/* Shown from a parent's bubble, or from the queue: the icon grows and shrinks once. */
+.km.small[data-pulse] { animation: kmpoint 0.6s ease-in-out 1; }
+@keyframes kmpoint { 50% { transform: scale(1.5); background: color-mix(in srgb, currentColor 30%, transparent); } }
+@media (prefers-reduced-motion: reduce) {
+    .km.small[data-pulse] { animation: none; box-shadow: 0 0 0 3px currentColor; }
+}
+.km.small:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; }
+/* One cell per column of the view, drawn in every parent row, empty when the row has none of that kind. */
+.km-cell { flex: none; display: inline-flex; align-items: center; width: var(--kcell); }
+.km-cell > .km.small { margin-left: 0; }
+.km-i { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; }
+.km.small svg { width: 11px; height: 11px; }
+.km-n { font-size: 10px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+/* Running: the ring turns around the icon inside the bubble, not around the bubble. */
+.km.small[data-running]::after { content: none; }
+.km.small[data-running] svg { width: 6px; height: 6px; }
+.km.small[data-running] .km-i::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    border: 1.5px solid color-mix(in srgb, var(--done) 25%, transparent);
+    border-top-color: var(--done);
+    border-radius: 50%;
+    animation: playwait 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .km.small[data-running] .km-i::after { animation-duration: 3s; }
+}
+
+/* The checkbox: a box or (for an option) a radio. Its tick is the user's approval and nothing else. */
 .ck {
     box-sizing: border-box;
     display: inline-flex;
@@ -256,20 +350,19 @@
 }
 .ck.radio { border-radius: 50%; }
 .ck svg { width: 11px; height: 11px; }
-/* The user's approval: a green outlined tick, never a filled one. Until the agent has taken it in (recorded it in file
+/* The user's approval: a white outlined tick, never a filled one. Until the agent has taken it in (recorded it in file
    mode, acknowledged it in server mode), it fades out and in; so does a box whose tick the user took back. */
-.ck:is([data-state='approved'], [data-state='pending']) { border-color: var(--approved); color: var(--approved); }
+.ck:is([data-state='approved'], [data-state='pending']) { border-color: var(--tick); color: var(--tick); }
 .ck:is([data-state='pending'], [data-waiting]) { animation: ckpending 1.6s ease-in-out infinite; }
 @keyframes ckpending { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) {
     .ck:is([data-state='pending'], [data-waiting]) { animation: none; opacity: 0.6; }
 }
-.ck[data-state='claim'] { border-color: var(--claim); color: var(--claim); }
-/* An action the agent has carried out: filled, in the yellow of its Done tag. */
-.ck[data-state='done'] { border-color: var(--done); color: var(--done); }
 .ck[data-state='mixed'] { color: var(--muted-foreground); }
-.ck.small { width: 12px; height: 12px; margin-left: 3px; }
-.ck.small svg { width: 9px; height: 9px; }
+/* A row calls for the user only while it is in the queue (data-asked). Elsewhere an empty box is faint: there to be
+   ticked, and asking nothing. */
+.ck[data-state='open'] { border-color: color-mix(in srgb, var(--muted-foreground) 40%, transparent); }
+[data-asked] > .ck[data-state='open'] { border-color: var(--muted-foreground); }
 .extras { display: inline-flex; align-items: center; }
 
 /* The triangle of an action still to run, in the indent left of its checkbox (a leaf is relative, a parent row sticky). */
@@ -293,43 +386,28 @@
 .row.parent .play { top: 50%; transform: translateY(-50%); }
 .row .play svg { width: 12px; height: 12px; }
 .row .play:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); }
-/* Running: the agent was asked, and has not marked the action done or failed. A ring turns in place of the triangle. */
-.row .play.running svg { visibility: hidden; }
-.row .play.running::after {
-    content: '';
-    position: absolute;
-    inset: 3px;
-    box-sizing: border-box;
-    border: 2px solid color-mix(in srgb, var(--danger) 25%, transparent);
-    border-top-color: var(--danger);
-    border-radius: 50%;
-    animation: playwait 0.9s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-    .row .play.running::after { animation-duration: 3s; }
-}
-/* The Action tag of an action still to run is the button that runs it. The triangle points at it: it pulses. */
+/* The Action tag of an action still to run is the button that runs it. The action indicator points at it: it grows and shrinks once. */
 button.pill.run { border: 0; font-family: inherit; line-height: inherit; cursor: pointer; }
-button.pill.run:hover { background: color-mix(in srgb, var(--danger) 26%, transparent); }
+button.pill.run:hover { background: color-mix(in srgb, var(--done) 30%, transparent); }
 .run-icon { position: relative; display: inline-block; width: 9px; height: 9px; vertical-align: -1px; }
 .run-icon svg { display: block; vertical-align: 0; }
-.run[data-pulse] { animation: runpulse 0.5s ease-in-out 3; }
-@keyframes runpulse { 50% { transform: scale(1.25); background: color-mix(in srgb, var(--danger) 40%, transparent); } }
-/* Run, and waiting for the agent: a red ring turns in place of the triangle. */
-[data-run-sent] .run, [data-run-sent] .run:hover { cursor: default; background: color-mix(in srgb, var(--danger) 14%, transparent); }
-[data-run-sent] .run svg { visibility: hidden; }
+.run[data-pulse] { animation: runpulse 0.6s ease-in-out 1; }
+@keyframes runpulse { 50% { transform: scale(1.25); background: color-mix(in srgb, var(--done) 40%, transparent); } }
+/* Run, and waiting for the agent: a yellow ring turns around the outlined triangle. */
+[data-run-sent] .run, [data-run-sent] .run:hover { cursor: default; background: color-mix(in srgb, var(--done) 18%, transparent); }
+[data-run-sent] .run-icon { margin: 0 6px 0 3px; }
 [data-run-sent] .run-icon::after {
     content: '';
     position: absolute;
-    inset: 0;
-    border: 1.5px solid color-mix(in srgb, var(--danger) 25%, transparent);
-    border-top-color: var(--danger);
+    inset: -3px;
+    border: 1.5px solid color-mix(in srgb, var(--done) 25%, transparent);
+    border-top-color: var(--done);
     border-radius: 50%;
     animation: playwait 0.9s linear infinite;
 }
 @keyframes playwait { to { transform: rotate(360deg); } }
 /* An option that is not the picked one: its Run button looks off, and a click on it points at the option's checkbox. */
-button.pill.run[data-off], button.pill.run[data-off]:hover { opacity: 0.45; background: color-mix(in srgb, var(--danger) 14%, transparent); }
+button.pill.run[data-off], button.pill.run[data-off]:hover { opacity: 0.45; background: color-mix(in srgb, var(--done) 18%, transparent); }
 @media (prefers-reduced-motion: reduce) {
     [data-run-sent] .run-icon::after { animation-duration: 3s; }
 }
@@ -348,11 +426,13 @@ button.pill.run[data-off], button.pill.run[data-off]:hover { opacity: 0.45; back
 }
 .ask:hover { color: var(--foreground); background: color-mix(in srgb, var(--border) 40%, transparent); }
 .ask:focus-visible, :is(.row, .topic-head):hover .ask { opacity: 1; }
-.row.leaf > .ask { grid-area: ask; align-self: start; position: relative; margin: 8px 10px 0 0; }
 /* A node's hover buttons: the reference, the history and the trash, and for a parent the diff of what changed under it. */
-.asks { display: inline-flex; align-items: center; }
-.row.parent > .asks { grid-area: ask; margin-left: 6px; }
-.topic-head > .asks { margin-left: 4px; }
+/* Five buttons wide, whether or not the diff one is there, so the bubbles left of them stay in their columns. */
+.asks { display: inline-flex; align-items: center; justify-content: flex-end; min-width: 110px; }
+/* A topic's head is flex with a 6px gap, so the same distance between its bubbles and its buttons is 10px here. */
+.row.parent > .asks { grid-area: ask; margin: 0 6px 0 10px; }
+.topic-head > .asks { margin-left: auto; }
+.topic-head > :is(.msgs, .extras) + .asks { margin-left: 4px; }
 .ask-diff {
     display: inline-flex;
     align-items: center;
@@ -372,13 +452,13 @@ button.pill.run[data-off], button.pill.run[data-off]:hover { opacity: 0.45; back
 button.ck { cursor: pointer; transition: box-shadow 0.04s linear, border-color 0.04s linear; }
 button.ck:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--foreground) 16%, transparent); }
 button.ck:focus-visible { outline: 2px solid var(--claim); outline-offset: 1px; }
-/* A claim's box turns green under the pointer: a click approves it. */
-button.ck[data-state='claim']:hover { border-color: var(--approved); color: var(--approved); }
-/* Pointed at from the queue icon beside it: the box grows and shrinks three times, ringed in green. */
+/* An empty box takes the tick's color under the pointer: a click approves the node. */
+button.ck[data-state='open']:hover { border-color: var(--tick); }
+/* Pointed at from the queue icon beside it: the box grows and shrinks three times, ringed in the tick's color. */
 .ck[data-pulse] { animation: ckpoint 0.5s ease-in-out 3; }
-@keyframes ckpoint { 50% { transform: scale(1.35); border-color: var(--approved); color: var(--approved); box-shadow: 0 0 0 4px color-mix(in srgb, var(--approved) 30%, transparent); } }
+@keyframes ckpoint { 50% { transform: scale(1.35); border-color: var(--tick); color: var(--tick); box-shadow: 0 0 0 4px color-mix(in srgb, var(--tick) 30%, transparent); } }
 @media (prefers-reduced-motion: reduce) {
-    .ck[data-pulse] { animation: none; box-shadow: 0 0 0 3px var(--approved); }
+    .ck[data-pulse] { animation: none; box-shadow: 0 0 0 3px var(--tick); }
 }
 
 /* The item just opened from the queue: a line in its kind's color on its left, fading out. */
@@ -415,6 +495,7 @@ button.ck[data-state='claim']:hover { border-color: var(--approved); color: var(
 .row.leaf > .env { align-self: start; margin-top: 13px; }
 /* Beside a diff button or a queue icon, an action's play button moves further left to leave a gap. */
 .row .play:has(+ .env), .row .play:has(+ .qicon) { left: -40px; }
+/* Beside a diff button or a queue icon, an action's play button moves further left to leave a gap. */
 .row .env[data-pulse] { animation: envpulse 0.5s ease-in-out 3; }
 /* Grown, it is 18.2px wide in the 21px between the lines. */
 @keyframes envpulse { 50% { transform: scale(1.3); background: color-mix(in srgb, var(--claim) 25%, transparent); } }
@@ -453,8 +534,8 @@ button.ck[data-state='claim']:hover { border-color: var(--approved); color: var(
 .qicon svg { width: 14px; height: 14px; }
 /* Only the icon of an item to approve does something when clicked (it points at the node's checkbox), so only it answers the pointer. */
 .qicon[data-queue-kind='approve'] { cursor: pointer; border-radius: 50%; transition: background-color 0.1s, box-shadow 0.1s; }
-.qicon[data-queue-kind='approve']:hover { background: color-mix(in srgb, var(--approved) 20%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--approved) 20%, transparent); }
-.qicon[data-queue-kind='approve']:focus-visible { outline: 2px solid var(--approved); outline-offset: 2px; }
+.qicon[data-queue-kind='approve']:hover { background: color-mix(in srgb, var(--tick) 20%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tick) 20%, transparent); }
+.qicon[data-queue-kind='approve']:focus-visible { outline: 2px solid var(--tick); outline-offset: 2px; }
 /* A read item's eye is clicked to mark the node read. It pulses when the queue item pointed at it. */
 .qicon[data-queue-kind='read'] { cursor: pointer; border-radius: 50%; transition: background-color 0.1s, box-shadow 0.1s; }
 .qicon[data-queue-kind='read']:hover { background: color-mix(in srgb, var(--foreground) 16%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--foreground) 16%, transparent); }
@@ -521,8 +602,8 @@ button.ck[data-state='claim']:hover { border-color: var(--approved); color: var(
     line-height: 14px;
     text-align: center;
 }
-/* Left of the node's three hover buttons (the reference, the history and the trash). */
-.row.leaf > .msgs { position: absolute; right: 82px; top: 8px; z-index: 2; }
+/* The envelope of the messages about a node: before its marks, as on a parent and on a topic. */
+.row.leaf > .msgs { grid-area: msg; align-self: start; margin: 8px 8px 0 0; }
 .row.parent > .msgs { grid-area: msg; margin-right: 8px; }
 .topic-head > .msgs { margin-left: auto; }
 .topic-head > .msgs + .extras { margin-left: 0; }
@@ -567,7 +648,7 @@ button.ck[data-state='claim']:hover { border-color: var(--approved); color: var(
 @keyframes qpulse { 50% { transform: scale(1.15); color: var(--claim); border-color: var(--claim); } }
 
 /* Node history: the clock beside a node's hover buttons, and the node as it was at a change (its children included). */
-.row.leaf > .asks { grid-area: ask; align-self: start; position: relative; margin: 8px 10px 0 0; }
+.row.leaf > .asks { grid-area: ask; align-self: start; position: relative; margin: 8px 6px 0 10px; }
 .hist-node { margin-top: 6px; }
 .hist-head { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; font-weight: 600; }
 .hist-head .num { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }

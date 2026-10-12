@@ -13,7 +13,7 @@ export const DIFF_ICON = (
 /** How each kind of queue item is drawn: in the queue column, and beside the node it is about. */
 export const KINDS: Record<QueueItem['kind'], { name: string; color: string; icon: React.ReactNode }> = {
     decide: { name: 'Decide', color: 'var(--danger)', icon: <CircleHelp aria-hidden="true" /> },
-    approve: { name: 'Approve', color: 'var(--approved)', icon: <CircleCheck aria-hidden="true" /> },
+    approve: { name: 'Approve', color: 'var(--tick)', icon: <CircleCheck aria-hidden="true" /> },
     action: {
         name: 'Run',
         color: 'var(--danger)',

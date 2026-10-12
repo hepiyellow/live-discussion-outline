@@ -13,7 +13,7 @@ What is kept for an outline session and the page shows: its title, its nodes and
 _Avoid_: Mirror, notes, file (the file is how an outline is stored, in both modes)
 
 **Operation**:
-One change an agent asks of an outline in server mode: add, update, move or remove a node, record what the user decided in chat, finish an action, acknowledge the user's ticks, post a message, or replace the queue.
+One change an agent asks of an outline in server mode: add, update, move or remove a node, record what the user decided in chat, finish a task, acknowledge the user's ticks, post a message, or replace the queue.
 _Avoid_: Edit, command, patch
 
 **Map**:
@@ -23,6 +23,14 @@ _Avoid_: Summary (that is a node's closing sentence), index
 **Mode**:
 Who writes an outline, fixed when its outline session starts: in **file mode** the agent writes the outline itself, following a skill; in **server mode** the server writes it and the agent sends operations. File mode is experimental, kept only while server mode replaces it.
 _Avoid_: MCP mode (MCP is only how operations travel), markdown mode (both modes store markdown), legacy
+
+**Mechanical skill**:
+The skill that tells an agent how an outline works, the same for every user: the user reads the outline and not the chat, what a node, a question and a task are, how the agent changes the outline, and what only the user may do. A rule belongs to it when breaking it would make the page say something false, or stop it working; the server may refuse such a breach.
+_Avoid_: Core skill, base skill, protocol
+
+**Workflow skill**:
+A skill that tells an agent how this user wants to work with an outline: when to ask for the user and when not, whether tasks wait to be run, how hard to question a design before acting. It is the user's to choose or to write, and the server enforces none of it. An outline session has one, recorded with its outline and shown on the page: the one the user named, else the plugin's default.
+_Avoid_: Template (a template is a workflow skill the plugin suggests), settings, preferences
 
 **Title**:
 The name of an outline session. The user gives it as the topic when starting the outline session, or else the agent gives it once the work has a subject; until then the outline has no title of its own and shows a placeholder. The user can rename it from the page.
@@ -37,12 +45,20 @@ A top-level node.
 _Avoid_: Section, point
 
 **Bullet**:
-A plain list item inside a node's text; it has no number and no status.
+A plain list item inside a node's text; it has no number, no kind and no approval.
 _Avoid_: Node, item
 
-**Status**:
-Where a node stands: **open** (no tag), an **agent claim**, or claim for short (the agent states it as settled or certain), or **user-approved** (the user approved it; only the user can make it so). The agent's wording of an answer the user gave is a claim until the user approves it: answering a question is not approving what the agent wrote down. An approval covers the wording the user saw: in server mode, when the agent rewrites an approved node, it is a claim again. A tick the user changed on the page is **pending** until the agent has taken it in: in file mode until the agent records it in the outline; in server mode, where it is recorded at once, until the agent acknowledges it. A node whose descendants all share a status takes that status too.
-_Avoid_: Checkbox, resolved, agent-approved, done, and a bare "approved" (it does not say who approved), pending human approval (the human has approved; the agent has not recorded it)
+**Kind**:
+What a node is on the agent's side: plain (the agent takes no stance), an **agent claim**, or claim for short (the agent states it as settled or certain), an unresolved question, an option, or a task (proposed, done or failed). A question with a recommended option is a claim. The page shows a node's kind as its **kind mark**. A task's kind mark is a checkbox, ticked once the agent has done the task: that tick is the agent's word that the task is done, and never an approval, which a task does not take. A node has one kind: it is never a claim and a task at once, and the task that follows from a claim is a node of its own beside it. A parent other than a question has no kind of its own: the kinds found under it show beside it. On every row the kind marks are at the right of the title, and none stands at its left: a node's own kind, when it has one, and on a parent also the kinds found under it, each with how many nodes under the parent have it. They are drawn in one column for each kind, in a fixed order, the same for every row in view (a row is in view when every parent above it is open), and a column exists only for a kind that some row in view shows. A claim the user approved is a kind of its own in this.
+_Avoid_: Status, type, state
+
+**Approval**:
+The user's own mark on a node, shown by the tick in its box. It is the only tick the user gives: the tick in a task's checkbox is the agent's. A node that has it is **user-approved**; only the user gives it or takes it back, and nothing requires it. Giving it is an action. It says the user concurs with a claim, or accepts a plain node as it reads. A task takes no approval: the user runs it, and reads what came of it. The agent's wording of an answer the user gave is a claim until the user approves it: answering a question is not approving what the agent wrote down. An approval covers the wording the user saw: in server mode, when the agent rewrites an approved node, it is a claim again. A tick the user changed on the page is **pending** until the agent has taken it in: in file mode until the agent records it in the outline; in server mode, where it is recorded at once, until the agent acknowledges it. A parent's box follows the approvals under it: all of them, some, or none.
+_Avoid_: Status, checkbox, resolved, agent-approved, done, and a bare "approved" (it does not say who approved), pending human approval (the human has approved; the agent has not recorded it)
+
+**Approval log**:
+The record of the user's actions on each node of an outline in server mode, in order: approved it, took the approval back, picked it, ran it, each with the kind and the wording the node had then. Nothing is taken out of it, and it follows a node when numbers shift. The node's history shows it.
+_Avoid_: Audit log, undo history (undo is the viewer state's steps)
 
 **Question**:
 A node that asks the user to choose exactly one of the options under it. When the agent recommends one of them it is a claim, a fuller one that also shows what the agent chose not to claim, and it waits for the user like any other claim. Without a recommendation it is an **unresolved question**: the agent cannot decide, or leaves the decision to the user, and it is the one kind of node that needs the user. Something the agent asks and answers itself, with no options to show (a yes or no), is not a question but a claim, however it is phrased.
@@ -62,7 +78,7 @@ _Avoid_: Dir, output folder
 
 **Archived**:
 An outline session the user put aside: the pane lists it under Archived, not in its project's group. Nothing else about it changes: its outline, its link and its linked session work as before (the session keeps running), and it stays archived until the user unarchives it.
-_Avoid_: Hidden, closed, done (that is an action), deleted
+_Avoid_: Hidden, closed, done (that is a task), deleted
 
 **Trash**:
 Where an outline goes when the user deletes it from the pane: it is no longer an outline the page knows, and is kept in the outlines folder until moved back by hand. Deleting also ends the outline session's work: the session terminal the app started for it is ended, and with it the linked session, whose transcript stays. That is how it differs from archiving, which leaves the linked session running.
@@ -103,20 +119,28 @@ _Avoid_: Console, shell
 The agent's stored log of a session's messages and tool calls.
 _Avoid_: History, log
 
-**Queue**:
-The agent's ordered list of outline items it asks the user to handle next: decisions first, then actions to run, then items to approve, then items to read. Each item is a **decide**, **action**, **approve** or **read** item. A **decide** item is a question the agent has not answered and has no recommendation for; a question with an option the agent recommends is an **approve** item, like any other claim.
-_Avoid_: Tasks, to-do, cue
-
 **Action**:
-Something to do in the session itself (run tests, change code), kept as a node. The agent proposes it and carries it out only when the user runs it, or the user asks for it in chat and the agent carries it out at once. Once the agent has carried it out it is a **done** action, or a **failed** one when the agent tried and could not; a failed action can be run again.
-_Avoid_: Play task, step, job
+Something the user does on a node of the outline: approve it, pick an option, run a task, or read it. Only the user acts in this sense: what the agent does is a task. The agent can ask for an action, through the action queue, and never performs one.
+_Avoid_: Task (that is the agent's), and "action" for anything the agent does
+
+**Task**:
+Something for the agent to do in the session itself (run tests, change code), kept as a node. The agent proposes it and carries it out only when the user runs it, or the user asks for it in chat and the agent carries it out at once. Once the agent has carried it out it is a **done** task, or a **failed** one when the agent tried and could not; a failed task can be run again. A task takes no approval.
+_Avoid_: Action (that is the user's), play task, step, job
+
+**Action queue**:
+The agent's ordered list of the actions it asks of the user, queue for short. Each item is an action indicator for one node, and says which action it is: **decide** (pick an option of a question the agent has no recommendation for), **run** (a task), **approve** (a claim, a question with a recommended option included) or **read**. An item does nothing but show the user where the action is: the action itself is done on the node. A task the agent carried out can be in the queue only as something to read. Which nodes are in the queue is the agent's choice alone.
+_Avoid_: Task queue, tasks (those are the agent's), to-do, cue
+
+**Action indicator**:
+What shows the user where an action is, without performing it: a click takes them to the place on the node where the action is done, and nothing else. An item of the action queue is one. So is the empty checkbox among the kind marks of a title row, for a task that is proposed (the node's own, or one found under a parent): it does not run the task or tick the box, and takes the user to the task's own button, in the text of the first such node, by scrolling that button into view and making it grow and shrink once.
+_Avoid_: Play button, run button
 
 **Acknowledge**:
-What the agent does about a tick the user changed on the page in server mode, once it has been told of it: any operation it sends afterwards acknowledges the tick, and the tick stops being pending. It is not the agent's word for an action it carried out: an action is finished.
-_Avoid_: Confirm, record (that is for what the user decided in chat), finish (that is for actions)
+What the agent does about a tick the user changed on the page in server mode, once it has been told of it: any operation it sends afterwards acknowledges the tick, and the tick stops being pending. It is not the agent's word for a task it carried out: a task is finished.
+_Avoid_: Confirm, record (that is for what the user decided in chat), finish (that is for tasks)
 
 **Message**:
-A note about something the outline does not hold; it may name the node it relates to. The agent posts one for a status or a warning. In server mode the server also posts two kinds by itself, taken from the session: the agent's reply of a turn that changed nothing in the outline, and the output of a local command. The outcome of something the agent did is not a message: it belongs to that action's node. In server mode the agent posts a message as an operation; in file mode it writes it in its chat reply, tagged `@message`.
+A note about something the outline does not hold; it may name the node it relates to. The agent posts one for a status or a warning. In server mode the server also posts two kinds by itself, taken from the session: the agent's reply of a turn that changed nothing in the outline, and the output of a local command. The outcome of something the agent did is not a message: it belongs to that task's node. In server mode the agent posts a message as an operation; in file mode it writes it in its chat reply, tagged `@message`.
 _Avoid_: Notification, response, and "reply" for the message itself (a reply is what the agent says in chat at the end of a turn; it may become a message)
 
 **Permission prompt**:

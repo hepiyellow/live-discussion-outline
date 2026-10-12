@@ -10,6 +10,9 @@ const md = new MarkdownIt({ html: false, linkify: true })
 /** Longest `Title:` value the page reads; a longer one is dropped. */
 export const TITLE_MAX = 300
 
+/** A workflow skill's name, as an agent loads it: `plugin:skill`, or a skill's own name. */
+export const WORKFLOW_NAME = /^[\w.:-]{1,100}$/
+
 /** Pulls a `<Label>: <value>` line (if any) out of the first lines of the source; the value is used as written. */
 function extractHeader(source, label, maxLength) {
     const lines = source.split('\n')
@@ -25,7 +28,8 @@ function extractHeader(source, label, maxLength) {
  * command the page copies), `Model:` (shown as written), `Terminal:` (the tmux session the Terminal tab attaches to),
  * `Session:` (the agent's session id, whose transcript the Transcript tab shows), `Mode:` (who writes the outline:
  * `server` is server mode, and anything else, or no line, file mode) and `Archived:` (the day the user archived the
- * outline, which keeps it out of the pane's groups; no line, not archived). The queue is taken out too.
+ * outline, which keeps it out of the pane's groups; no line, not archived). In server mode a `Workflow:` line names
+ * the workflow skill the outline's agent follows. The queue is taken out too.
  */
 export function extractHeaders(text) {
     const title = extractHeader(text, 'Title', TITLE_MAX)
@@ -35,7 +39,8 @@ export function extractHeaders(text) {
     const session = extractHeader(terminal.source, 'Session', 36)
     const mode = extractHeader(session.source, 'Mode', 20)
     const archived = extractHeader(mode.source, 'Archived', 40)
-    const queue = extractQueue(archived.source)
+    const workflow = extractHeader(archived.source, 'Workflow', 100)
+    const queue = extractQueue(workflow.source)
     return {
         title: title.value,
         resume: resume.value,
@@ -44,6 +49,7 @@ export function extractHeaders(text) {
         session: isSessionId(session.value) ? session.value : '',
         mode: mode.value === 'server' ? 'server' : 'file',
         archived: archived.value,
+        workflow: WORKFLOW_NAME.test(workflow.value) ? workflow.value : '',
         queue: queue.items,
         source: queue.source,
     }

@@ -50,6 +50,10 @@ describe('approvals, picks, runs and undo in server mode', () => {
     const node = num => page.locator(`.outline-tab [data-num="${num}"]`)
     const box = num => ({ click: () => click(node(num).locator('> .ck')), getAttribute: name => node(num).locator('> .ck').getAttribute(name) })
     const state = num => box(num).getAttribute('data-state')
+    /** A node's kind mark (null when it has none: at its left, or on a parent first among the bubbles at its right), and the kind marks found under a parent. */
+    const mark = num => node(num).evaluate(el => el.querySelector(':scope > .marks .km[data-own]')?.dataset.kind ?? null)
+    /** The columns of the kinds under a parent, in the order they are drawn: a claim you approved is its own column. */
+    const below = num => node(num).locator('.extras .km:not([data-own])').evaluateAll(els => els.map(e => e.dataset.key))
     /** Waits until a topic or parent shows open or collapsed. */
     const expanded = (num, want) => page.waitForFunction(([n, w]) => document.querySelector(`.outline-tab [data-num="${n}"]`).getAttribute('aria-expanded') === w, [num, String(want)])
     /** Opens a topic or parent the page shows collapsed (one whose nodes are all settled starts that way). */
@@ -69,11 +73,11 @@ describe('approvals, picks, runs and undo in server mode', () => {
         (await (await fetch(`${server.url}/api/agent/pending`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-outline-agent': '1' }, body: JSON.stringify({ session: SESSION }) })).json()).text
 
     test('ticking an open node records the approval in the outline at once', async () => {
-        await box('2.4').click()
-        await shows('2.4', 'pending')
-        assert.equal(heading('2.4'), '## 2.4 @user-approved @action Measure the hit rate on staging')
+        await box('3.3').click()
+        await shows('3.3', 'pending')
+        assert.equal(heading('3.3'), '## 3.3 @user-approved Who can flush the cache by hand')
         // The agent learns of it with the user's next prompt; nothing is typed into its session.
-        assert.match(await told(), /the user:\n- approved 2\.4 Measure the hit rate on staging\n/)
+        assert.match(await told(), /the user:\n- approved 3\.3 Who can flush the cache by hand\n/)
         assert.equal(await told(), '')
         assert.deepEqual(sent, [])
     })
@@ -84,6 +88,10 @@ describe('approvals, picks, runs and undo in server mode', () => {
         await box('2.3').click()
         await shows('2.3', 'pending')
         assert.equal(heading('2.3'), '## 2.3 @user-approved @agent-claim Cache key')
+        // The node's history says what the user did, and what it was they approved.
+        await node('2.3').hover()
+        await node('2.3').getByRole('button', { name: 'History of 2.3' }).click()
+        await page.getByRole('dialog').getByText('You approved this claim').waitFor()
     })
 
     test('picking an option answers its question and collapses it', async () => {
@@ -112,17 +120,17 @@ describe('approvals, picks, runs and undo in server mode', () => {
         await play.click()
         await page.waitForTimeout(300)
         assert.equal(await told(), '')
-        // A node already run has no triangle and no button.
+        // A node already run has no indicator to click and no button.
         assert.equal(await node('2.5').locator('.play, [data-run]').count(), 0)
         // Once the agent finishes it, the run request is forgotten.
         await until(async () => '2.4' in (await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read, { what: 'the first visit to be recorded' })
         fs.writeFileSync(path.join(server.dir, 'demo', 'sample.md'), file().replace('## 2.4 @action Measure', '## 2.4 @action-done Measure'))
-        // Nothing under the topic is open any more: it collapses as the change arrives, showing the highest of its
-        // nodes' ticks, done.
+        // Nothing under the topic is open any more: it collapses as the change arrives. Its box rolls up approvals
+        // only, and the user approved some of what is under it.
         await expanded('2', false)
-        assert.equal(await state('2'), 'done')
+        assert.equal(await state('2'), 'mixed')
         await expand('2')
-        // The node has changed: its triangle goes, and opening the change turns its Action tag into Done.
+        // The node has changed: opening the change turns its Action tag into Done.
         await node('2.4').locator('> .env').waitFor()
         assert.equal(await node('2.4').locator('.play').count(), 0)
         assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Action'])
@@ -136,14 +144,14 @@ describe('approvals, picks, runs and undo in server mode', () => {
     })
 
     test('undo takes the approval back', async () => {
-        await box('2.4').click()
-        await shows('2.4', 'pending')
+        await box('3.3').click()
+        await shows('3.3', 'pending')
         await page.getByRole('button', { name: 'Undo your last approval' }).click()
-        await shows('2.4', 'open')
-        assert.equal(heading('2.4'), '## 2.4 @action Measure the hit rate on staging')
+        await shows('3.3', 'open')
+        assert.equal(heading('3.3'), '## 3.3 Who can flush the cache by hand')
         assert.equal(await page.getByRole('button', { name: 'Undo your last approval' }).isDisabled(), true)
         // Ticked and unticked before the agent was told: it hears only where the node ended up.
-        assert.match(await told(), /- took their approval back from 2\.4 Measure the hit rate on staging\n/)
+        assert.match(await told(), /- took their approval back from 3\.3 Who can flush the cache by hand\n/)
     })
 
     test('undo over mixed children puts each back as it was', async () => {
@@ -152,9 +160,10 @@ describe('approvals, picks, runs and undo in server mode', () => {
         assert.equal(heading('3'), '# 3. @user-approved Invalidation')
         // ⌘Z (Ctrl+Z) undoes too.
         await page.keyboard.press('Control+z')
-        await shows('3', 'mixed')
-        // A claim the user approved is a claim again.
-        assert.equal(await state('3.2'), 'claim')
+        await shows('3', 'open')
+        // A claim the user approved is a claim again: its box is empty, and its kind mark was the claim's all along.
+        assert.equal(await state('3.2'), 'open')
+        assert.equal(await mark('3.2'), 'claim')
         assert.equal(await state('3.3'), 'open')
         assert.equal(heading('3'), '# 3. Invalidation')
     })
@@ -164,16 +173,17 @@ describe('approvals, picks, runs and undo in server mode', () => {
         assert.equal(await state('2'), 'mixed')
         await box('2.4').click()
         await expanded('2', false)
-        // Settled, it shows the highest of its nodes' ticks: the done action's.
-        assert.equal(await state('2'), 'done')
+        // Settled, its box still says that the user approved only some of what is under it.
+        assert.equal(await state('2'), 'mixed')
         await page.keyboard.press('Control+z')
         await expanded('2', true)
         await shows('2', 'mixed')
     })
 
-    test('a parent whose nodes are all claims starts collapsed, with the claim tick; a click on it approves them', async () => {
+    test('a parent whose nodes are all claims starts collapsed, with an empty box and the claim mark beside it; a click on the box approves them', async () => {
         assert.equal(await node('4').getAttribute('aria-expanded'), 'false')
-        assert.equal(await state('4'), 'claim')
+        assert.equal(await state('4'), 'open')
+        assert.deepEqual(await below('4'), ['claim'])
         await box('4').click()
         await until(async () => heading('4.2') === '## 4.2 @user-approved @agent-claim Start with internal tenants', { what: 'the claims of 4 to be approved' })
         assert.equal(heading('4.1'), '## 4.1 @user-approved @agent-claim Behind a feature flag per tenant')
@@ -199,7 +209,8 @@ describe('approvals, picks, runs and undo in server mode', () => {
         // An approval taken back waits for the agent the same way: the box, a claim again, fades until it is acknowledged.
         await box('4.1').click()
         await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="4.1"] > .ck').hasAttribute('data-waiting'))
-        assert.equal(await state('4.1'), 'claim')
+        assert.equal(await state('4.1'), 'open')
+        assert.equal(await mark('4.1'), 'claim')
         assert.match(await told(), /took their approval back from 4\.1/)
         assert.equal((await change([{ op: 'acknowledge' }])).ok, true)
         await page.waitForFunction(() => !document.querySelector('.outline-tab [data-num="4.1"] > .ck').hasAttribute('data-waiting'))
@@ -257,20 +268,21 @@ describe('approvals, picks, runs and undo in server mode', () => {
         assert.equal(await node('2.1.2').isVisible(), true)
     })
 
-    test('a done action shows a yellow outlined tick, which a click turns into an approval; approved, it is yellow still', async () => {
-        const below = () => node('2').locator('.extras .ck').evaluateAll(els => els.map(e => e.dataset.state))
-        assert.equal(await state('2.5'), 'done')
-        assert.equal((await below()).includes('done'), true)
+    test('a done action has the filled yellow triangle as its kind mark and an empty box, which a click ticks; approved, it has both', async () => {
+        assert.equal(await mark('2.5'), 'done')
+        assert.equal(await state('2.5'), 'open')
+        assert.equal(await box('2.5').getAttribute('title'), 'Done: the agent carried out this action — click to approve it')
+        assert.equal((await below('2')).includes('done'), true)
         await box('2.5').click()
         await shows('2.5', 'pending')
         assert.equal(heading('2.5'), '## 2.5 @user-approved @action-done Add cache metrics to the dashboard')
-        // Once the agent has the approval, done supersedes approved on the node's own box, and its tooltip says both.
+        // Once the agent has the approval, the box is the user's tick, and the kind mark still says done.
         assert.equal((await change([{ op: 'acknowledge' }])).ok, true)
         assert.equal((await change([{ op: 'acknowledge' }])).ok, true)
-        await shows('2.5', 'done')
+        await shows('2.5', 'approved')
+        assert.equal(await mark('2.5'), 'done')
         assert.equal(await box('2.5').getAttribute('title'), 'Done: the agent carried out this action, and you approved it')
-        // Its topic lists done among the kinds under it all the same: done is the highest of them.
-        assert.equal((await below()).includes('done'), true)
+        assert.equal((await below('2')).includes('done'), true)
         // A click takes the approval back, as on any approved node.
         await box('2.5').click()
         await until(async () => heading('2.5') === '## 2.5 @action-done Add cache metrics to the dashboard', { what: 'the approval of 2.5 to be taken back' })
@@ -393,8 +405,8 @@ describe('approvals in server mode without a linked session', () => {
     })
 
     test('a tick is recorded the same way: nothing to copy', async () => {
-        await click(page.locator('.outline-tab [data-num="2.4"] > .ck'))
-        await until(async () => /^## 2\.4 @user-approved @action /m.test(fs.readFileSync(path.join(server.dir, 'demo', 'unlinked.md'), 'utf8')), { what: 'the approval in the outline' })
+        await click(page.locator('.outline-tab [data-num="3.3"] > .ck'))
+        await until(async () => /^## 3\.3 @user-approved /m.test(fs.readFileSync(path.join(server.dir, 'demo', 'unlinked.md'), 'utf8')), { what: 'the approval in the outline' })
         assert.equal(await page.getByRole('region', { name: 'Approvals to copy' }).count(), 0)
     })
 
