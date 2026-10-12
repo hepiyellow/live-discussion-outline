@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { WORKFLOW_NAME, extractHeaders, renderPlain } from './outline.js'
 import { OpError, allNodes, applyOperations, applyUserSet, findNode, mapText, nodeHash, normalize, parseOutline, queueText, readText, serializeOutline, userEntry } from './model.js'
-import { createApprovalLog } from './approvals.js'
+import { createActionLog } from './actions.js'
 import { isSessionName } from './terminal.js'
 import { isSessionId, localCommandsSince } from './transcript.js'
 
@@ -105,8 +105,8 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
     /** When this server started, as the transcripts write times. */
     const started = new Date().toISOString()
     const ledgerOf = (project, file) => path.join(root, LEDGER_DIR, project, `${file}.json`)
-    /** What the user did on each node, kept for good (approvals.js). */
-    const approvalLog = createApprovalLog(root)
+    /** The user's actions on each node, kept for good (actions.js). */
+    const actionLog = createActionLog(root)
 
     /**
      * An outline's ledger:
@@ -420,10 +420,10 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         const queuedBefore = model.queue.map(i => i.num)
         const dropped = normalize(model, result.touched)
         writeModel(at.project, at.file, model)
-        // The approval log: first what became of the numbers, then what the user decided in chat, by the numbers the
+        // The action log: first what became of the numbers, then what the user decided in chat, by the numbers the
         // nodes have now.
-        approvalLog.renumber(at.project, at.file, result)
-        approvalLog.record(
+        actionLog.renumber(at.project, at.file, result)
+        actionLog.record(
             at.project,
             at.file,
             result.decisions.filter(d => findNode(model, d.node.num) === d.node).map(({ node, ...entry }) => ({ ...entry, num: node.num })),
@@ -552,7 +552,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             const events = applyUserSet(model, set)
             normalize(model)
             writeModel(project, file, model)
-            approvalLog.record(project, file, events.map(e => userEntry(model, e.num, { approved: 'approved', picked: 'picked', reopened: 'took-back' }[e.kind])), at)
+            actionLog.record(project, file, events.map(e => userEntry(model, e.num, { approved: 'approved', picked: 'picked', reopened: 'took-back' }[e.kind])), at)
             for (const e of events) {
                 ledger.events.push({ at, ...e })
                 // Pending on the page from this moment, until the agent acknowledges it.
@@ -563,7 +563,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         let typed = false
         if (run !== undefined) {
             const node = findNode(model, String(run))
-            if (!node || !node.action || node.action === 'done') throw new OpError(`${run} is not an action waiting to run`)
+            if (!node || !node.task || node.task === 'done') throw new OpError(`${run} is not a task waiting to run`)
             const title = `${node.option ? `(${node.option}) ` : ''}${node.title}`
             // A session terminal takes the request now; without one the agent learns of it with the user's next message.
             if (model.headers.terminal && typeInto) {
@@ -575,7 +575,7 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
                 }
             }
             if (!typed) ledger.events.push({ at, kind: 'run', num: node.num, title })
-            approvalLog.record(project, file, [userEntry(model, node.num, 'ran')], at)
+            actionLog.record(project, file, [userEntry(model, node.num, 'ran')], at)
         }
         ledger.events = ledger.events.slice(-MAX_EVENTS)
         writeLedger(project, file, ledger)
@@ -659,5 +659,5 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         }
     }
 
-    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, messages, unacknowledged, commands, outlineOf, note, approvals: approvalLog.read }
+    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, messages, unacknowledged, commands, outlineOf, note, actions: actionLog.read }
 }

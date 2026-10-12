@@ -56,12 +56,13 @@ export function extractHeaders(text) {
 }
 
 const QUEUE_HEADING = /^#{1,2} @queue$/
-const QUEUE_ITEM = /^[-*]\s+(\d+(?:\.\d+)*)\.?\s+@(decide|action|approve|read)\b\s*(.*)$/
+const QUEUE_ITEM = /^[-*]\s+(\d+(?:\.\d+)*)\.?\s+@(decide|run|action|approve|read)\b\s*(.*)$/
 
 /**
  * The queue: a `# @queue` section (no number, so a topic never matches) listing, in priority order,
- * `- <number> @decide|@action|@approve|@read <label>`. It runs to the next heading or the end, and is not part of the outline.
- * Older outlines head it `## @queue`.
+ * `- <number> @decide|@run|@approve|@read <label>`. It runs to the next heading or the end, and is not part of the outline.
+ * Older outlines head it `## @queue`, and write `@action` for `@run`: the item that asks the user to run a task. The
+ * page knows that item as `action`, so that is the kind it is given here under either name.
  */
 function extractQueue(source) {
     const lines = source.split('\n')
@@ -73,7 +74,7 @@ function extractQueue(source) {
         .slice(start + 1, end)
         .map(line => line.trim().match(QUEUE_ITEM))
         .filter(Boolean)
-        .map(([, num, kind, label]) => ({ num, kind, label: label.replace(/\*\*/g, '').trim() }))
+        .map(([, num, kind, label]) => ({ num, kind: kind === 'run' ? 'action' : kind, label: label.replace(/\*\*/g, '').trim() }))
     lines.splice(start, end - start)
     return { items, source: lines.join('\n') }
 }
@@ -84,19 +85,32 @@ function extractQueue(source) {
  * included). Status and the other tags sit on the heading line, right after the number.
  */
 export const HEAD_RE = /^(\d+(?:\.\d+)*)\.?(?:\s+|$)([\s\S]*)$/
-// A longer name comes before the name it starts with (`action-done` before `action`), or the shorter one would match.
-export const TAG_RE = /^@(user-approved|approved|agent-claim|claim|option[_-][a-z]|options|recommended|current|action-done|action-failed|action|ran)\b\s*/i
+// A longer name comes before the name it starts with (`task-done` before `task`), or the shorter one would match.
+export const TAG_RE = /^@(user-approved|approved|agent-claim|claim|option[_-][a-z]|options|recommended|current|task-done|task-failed|task|action-done|action-failed|action|ran)\b\s*/i
 /** `@option_A`: the node is option A of the question above it. The letter is in the tag, where it cannot be mistyped into the title. */
 export const OPTION_RE = /^option[_-]([a-z])$/i
 /**
- * The tags as outlines write them say who or what: `@user-approved`, `@agent-claim`, `@action-done`, `@action-failed`.
- * Outlines written before those names say `@approved`, `@claim` and `@action @ran`. Both read as the same tags here.
+ * The tags as outlines write them say who or what: `@user-approved`, `@agent-claim`, `@task`, `@task-done`, `@task-failed`.
+ * Outlines written before a task was called one say `@action`, `@action-done` and `@action-failed`, and older ones still
+ * `@approved`, `@claim` and `@action @ran`. All read as the same tags here, under the names the page knows: a task is
+ * `action` there, and one carried out `action` and `ran`.
  */
-const TAG_NAMES = { 'user-approved': ['approved'], 'agent-claim': ['claim'], 'action-done': ['action', 'ran'], 'action-failed': ['action', 'failed'] }
+const TAG_NAMES = {
+    'user-approved': ['approved'],
+    'agent-claim': ['claim'],
+    task: ['action'],
+    'task-done': ['action', 'ran'],
+    'task-failed': ['action', 'failed'],
+    'action-done': ['action', 'ran'],
+    'action-failed': ['action', 'failed'],
+}
 const REC_MARK = /@recommendation\./i
-/** Tags that open a node's closing lines, after its prose: `@Summary.`, `@Recommendation.`, `@Action.` (in any order). */
-export const TRAIL_MARK = /@(summary|recommendation|action)\.\s*/gi
-const HAS_TRAIL = /@(summary|recommendation|action)\./i
+/**
+ * Tags that open a node's closing lines, after its prose: `@Summary.`, `@Recommendation.`, `@Task.` (in any order).
+ * Older outlines write `@Action.` for `@Task.`; the page knows that line as `action` under either name.
+ */
+export const TRAIL_MARK = /@(summary|recommendation|task|action)\.\s*/gi
+const HAS_TRAIL = /@(summary|recommendation|task|action)\./i
 /** The order closing lines are shown in. */
 const CLOSING_KINDS = ['summary', 'recommendation', 'action']
 
@@ -156,7 +170,7 @@ function splitTrail(text) {
     if (!marks.length) return parts
     parts.prose = text.slice(0, marks[0].index).trim()
     marks.forEach((m, i) => {
-        parts[m[1].toLowerCase()] = text.slice(m.index + m[0].length, i + 1 < marks.length ? marks[i + 1].index : text.length).trim()
+        parts[m[1].toLowerCase().replace('task', 'action')] = text.slice(m.index + m[0].length, i + 1 < marks.length ? marks[i + 1].index : text.length).trim()
     })
     return parts
 }

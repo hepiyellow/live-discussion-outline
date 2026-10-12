@@ -108,7 +108,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
                     children: [
                         { title: 'Limit at the gateway', text: 'The gateway already sees every request.', status: 'claim' },
                         { title: 'Storage for counters', text: 'Pick one of the options below.', options: [{ title: 'Redis', text: 'Shared.', recommended: true }, { title: 'In memory', text: 'Per instance.' }] },
-                        { title: 'Run the load test', action: 'Runs the k6 script against staging.' },
+                        { title: 'Run the load test', task: 'Runs the k6 script against staging.' },
                     ],
                 },
                 { op: 'queue', items: [{ num: '1.2' }, { num: '1.3' }, { num: '1.1', label: 'Gateway is the place' }] },
@@ -120,9 +120,9 @@ describe('an agent keeps an outline through the MCP tools', () => {
         const text = outlineText()
         assert.match(text, /^## 1\.1 @agent-claim Limit at the gateway$/m)
         assert.match(text, /^### 1\.2\.1 @recommended @option_A Redis$/m)
-        assert.match(text, /^## 1\.3 @action Run the load test\n\n@Action\. Runs the k6 script against staging\.$/m)
+        assert.match(text, /^## 1\.3 @task Run the load test\n\n@Task\. Runs the k6 script against staging\.$/m)
         // The server set each queue item's kind from its node.
-        assert.match(text, /# @queue\n- 1\.2 @approve Storage for counters\n- 1\.3 @action Run the load test\n- 1\.1 @approve Gateway is the place\n/)
+        assert.match(text, /# @queue\n- 1\.2 @approve Storage for counters\n- 1\.3 @run Run the load test\n- 1\.1 @approve Gateway is the place\n/)
     })
 
     test('a change that breaks a rule applies nothing, and says why', async () => {
@@ -134,10 +134,10 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.equal(outlineText(), before)
         const approved = await mcp.tool('change', { ops: [{ op: 'add', num: '2', title: 'Rollout', status: 'approved' }] })
         assert.match(approved.text, /only the user approves/)
-        // An action line is one short sentence: the details belong in the node's text.
+        // A task line is one short sentence: the details belong in the node's text. The field's old name, action, is still taken.
         const long = 'Adds a retry wrapper to client.js, runs its tests, updates the README and then rebuilds the page for everyone.'
         const wordy = await mcp.tool('change', { ops: [{ op: 'add', num: '2', title: 'Rollout', action: long }] })
-        assert.match(wordy.text, /The action of node 2 is \d+ characters long, and an action line has at most 100/)
+        assert.match(wordy.text, /The task of node 2 is \d+ characters long, and a task line has at most 100/)
         assert.match((await mcp.tool('change', { ops: [{ op: 'update', num: '1.3', action: long }] })).text, /at most 100/)
         assert.equal(outlineText(), before)
     })
@@ -154,7 +154,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.match(text, /^## 1\.2 @user-approved @options Storage for counters$/m)
         assert.match(text, /^### 1\.2\.2 @user-approved @option_B In memory$/m)
         // What the user handled left the queue.
-        assert.match(text, /# @queue\n- 1\.3 @action Run the load test\n$/)
+        assert.match(text, /# @queue\n- 1\.3 @run Run the load test\n$/)
         const told = await runHook(server, { hook_event_name: 'UserPromptSubmit', prompt: 'and now?' })
         assert.match(told, /approved 1\.1 Limit at the gateway/)
         assert.match(told, /picked 1\.2\.2 \(B\) In memory/)
@@ -201,7 +201,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.match(await runHook(server, { hook_event_name: 'UserPromptSubmit', prompt: 'go' }), /pressed Run on 1\.3 Run the load test/)
         const done = await mcp.tool('change', { ops: [{ op: 'finish', num: '1.3', outcome: 'p95 stayed under 40 ms at 2,000 rps.' }, { op: 'message', num: '1.3', text: 'The load test passed.' }] })
         assert.equal(done.error, false, done.text)
-        assert.match(outlineText(), /^## 1\.3 @current @action-done Run the load test\n\np95 stayed under 40 ms/m)
+        assert.match(outlineText(), /^## 1\.3 @current @task-done Run the load test\n\np95 stayed under 40 ms/m)
         assert.doesNotMatch(outlineText(), /@queue/)
         const stream = await eventStream(`${server.url}/api/outline/shop/${path.basename(file, '.md')}/events`)
         const notes = JSON.parse((await stream.takeOf('notes')).data)
@@ -275,7 +275,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.equal(out, '')
     })
 
-    test('what the user asked for in chat and the agent did is an action done: added with its outcome, or finished where it stands', async () => {
+    test('what the user asked for in chat and the agent did is a task done: added with its outcome, or finished where it stands', async () => {
         const done = await mcp.tool('change', {
             ops: [
                 { op: 'add', num: '2', title: 'Rollout', children: [{ title: 'Add a retry to the client', text: 'The user asked for it in chat.', outcome: 'Added, and its tests pass.' }, { title: 'Write the runbook' }] },
@@ -284,12 +284,12 @@ describe('an agent keeps an outline through the MCP tools', () => {
             ],
         })
         assert.equal(done.error, false, done.text)
-        assert.match(done.text, /2\.1 Add a retry to the client \[open, action done\]/)
-        assert.match(done.text, /2\.3 Deploy to staging \[open, action failed\]/)
+        assert.match(done.text, /2\.1 Add a retry to the client \[open, task done\]/)
+        assert.match(done.text, /2\.3 Deploy to staging \[open, task failed\]/)
         const text = outlineText()
-        assert.match(text, /^## 2\.1 @action-done Add a retry to the client\n\nThe user asked for it in chat\.\n\nAdded, and its tests pass\.$/m)
-        assert.match(text, /^## 2\.2 @action-done Write the runbook\n\nWritten to docs\/runbook\.md\.$/m)
-        assert.match(text, /^## 2\.3 @current @action-failed Deploy to staging\n\nThe deploy timed out\.$/m)
+        assert.match(text, /^## 2\.1 @task-done Add a retry to the client\n\nThe user asked for it in chat\.\n\nAdded, and its tests pass\.$/m)
+        assert.match(text, /^## 2\.2 @task-done Write the runbook\n\nWritten to docs\/runbook\.md\.$/m)
+        assert.match(text, /^## 2\.3 @current @task-failed Deploy to staging\n\nThe deploy timed out\.$/m)
         // A question is answered by a pick, not finished; and an outcome has to say something.
         const question = await mcp.tool('change', { ops: [{ op: 'finish', num: '1.2', outcome: 'Done.' }] })
         assert.match(question.text, /1\.2 is a question: the user answers it by picking an option/)
@@ -299,7 +299,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
         assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: '2' }] })).error, false)
     })
 
-    test('a node is not finished as done while actions under it are unsettled', async () => {
+    test('a node is not finished as done while tasks under it are unsettled', async () => {
         const built = await mcp.tool('change', {
             ops: [
                 {
@@ -319,20 +319,20 @@ describe('an agent keeps an outline through the MCP tools', () => {
         const before = outlineText()
         const refused = await mcp.tool('change', { ops: [{ op: 'finish', num: '2', outcome: 'Shipped.' }] })
         assert.equal(refused.error, true)
-        // The claim and the options nobody picked are the user's; the action under it is the agent's to settle.
-        assert.match(refused.text, /2 has an action under it that is not settled: 2\.2 Run the tests \(not run\)\./)
+        // The claim and the options nobody picked are the user's; the task under it is the agent's to settle.
+        assert.match(refused.text, /2 has a task under it that is not settled: 2\.2 Run the tests \(not run\)\./)
         assert.match(refused.text, /finish it with its outcome if you carried it out/)
         assert.equal(outlineText(), before)
         // An option the user picked is waiting to run, too.
         assert.equal((await act({ set: [{ num: '2.3.2', approved: true }] })).status, 200)
         const picked = await mcp.tool('change', { ops: [{ op: 'finish', num: '2.2', outcome: 'They fail.', failed: true }, { op: 'finish', num: '2', outcome: 'Shipped.' }] })
-        assert.match(picked.text, /2 has actions under it that are not settled: 2\.2 Run the tests \(failed\); 2\.3\.2 \(B\) Canary first \(not run\)\./)
+        assert.match(picked.text, /2 has tasks under it that are not settled: 2\.2 Run the tests \(failed\); 2\.3\.2 \(B\) Canary first \(not run\)\./)
         // Settled in the same change: one finished, one given up. A finish as failed is never held back.
         const done = await mcp.tool('change', {
-            ops: [{ op: 'finish', num: '2.2', outcome: 'They pass.' }, { op: 'update', num: '2.3.2', action: '', text: 'Not needed: the retry went out with the release.' }, { op: 'finish', num: '2', outcome: 'Shipped.' }],
+            ops: [{ op: 'finish', num: '2.2', outcome: 'They pass.' }, { op: 'update', num: '2.3.2', task: '', text: 'Not needed: the retry went out with the release.' }, { op: 'finish', num: '2', outcome: 'Shipped.' }],
         })
         assert.equal(done.error, false, done.text)
-        assert.match(outlineText(), /^# 2\. @current @action-done Ship the retry$/m)
+        assert.match(outlineText(), /^# 2\. @current @task-done Ship the retry$/m)
         assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: '2' }] })).error, false)
     })
 
@@ -391,42 +391,42 @@ describe('an agent keeps an outline through the MCP tools', () => {
         const all = await mcp.tool('change', { ops: [{ op: 'record', num: `${n}`, decision: 'approve' }] })
         assert.equal(all.error, false, all.text)
         assert.match(outlineText(), new RegExp(`^# ${n}\\. @user-approved @current Results$`, 'm'))
-        assert.match(outlineText(), new RegExp(`^## ${n}\\.1 @action-done Add a retry$`, 'm'))
+        assert.match(outlineText(), new RegExp(`^## ${n}\\.1 @task-done Add a retry$`, 'm'))
         assert.match(outlineText(), new RegExp(`^## ${n}\\.3 @user-approved @agent-claim Retries are safe$`, 'm'))
         assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}` }] })).error, false)
     })
 
-    test('a node is a claim or an action, never both: the change that would make it both is refused', async () => {
+    test('a node is a claim or a task, never both: the change that would make it both is refused', async () => {
         const n = (outlineText().match(/^# \d+\./gm) || []).length + 1
-        const built = await mcp.tool('change', { ops: [{ op: 'add', num: `${n}`, title: 'Kinds', children: [{ title: 'Retries are safe', status: 'claim' }, { title: 'Add a retry', action: 'Adds the retry.' }] }] })
+        const built = await mcp.tool('change', { ops: [{ op: 'add', num: `${n}`, title: 'Kinds', children: [{ title: 'Retries are safe', status: 'claim' }, { title: 'Add a retry', task: 'Adds the retry.' }] }] })
         assert.equal(built.error, false, built.text)
         const text = outlineText()
         const refused = async ops => (await mcp.tool('change', { ops })).text
-        assert.match(await refused([{ op: 'update', num: `${n}.1`, action: 'Adds the retry.' }]), /is a claim, so it cannot become an action too[\s\S]*add the action as a node of its own beside/)
-        assert.match(await refused([{ op: 'update', num: `${n}.2`, status: 'claim' }]), /is an action, so it cannot be a claim too/)
-        assert.match(await refused([{ op: 'finish', num: `${n}.1`, outcome: 'Done.' }]), /is a claim, so it is not finished as an action/)
-        assert.match(await refused([{ op: 'add', num: `${n}.3`, title: 'Both', status: 'claim', action: 'Does it.' }]), /is added as a claim and as an action/)
+        assert.match(await refused([{ op: 'update', num: `${n}.1`, task: 'Adds the retry.' }]), /is a claim, so it cannot become a task too[\s\S]*add the task as a node of its own beside/)
+        assert.match(await refused([{ op: 'update', num: `${n}.2`, status: 'claim' }]), /is a task, so it cannot be a claim too/)
+        assert.match(await refused([{ op: 'finish', num: `${n}.1`, outcome: 'Done.' }]), /is a claim, so it is not finished as a task/)
+        assert.match(await refused([{ op: 'add', num: `${n}.3`, title: 'Both', status: 'claim', task: 'Does it.' }]), /is added as a claim and as a task/)
         assert.equal(outlineText(), text)
         assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}` }] })).error, false)
     })
 
-    test('what the user does on a node is kept in the approval log, with the kind it had, and follows the node when numbers shift', async () => {
+    test('what the user does on a node is kept in the action log, with the kind it had, and follows the node when numbers shift', async () => {
         const slug = path.basename(file, '.md')
         const history = async num => (await (await fetch(`${server.url}/api/outline/shop/${slug}/history?num=${num}`)).json()).flatMap(e => e.did ?? [])
         const n = (outlineText().match(/^# \d+\./gm) || []).length + 1
         const built = await mcp.tool('change', {
-            ops: [{ op: 'add', num: `${n}`, title: 'Log', children: [{ title: 'Goes first' }, { title: 'Retries are safe', status: 'claim' }, { title: 'Add a retry', action: 'Adds the retry.' }] }],
+            ops: [{ op: 'add', num: `${n}`, title: 'Log', children: [{ title: 'Goes first' }, { title: 'Retries are safe', status: 'claim' }, { title: 'Add a retry', task: 'Adds the retry.' }] }],
         })
         assert.equal(built.error, false, built.text)
         // On the page: the claim approved, and the task run. A tick sent for the task is not an approval, and is not logged.
         assert.equal((await act({ set: [{ num: `${n}.2`, approved: true }, { num: `${n}.3`, approved: true }] })).status, 200)
         assert.equal((await act({ run: `${n}.3` })).status, 200)
         assert.deepEqual(await history(`${n}.2`), [{ what: 'approved', kind: 'claim' }])
-        assert.deepEqual(await history(`${n}.3`), [{ what: 'ran', kind: 'action' }])
+        assert.deepEqual(await history(`${n}.3`), [{ what: 'ran', kind: 'task' }])
         // The agent finishes the task. The claim keeps its approval: it is another node.
         const finished = await mcp.tool('change', { ops: [{ op: 'finish', num: `${n}.3`, outcome: 'Added.' }] })
         assert.equal(finished.error, false, finished.text)
-        assert.match(outlineText(), new RegExp(`^## ${n}\\.3 @current @action-done Add a retry$`, 'm'))
+        assert.match(outlineText(), new RegExp(`^## ${n}\\.3 @current @task-done Add a retry$`, 'm'))
         assert.match(outlineText(), new RegExp(`^## ${n}\\.2 @user-approved @agent-claim Retries are safe$`, 'm'))
         // The user takes the claim back on the page.
         assert.equal((await act({ set: [{ num: `${n}.2`, approved: false }] })).status, 200)
@@ -434,7 +434,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
         // A node before them goes: the numbers shift, and each node's entries go with it.
         const removed = await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}.1` }] })
         assert.equal(removed.error, false, removed.text)
-        assert.deepEqual(await history(`${n}.2`), [{ what: 'ran', kind: 'action' }])
+        assert.deepEqual(await history(`${n}.2`), [{ what: 'ran', kind: 'task' }])
         assert.deepEqual((await history(`${n}.1`)).map(d => d.what), ['approved', 'took-back'])
         assert.equal((await mcp.tool('change', { ops: [{ op: 'remove', num: `${n}` }] })).error, false)
     })

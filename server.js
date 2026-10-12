@@ -12,7 +12,7 @@ import { slashCommands } from './commands.js'
 import { STATE_DIR, createStateStore } from './state.js'
 import { installLogging } from './log.js'
 import { LEDGER_DIR, createAgentApi, markLedgered } from './agent.js'
-import { APPROVALS_DIR } from './approvals.js'
+import { ACTIONS_DIR } from './actions.js'
 import { createPermissions } from './permission.js'
 import { OpError } from './model.js'
 
@@ -45,8 +45,8 @@ const TRASH = '.trash'
 let debounce
 const viewerState = createStateStore(ROOT)
 const history = createHistory(ROOT)
-// Writes to the viewer state, the trash, the node history, the ledgers and the approval logs are not outline changes.
-const IGNORED = new Set([STATE_DIR, TRASH, HISTORY_DIR, LEDGER_DIR, APPROVALS_DIR])
+// Writes to the viewer state, the trash, the node history, the ledgers and the action logs are not outline changes.
+const IGNORED = new Set([STATE_DIR, TRASH, HISTORY_DIR, LEDGER_DIR, ACTIONS_DIR])
 // Outline files that changed since the last recording of their history: `project/file`.
 const touched = new Set()
 const changed = () => {
@@ -245,7 +245,7 @@ function readOutline(project, file) {
 }
 
 /**
- * A node's history with what the user did on the node (approvals.js) among its changes: `did` on an entry lists what
+ * A node's history with the user's actions on the node (actions.js) among its changes: `did` on an entry lists what
  * they did then, as `{ what, kind }`. A tick changes the outline, so it has an entry already, written right after it;
  * a press of Run changes nothing, and gets an entry of its own, with the node as it was then.
  */
@@ -356,7 +356,7 @@ function outlineApi(req, res, parts, url) {
     // A node's history: its entries, oldest first (`?num=2.1`), with what the user did on the node among them.
     if (events === 'history') {
         const num = url.searchParams.get('num') ?? ''
-        return send(res, 200, 'application/json', JSON.stringify(withUserActs(history.read(project, file, num), agent.approvals(project, file, num))))
+        return send(res, 200, 'application/json', JSON.stringify(withUserActs(history.read(project, file, num), agent.actions(project, file, num))))
     }
     const data = JSON.stringify(outline)
     if (!events) return send(res, 200, 'application/json', data)
@@ -389,7 +389,7 @@ function outlineApi(req, res, parts, url) {
 
 /**
  * POST /api/outline/<project>/<file>/act: what the user did on the page, recorded in the outline at once. `set` lists
- * the nodes whose tick changed (`{ num, approved }`); `run` names an action the user pressed play on. Only for an
+ * the nodes whose tick changed (`{ num, approved }`); `run` names a task the user pressed Run on. Only for an
  * outline in server mode: one in file mode is its agent's to write, and the page tells that agent in its session.
  */
 async function actApi(req, res, { project, file, mode }) {

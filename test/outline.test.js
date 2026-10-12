@@ -46,6 +46,24 @@ test('the Workflow line names the outline’s workflow skill, and the server kee
     assert.equal(outlinePayload('Title: x\nWorkflow: two words\n\n# 1. A\n').workflow, '')
 })
 
+test('a task reads the same under its name and under its old one, action, and the server writes the new one', () => {
+    const fresh = '# 1. T\n\n## 1.1 @task Run it\n\nText.\n\n@Task. Runs it.\n\n## 1.2 @task-done Ran\n\n## 1.3 @task-failed Broke\n\n# @queue\n- 1.1 @run Run it\n'
+    const old = fresh.replaceAll('@task', '@action').replace('@Task.', '@Action.').replace('@run', '@action')
+    assert.notEqual(old, fresh)
+    // The page is handed the names it knows, whichever the file has.
+    const shape = p => ({ tags: all(p.nodes).map(n => n.tags), closing: all(p.nodes).map(n => n.closing.map(c => c.kind)), queue: p.queue.map(q => q.kind) })
+    assert.deepEqual(shape(outlinePayload(fresh)), shape(outlinePayload(old)))
+    assert.deepEqual(shape(outlinePayload(fresh)), { tags: [[], ['action'], ['action', 'ran'], ['action', 'failed']], closing: [[], ['action'], [], []], queue: ['action'] })
+    // The server reads both and writes a task as a task.
+    assert.equal(serializeOutline(parseOutline(old)), serializeOutline(parseOutline(fresh)))
+    const written = serializeOutline(parseOutline(old))
+    assert.match(written, /^## 1\.1 @task Run it\n\nText\.\n\n@Task\. Runs it\.$/m)
+    assert.match(written, /^## 1\.2 @task-done Ran$/m)
+    assert.match(written, /^## 1\.3 @task-failed Broke$/m)
+    assert.match(written, /^- 1\.1 @run Run it$/m)
+    assert.doesNotMatch(written, /action/i)
+})
+
 test('the Mode line says who writes the outline; without it, or with any other value, its agent does', () => {
     // sample.md has no Mode line, as every outline an agent writes itself.
     assert.equal(sample.mode, 'file')

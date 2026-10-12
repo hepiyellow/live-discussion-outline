@@ -23,10 +23,14 @@ const NODE = {
     text: { ...text, description: "The node's text as markdown (paragraphs, bullets, code, tables; no headings)." },
     summary: { ...text, description: "One sentence summing up a long node's own text. Never an answer." },
     recommendation: { ...text, description: 'What you recommend and why, on a node that is not a choice between options.' },
-    action: { ...text, description: 'Makes the node an action: one short sentence on what you will do when the user runs it, with no file names and nothing the text already says.' },
+    task: {
+        ...text,
+        description:
+            'Makes the node a task of the outline: something for you to do in this session, which the user runs from the page (not a subagent, and not an item of a to-do list of your own). One short sentence on what you will do when the user runs it, with no file names and nothing the text already says.',
+    },
     status: { enum: ['open', 'claim'], description: 'claim: settled in the conversation, or something you are certain of. Never set for what still needs the user.' },
 }
-const OPTION = { type: 'object', properties: { title: NODE.title, text: NODE.text, recommended: { type: 'boolean' }, action: NODE.action }, required: ['title'] }
+const OPTION = { type: 'object', properties: { title: NODE.title, text: NODE.text, recommended: { type: 'boolean' }, task: NODE.task }, required: ['title'] }
 
 const TOOLS = [
     {
@@ -54,12 +58,12 @@ const TOOLS = [
         description: [
             'Change the outline: a list of operations applied together, all or none. Make one call per turn, after your answer is decided. The result carries what the user did on the page since you were last told, and a map of the outline.',
             'Operations (op):',
-            '- add { num, title, text?, summary?, recommendation?, status?, action?, outcome?, failed?, options?, children? }: a new node. num is its full path (2.4), the next free number under its parent. options makes it a question the user answers by picking one; children are nodes under it, numbered in order. outcome adds it as an action you already carried out, because the user asked for it in chat.',
-            '- update { num, title?, text?, summary?, recommendation?, action?, status?, recommended? }: each field given replaces that whole field ("" clears it), so write the full new text.',
+            '- add { num, title, text?, summary?, recommendation?, status?, task?, outcome?, failed?, options?, children? }: a new node. num is its full path (2.4), the next free number under its parent. options makes it a question the user answers by picking one; children are nodes under it, numbered in order. outcome adds it as a task you already carried out, because the user asked for it in chat.',
+            '- update { num, title?, text?, summary?, recommendation?, task?, status?, recommended? }: each field given replaces that whole field ("" clears it), so write the full new text.',
             '- move { num, under }: puts a node under another parent ("" for the top level), where it takes the next number.',
             '- remove { num }: takes a node out with everything under it; the siblings after it are renumbered.',
             '- record { num, decision }: what the user decided in chat. approve, reopen, or pick (num is the option). Only what the user said, never your own judgment.',
-            '- finish { num, outcome, failed? }: you carried out what the node describes, so it shows as an action done; outcome says what happened. The node is an action the user ran, or any node about something the user asked you in chat to do.',
+            '- finish { num, outcome, failed? }: you carried out what the node describes, so it shows as a task done; outcome says what happened. The node is a task the user ran, or any node about something the user asked you in chat to do.',
             '- acknowledge {}: you took in the ticks the user made on the page and nothing in the outline follows from them. Any change made after you were told of a tick acknowledges it, so send this only in a change that holds nothing else.',
             '- message { text, num? }: a note for the inbox about something the outline does not hold.',
             '- queue { items: [{ num, label?, read? }] }: replaces the queue, most important first. The server sets each item’s kind from its node and drops what the user handled.',

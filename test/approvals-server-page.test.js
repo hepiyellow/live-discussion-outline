@@ -363,7 +363,7 @@ describe('approvals, picks, runs and undo in server mode', () => {
         await box('2.1.2').click()
         await until(async () => (await queued()).join() === '2.4,3.1.1.1.1.1', { what: 'the handled items to leave the queue' })
         // The server dropped them from the outline's queue too.
-        assert.match(file(), /# @queue\n- 2\.4 @action [^\n]*\n- 3\.1\.1\.1\.1\.1 @read [^\n]*\n$/)
+        assert.match(file(), /# @queue\n- 2\.4 @run [^\n]*\n- 3\.1\.1\.1\.1\.1 @read [^\n]*\n$/)
         // Handled here: the icon goes with the item.
         assert.deepEqual([await icon('2.1'), await icon('2.3')], [[], []])
         await click(node('2.4').locator('.closing [data-run]'))

@@ -42,7 +42,7 @@ describe('the plugin’s skills for server mode', () => {
         assert.match(mechanics, /read `\.\.\/outline-workflow\/SKILL\.md` beside this file/)
         assert.match(mechanics, /A workflow skill the user names replaces it/)
         // What the server enforces is said here, not left to a workflow.
-        for (const rule of [/Only the user approves/, /A node is never a claim and an action at once/, /Acknowledge every tick you were told of/, /Never finish what you did not do/]) assert.match(mechanics, rule)
+        for (const rule of [/Only the user approves/, /A node is never a claim and a task at once/, /Acknowledge every tick you were told of/, /Never finish what you did not do/]) assert.match(mechanics, rule)
         // When to act and what to ask are the workflow’s.
         for (const choice of [/Run only when asked/, /Recommend before you queue a question/]) assert.doesNotMatch(mechanics, choice)
     })

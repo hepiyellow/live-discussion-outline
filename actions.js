@@ -1,13 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-/** The folder of the outlines folder where the approval logs are kept: one JSON Lines file per outline. */
-export const APPROVALS_DIR = '.approvals'
+/** The folder of the outlines folder where the action logs are kept: one JSON Lines file per outline. */
+export const ACTIONS_DIR = '.actions'
 
 const readLines = file => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : [])
 
 /**
- * The approval log of each outline under `root`: what the user did on its nodes, in order. An entry is
+ * The action log of each outline under `root`: the user's actions on its nodes, in order. An entry is
  * `{ at, num, what, kind, hash, title }`: the user approved the node, took the approval back, picked it or ran it
  * (`what`: approved, took-back, picked, ran), when it had that kind and that wording (model.js `userEntry`). Nothing
  * is ever taken out of it: an approval taken back is an entry of its own.
@@ -15,8 +15,8 @@ const readLines = file => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').s
  * A node has no name but its number, and numbers shift when nodes are moved or removed. So the log also keeps each
  * shift, `{ at, removed, renumbered }`, and a node's entries are found by following them from the number the node had then.
  */
-export function createApprovalLog(root) {
-    const fileOf = (project, file) => path.join(root, APPROVALS_DIR, project, `${file}.jsonl`)
+export function createActionLog(root) {
+    const fileOf = (project, file) => path.join(root, ACTIONS_DIR, project, `${file}.jsonl`)
 
     function append(project, file, lines) {
         if (!lines.length) return

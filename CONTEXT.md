@@ -56,9 +56,9 @@ _Avoid_: Status, type, state
 The user's own mark on a node, shown by the tick in its box. It is the only tick the user gives: the tick in a task's checkbox is the agent's. A node that has it is **user-approved**; only the user gives it or takes it back, and nothing requires it. Giving it is an action. It says the user concurs with a claim, or accepts a plain node as it reads. A task takes no approval: the user runs it, and reads what came of it. The agent's wording of an answer the user gave is a claim until the user approves it: answering a question is not approving what the agent wrote down. An approval covers the wording the user saw: in server mode, when the agent rewrites an approved node, it is a claim again. A tick the user changed on the page is **pending** until the agent has taken it in: in file mode until the agent records it in the outline; in server mode, where it is recorded at once, until the agent acknowledges it. A parent's box follows the approvals under it: all of them, some, or none.
 _Avoid_: Status, checkbox, resolved, agent-approved, done, and a bare "approved" (it does not say who approved), pending human approval (the human has approved; the agent has not recorded it)
 
-**Approval log**:
+**Action log**:
 The record of the user's actions on each node of an outline in server mode, in order: approved it, took the approval back, picked it, ran it, each with the kind and the wording the node had then. Nothing is taken out of it, and it follows a node when numbers shift. The node's history shows it.
-_Avoid_: Audit log, undo history (undo is the viewer state's steps)
+_Avoid_: Approval log (it holds picks and runs too), audit log, undo history (undo is the viewer state's steps)
 
 **Question**:
 A node that asks the user to choose exactly one of the options under it. When the agent recommends one of them it is a claim, a fuller one that also shows what the agent chose not to claim, and it waits for the user like any other claim. Without a recommendation it is an **unresolved question**: the agent cannot decide, or leaves the decision to the user, and it is the one kind of node that needs the user. Something the agent asks and answers itself, with no options to show (a yes or no), is not a question but a claim, however it is phrased.
