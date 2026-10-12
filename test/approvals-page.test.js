@@ -134,31 +134,30 @@ describe('approvals, picks, runs and undo in file mode', () => {
         await play.click()
         await page.waitForTimeout(300)
         assert.equal(sent.length, 1)
-        // A node already run has no indicator to click and no button.
-        assert.equal(await node('2.5').locator('.play, [data-run]').count(), 0)
+        // A node already run has no button.
+        assert.equal(await node('2.5').locator('[data-run]').count(), 0)
         // Once the agent marks it @ran, the run request is forgotten.
         await until(async () => '2.4' in (await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read, { what: 'the first visit to be recorded' })
         fs.writeFileSync(
             path.join(server.dir, 'demo', 'sample.md'),
             fs.readFileSync(path.join(server.dir, 'demo', 'sample.md'), 'utf8').replace('## 2.4 @action Measure', '## 2.4 @action-done Measure'),
         )
-        // Nothing under the topic is open any more: it collapses as the change arrives. Its box rolls up approvals
-        // only (the user approved some of what is under it), with each kind mark found under it beside it; 2.4 keeps
-        // the mark of an action proposed until the viewer opens the change that says it is done.
-        await expanded('2', false)
-        assert.equal(await state('2'), 'mixed')
-        assert.deepEqual(await below('2'), ['claim', 'claim-approved', 'action', 'done'])
-        await expand('2')
-        // The node has changed: opening the change turns its Action tag into Done. Until then
-        // its kind mark keeps what it showed. Its box stays empty: the user has not approved it.
+        // The change waits to be opened, and the outline does not move: 2.4 keeps the mark and the tag of an action
+        // proposed, and the topic over it stays open.
         await node('2.4').locator('> .env').waitFor()
+        assert.equal(await node('2').getAttribute('aria-expanded'), 'true')
         assert.equal(await mark('2.4'), 'action')
         assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Action'])
+        // Opening the change turns its Action tag into Done. With that, nothing under the topic is open any more:
+        // once the change has been shown, the topic collapses. Its box rolls up approvals only (the user approved some
+        // of what is under it).
         await node('2.4').locator('> .env').click()
-        await node('2.4').locator('.closing .pill-done').waitFor()
+        await expanded('2', false)
+        assert.equal(await state('2'), 'mixed')
+        await expand('2')
+        // Its box stays empty: the user has not approved it.
         assert.equal(await mark('2.4'), 'done')
         assert.equal(await state('2.4'), 'open')
-        await page.locator('.tx-cur').waitFor({ state: 'detached' })
         assert.deepEqual((await node('2.4').locator('.closing .pill').allTextContents()).map(t => t.trim()), ['Done'])
         // The Action line says it: no second tag on the title.
         assert.equal(await node('2.4').locator('.node-title .pill-done').count(), 0)
@@ -265,13 +264,12 @@ describe('approvals, picks, runs and undo in file mode', () => {
         const kind = num => page.locator(`[data-queue="${num}"]`).getAttribute('data-kind')
         await page.locator('[data-queue="3.3"]').waitFor()
         assert.deepEqual([await kind('3.3'), await kind('3.2'), await kind('2.1')], ['decide', 'approve', 'approve'])
-        assert.deepEqual(await node('3.3').locator('> .qicon').evaluateAll(els => els.map(e => e.dataset.queueKind)), ['decide'])
     })
 
-    test('the triangle of an action runs nothing: it opens the node and points at the button that does', async () => {
+    test('the action indicator of an action runs nothing: it opens the node and points at the button that does', async () => {
         await node('2.4').locator('> .node-title').click()
         await node('2.4').locator('.closing [data-run]').waitFor({ state: 'hidden' })
-        await click(node('2.4').locator('> .play'))
+        await click(node('2.4').locator('> .marks [data-point]'))
         await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.4"] [data-run]').hasAttribute('data-pulse'))
         assert.equal(await node('2.4').locator('.closing [data-run]').isVisible(), true)
         assert.equal(sent.length, 0)

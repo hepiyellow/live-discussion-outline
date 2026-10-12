@@ -77,7 +77,10 @@ export function OutlineTab({ outline, shown, viewer, actions, onToggle }: Props)
     const ctx = useMemo<OutlineContext>(() => {
         // The marks are those of the outline as it is shown: a node whose change waits keeps the kind it was read with.
         const statuses = new Statuses(shown, viewer.overrides, outline.mode, new Set(outline.unacked), unopened)
-        const isOpen = isOpenIn(viewer.open, statuses)
+        const openByState = isOpenIn(viewer.open, statuses)
+        // A parent stays open while a change under it is being opened: the change may settle the parent, and a
+        // settled parent closes, which would hide the change as it is shown.
+        const isOpen = (node: OutlineNode) => [...actions.opening].some(num => num.startsWith(`${node.num}.`)) || openByState(node)
         return {
             ...actions,
             onHistory: setHistoryOf,
