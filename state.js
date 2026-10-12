@@ -17,11 +17,12 @@ export const STATE_DIR = '.state'
  * - read: node number → the node as the viewer last read it (its title and text as HTML), shown until they open the change
  * - runs: node number → 1 once the viewer asked the agent to run that action; for one that had failed before, a string
  *   marking what it showed then, so that a new outcome ends the run
- * - seen: message id → 1 once the viewer saw it in an inbox
+ * - seen: message id → 1 once the viewer saw it in an inbox; `removed:<id>` → 1 once they saw a removed node go
  * - undo: the viewer's undo steps, newest last
  * - draft: the input box's text
  * - chips: the references waiting in the input box, `{ label, ref }`; a node to remove also has `kind: 'remove'`
  * - tab: the tab shown (outline, md, transcript or term)
+ * - order: how the change indicators of the queue column are ordered: by `number` (the outline's order) or by `time`
  */
 const MAPS = ['open', 'overrides', 'sent', 'backTo', 'read', 'runs', 'seen']
 const isChip = c => c && typeof c.label === 'string' && typeof c.ref === 'string' && c.label.length <= 500 && c.ref.length <= 2000 && (c.kind === undefined || c.kind === 'remove')
@@ -30,10 +31,11 @@ const OTHERS = {
     draft: v => typeof v === 'string' && v.length <= 20000,
     chips: v => Array.isArray(v) && v.length <= 50 && v.every(isChip),
     tab: v => ['outline', 'md', 'transcript', 'term'].includes(v),
+    order: v => v === 'number' || v === 'time',
 }
 export const SECTIONS = [...MAPS, ...Object.keys(OTHERS)]
 
-const empty = () => ({ open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline' })
+const empty = () => ({ open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline', order: 'number' })
 
 /** Keys are node numbers or message ids: short, and never anything an object treats specially. */
 const KEY = /^[\w.:-]{1,200}$/

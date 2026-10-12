@@ -1,17 +1,17 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { Ellipsis } from 'lucide-react'
+import { ArrowDown01, Clock, Ellipsis } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { KEY_TITLE, markOfKey, type KindKey, type Mark, type Statuses } from '@/lib/status'
 import type { QueueItem } from '@/types'
-import { DIFF_ICON, KINDS, PLUS_ICON, waiting } from './queue'
+import { DIFF_ICON, KINDS, MINUS_ICON, PLUS_ICON, waiting } from './queue'
 import { keyIcon } from './StatusBox'
 
 /** A button's height and the gap between buttons, as drawn below: the lower queue fits as many as its room allows. */
 const ITEM = 22
 const GAP = 4
 /** The divider between the two queues, with the room around it. */
-const DIVIDER = 13
+const DIVIDER = 26
 
 /** One button of the column: an item of the action queue, or the indicator of a change the viewer has not opened. */
 interface Entry {
@@ -29,8 +29,11 @@ interface Entry {
 
 /** A change the viewer has not opened, as the column shows it. */
 export interface ChangeIndicator {
+    /** The node's number; of a removed node, the one it had. */
     num: string
-    kind: 'changed' | 'added'
+    kind: 'changed' | 'added' | 'removed'
+    /** A removed node's id. */
+    id?: string
     /** The change carries out a task: the node now has the agent's Done tag. */
     done?: boolean
     /** The node's own kind mark after the change, when it differs from the one it shows now. */
@@ -47,9 +50,12 @@ interface Props {
     /** The viewer state's `seen`: the read items the user marked as read are in it. */
     seen: Record<string, number>
     onOpen: (item: QueueItem, color: string) => void
-    /** The changes the viewer has not opened, in outline order. */
+    /** The changes the viewer has not opened, in the order to show them. */
     changes: ChangeIndicator[]
-    onOpenUnread: (num: string) => void
+    onOpenUnread: (change: ChangeIndicator) => void
+    /** How the changes are ordered, and the viewer's choice of it; without `onOrder` there is no choice (file mode has no times). */
+    order: 'number' | 'time'
+    onOrder?: (order: 'number' | 'time') => void
     /** False until the viewer state has loaded: what the column shows then is not new. */
     ready: boolean
     /** At the bottom of the column: the inbox. */
@@ -82,15 +88,16 @@ function EntryButton({ entry: e }: { entry: Entry }) {
  * On top, the action queue: the actions that wait for the user, most important first, each drawn with the kind mark of
  * its node. It is always shown in full; past the window's height the column scrolls.
  *
- * Below, the change indicators: one for each change the viewer has not opened, in outline order. It is drawn with what
- * opening the change brings: the node's new kind mark when that changes, a plus over a minus when only its wording
- * does, a plus for a node that was added. A node that has an action item shows once, among the actions: the item
+ * Below, the change indicators: one for each change the viewer has not opened, in outline order or, by the button on
+ * the divider, the oldest change first. It is drawn with what opening the change brings: the node's new kind mark
+ * when that changes, a plus over a minus when only its wording does, a plus for a node that was added, a minus for
+ * one that was removed. A node that has an action item shows once, among the actions: the item
  * leads to the same row, where the diff button is. The indicators get the room that is left; those that do not fit
  * are counted on an ellipsis at the end, which lists them, and the count pulses when a new one lands there.
  *
  * Items that arrive while the page is open slide in from the right edge of the window.
  */
-export function QueueColumn({ queue, statuses, runs, seen, onOpen, changes: waitingChanges, onOpenUnread, ready, footer }: Props) {
+export function QueueColumn({ queue, statuses, runs, seen, onOpen, changes: waitingChanges, onOpenUnread, order, onOrder, ready, footer }: Props) {
     const changed = new Set(waitingChanges.map(c => c.num))
     const actions: Entry[] = waiting(queue, statuses, runs, seen).map(({ item, missing }) => {
         const kind = KINDS[item.kind]
@@ -108,20 +115,22 @@ export function QueueColumn({ queue, statuses, runs, seen, onOpen, changes: wait
     })
     const asked = new Set(actions.map(a => a.num))
     const changes: Entry[] = waitingChanges
-        .filter(c => !asked.has(c.num))
-        .map(({ num, kind, done, mark }) => {
+        .filter(c => c.kind === 'removed' || !asked.has(c.num))
+        .map(change => {
+            const { num, kind, id, done, mark } = change
             const added = kind === 'added'
-            const label = added ? 'Added since you last looked' : mark ? `Changed since you read it, to: ${KEY_TITLE[mark]}` : `Changed since you read it${done ? ', and now done' : ''}`
+            const removed = kind === 'removed'
+            const label = removed ? 'Removed since you last looked' : added ? 'Added since you last looked' : mark ? `Changed since you read it, to: ${KEY_TITLE[mark]}` : `Changed since you read it${done ? ', and now done' : ''}`
             return {
-                key: `unread:${num}`,
+                key: removed ? `removed:${id}` : `unread:${num}`,
                 num,
                 label,
-                title: `${label}: ${num} (shows the node; click its diff button to ${added ? 'open it' : 'see the change'})`,
+                title: `${label}: ${num} (shows ${removed ? 'where it stood; click its minus to let it go' : `the node; click its diff button to ${added ? 'open it' : 'see the change'}`})`,
                 // A change whose new content has the Done tag is an action carried out: yellow, as the node's own diff button is.
                 color: mark ? MARK_COLOR[markOfKey(mark)] : done ? 'var(--done)' : 'var(--claim)',
-                icon: added ? PLUS_ICON : mark ? keyIcon(mark) : DIFF_ICON,
-                open: () => onOpenUnread(num),
-                data: { 'data-unread': num, 'data-change': kind, ...(mark ? { 'data-mark': mark } : {}), ...(done ? { 'data-done': '' } : {}) },
+                icon: removed ? MINUS_ICON : added ? PLUS_ICON : mark ? keyIcon(mark) : DIFF_ICON,
+                open: () => onOpenUnread(change),
+                data: { ...(removed ? { 'data-removed-item': id ?? '' } : { 'data-unread': num }), 'data-change': kind, ...(mark ? { 'data-mark': mark } : {}), ...(done ? { 'data-done': '' } : {}) },
             }
         })
 
@@ -132,11 +141,13 @@ export function QueueColumn({ queue, statuses, runs, seen, onOpen, changes: wait
     const [room, setRoom] = useState(Infinity)
     const [tall, setTall] = useState(false)
     const hasActions = actions.length > 0
+    // The divider is there between the two queues, and whenever there is an order to choose.
+    const divided = changes.length > 0 && (hasActions || !!onOrder)
     useLayoutEffect(() => {
         const el = col.current
         if (!el) return
         const measure = () => {
-            const above = top.current ? top.current.offsetHeight + DIVIDER : 0
+            const above = (top.current?.offsetHeight ?? 0) + (divided ? DIVIDER : 0)
             const free = el.clientHeight - (foot.current?.offsetHeight ?? 0) - above
             setRoom(Math.max(1, Math.floor((free + GAP) / (ITEM + GAP))))
             // The action queue is never cut: when it alone is higher than the column, the column scrolls.
@@ -148,7 +159,7 @@ export function QueueColumn({ queue, statuses, runs, seen, onOpen, changes: wait
         if (foot.current) ro.observe(foot.current)
         measure()
         return () => ro.disconnect()
-    }, [hasActions])
+    }, [hasActions, divided])
     const shown = changes.length <= room ? changes : changes.slice(0, room - 1)
     const hidden = changes.slice(shown.length)
     const [moreOpen, setMoreOpen] = useState(false)
@@ -186,7 +197,23 @@ export function QueueColumn({ queue, statuses, runs, seen, onOpen, changes: wait
                         ))}
                     </ol>
                 )}
-                {hasActions && changes.length > 0 && <hr data-queue-divider className="my-1.5 w-16 shrink-0 border-t" />}
+                {divided && (
+                    <div data-queue-divider className="my-1.5 flex h-3.5 w-16 shrink-0 items-center gap-1">
+                        <hr className={cn('flex-1 border-t', !hasActions && 'invisible')} />
+                        {onOrder && (
+                            <button
+                                type="button"
+                                data-queue-order={order}
+                                title={order === 'time' ? 'Changes: the oldest first. Click to order them as the outline is' : 'Changes: in the outline’s order. Click to put the oldest first'}
+                                aria-label={order === 'time' ? 'Order the changes as the outline is' : 'Order the changes by time'}
+                                className="rounded text-muted-foreground hover:text-foreground [&_svg]:size-3.5"
+                                onClick={() => onOrder(order === 'time' ? 'number' : 'time')}
+                            >
+                                {order === 'time' ? <Clock aria-hidden="true" /> : <ArrowDown01 aria-hidden="true" />}
+                            </button>
+                        )}
+                    </div>
+                )}
                 {changes.length > 0 && (
                     <ol aria-label="Changes to open" className="flex shrink-0 flex-col gap-1">
                         {shown.map(e => (

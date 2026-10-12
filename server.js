@@ -2,7 +2,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload } from './outline.js'
+import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload , inlineHtml } from './outline.js'
 import { HISTORY_DIR, createHistory } from './history.js'
 import { loadConfig } from './config.js'
 import { attachTerminals, endTerminal, fromLocalPage, hasSession, sendToTerminal, stopInTerminal } from './terminal.js'
@@ -128,6 +128,7 @@ const agent = createAgentApi({
     },
     onMessages: (project, file) => pushNotes(project, file),
     onLedger: () => pushOutlines(),
+    viewerRead: (project, file) => viewerState.read(project, file).read,
     typeInto: sendToTerminal,
     prompting: (project, file) => permissions.list(project, file).length > 0,
 })
@@ -248,7 +249,9 @@ function readOutline(project, file) {
     const unacked = outline.mode === 'server' ? agent.unacknowledged(project, file) : []
     // Only the server gives a placeholder title: an outline in file mode has the title its agent wrote.
     const untitled = outline.mode === 'server' && agent.untitled(project, file)
-    return { project, file, ...outline, unacked, untitled, folder: (outline.session && sessionFolder(outline.session)) || '', terminalTab: terminalEnabled && !!outline.terminal }
+    // The changes that wait on the page: the server knows what its agent took out, and when it changed each node.
+    const { removed, changedAt } = outline.mode === 'server' ? agent.changes(project, file) : { removed: [], changedAt: {} }
+    return { project, file, ...outline, unacked, untitled, removed: removed.map(t => ({ ...t, titleHtml: inlineHtml(t.title) })), changedAt, folder: (outline.session && sessionFolder(outline.session)) || '', terminalTab: terminalEnabled && !!outline.terminal }
 }
 
 /**

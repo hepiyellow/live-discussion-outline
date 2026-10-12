@@ -17,6 +17,13 @@ export const PLUS_ICON = (
     </svg>
 )
 
+/** The icon of a node removed since the viewer last looked, in the queue column and on the removed row: a minus. */
+export const MINUS_ICON = (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+        <path d="M3.5 8h9" />
+    </svg>
+)
+
 /**
  * How each kind of item of the action queue is drawn: with the kind mark of the node it asks about, as that node shows
  * it at the right of its title, and in that mark's color. A claim to approve is the outlined sparkle, a question to

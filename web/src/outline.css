@@ -480,6 +480,11 @@ button.ck[data-state='open']:hover { border-color: var(--tick); }
 .row .env[data-done] { background: color-mix(in srgb, var(--done) 22%, transparent); color: var(--done); }
 .row .env[data-done]:hover { background: color-mix(in srgb, var(--done) 38%, transparent); }
 .row.leaf > .env { align-self: start; margin-top: 13px; }
+/* A node the agent took out, where it stood, until the viewer has seen it go: dimmed, its old number struck through. */
+.row.leaf.removed, .topic-head.removed { color: var(--muted-foreground); }
+.row.leaf.removed > .num, .row.leaf.removed > .node-title, .topic-head.removed > .node-title { opacity: 0.7; }
+.removed .removed-count { font-weight: 400; font-size: 12px; }
+.topic-head.removed { position: relative; }
 /* A topic has no indent: its diff button sits in the page's margin, as far left of the topic as a node's is of the node.
    The current topic's line is inset, so it moves nothing and the button needs no offset for it. */
 .topic-head > .env {

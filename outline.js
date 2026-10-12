@@ -222,6 +222,9 @@ export function countCheckboxProgress(source) {
     return counts
 }
 
+/** A title as inline HTML, as a node's own is rendered. */
+export const inlineHtml = text => md.renderInline(text)
+
 const mdPlain = new MarkdownIt({ html: false, linkify: true })
 
 /** Markdown as a plain preview (the Markdown tab, transcript messages). */

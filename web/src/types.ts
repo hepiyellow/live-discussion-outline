@@ -47,6 +47,26 @@ export interface HistoryEntry {
 }
 
 /**
+ * A node the agent took out of the outline that the viewer had read (server mode): the page keeps its row where it
+ * stood, struck through, until they have seen it go.
+ */
+export interface RemovedNode {
+    id: string
+    /** When it was taken out, in ms since the epoch. */
+    at: number
+    /** The number it had. The nodes after it carry their new numbers, so another node may have this one now. */
+    num: string
+    title: string
+    titleHtml: string
+    /** The number, as it is now, of the node it stood under; empty for a topic. */
+    parent: string
+    /** Its place among the nodes it stood with. */
+    index: number
+    /** How many nodes went with it. */
+    count: number
+}
+
+/**
  * An item of the action queue: a pending action of a node. In server mode the server lists them from the nodes and the
  * agent orders them; an agent in file mode writes the queue itself, and may queue a node only to be read.
  */
@@ -85,6 +105,10 @@ export interface Outline {
     mode: Mode
     /** The `Archived:` line: the day the user archived the outline. Empty when it is not archived. */
     archived: string
+    /** Server mode: the nodes the agent took out that the viewer had read. */
+    removed: RemovedNode[]
+    /** Server mode: node number → when the agent last changed that node, in ms since the epoch. */
+    changedAt: Record<string, number>
     /** Server mode: the nodes whose tick the user changed and the agent has not acknowledged yet. They show as pending. */
     unacked: string[]
     /** The folder the linked session runs in, from its transcript. */
@@ -124,7 +148,7 @@ export interface ViewerState {
     read: Record<string, string>
     /** Node number → 1 once the viewer asked the agent to run that action. */
     runs: Record<string, number | string>
-    /** Message id → 1 once seen in an inbox. */
+    /** Message id → 1 once seen in an inbox; `removed:<id>` → 1 once the viewer saw a removed node go. */
     seen: Record<string, number>
     undo: UndoStep[]
     /** The input box's text. */
@@ -133,6 +157,8 @@ export interface ViewerState {
     chips: Chip[]
     /** The tab shown. */
     tab: TabName
+    /** How the change indicators of the queue column are ordered: as the outline is, or the oldest change first. */
+    order: 'number' | 'time'
 }
 
 /** The page's tabs: Outline, Markdown, Transcript and Terminal. */

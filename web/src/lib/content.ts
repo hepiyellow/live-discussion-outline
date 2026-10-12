@@ -74,7 +74,8 @@ export interface NodeContent {
 const SEP = '\u0001'
 
 const wordingOf = (node: OutlineNode) => `${node.titleHtml}${SEP}${contentHtml(node)}`
-const kindOf = (node: OutlineNode): KindRead => ({ tags: AGENT_TAGS.filter(t => node.tags.includes(t)), closing: node.closing.map(c => c.kind) })
+/** A parent's claim is not its own: it follows the nodes under it, and changes with them, so it is not part of its kind. */
+const kindOf = (node: OutlineNode): KindRead => ({ tags: AGENT_TAGS.filter(t => node.tags.includes(t) && !(t === 'claim' && node.children.length)), closing: node.closing.map(c => c.kind) })
 
 /**
  * A node as the viewer reads it, as one string: what the viewer state keeps of each node they have read. Its title,
@@ -100,7 +101,7 @@ export function isRead(version: string, node: OutlineNode) {
     const was = parseVersion(version).kind
     if (!was) return true
     const now = kindOf(node)
-    const tags = (kind: KindRead) => kind.tags.filter(t => t !== 'claim' || !node.tags.includes('approved')).join()
+    const tags = (kind: KindRead) => kind.tags.filter(t => t !== 'claim' || !(node.tags.includes('approved') || node.children.length)).join()
     return tags(was) === tags(now) && was.closing.join() === now.closing.join()
 }
 

@@ -5,11 +5,11 @@ import { copyText } from '@/lib/send'
 import type { Statuses } from '@/lib/status'
 import { DONE_PILL, FAILED_PILL, liveHtml, type NodeContent } from '@/lib/content'
 import type { Box, KindKey, MarksChange } from '@/lib/status'
-import type { Message, OutlineNode, QueueItem } from '@/types'
+import type { Message, OutlineNode, QueueItem, RemovedNode } from '@/types'
 import { NodeMessages } from './Inbox'
 import { useNotify } from './Notice'
 import type { PendingChange } from '@/lib/pending'
-import { DIFF_ICON, PLUS_ICON } from './queue'
+import { DIFF_ICON, MINUS_ICON, PLUS_ICON } from './queue'
 import { Marks, StatusBox, type OwnRole } from './StatusBox'
 
 /** What every node of the Outline tab needs: statuses, which nodes are open, the current path, and the user's actions. */
@@ -40,6 +40,12 @@ export interface OutlineContext {
     opening: Set<string>
     /** A click on a node's diff button: opens its own change and every change under it. */
     onOpenChange: (node: OutlineNode) => void
+    /** The nodes taken out since the viewer last looked that stood directly under a node (`''`: the topics). */
+    removedIn: (parent: string) => RemovedNode[]
+    /** How many nodes were taken out anywhere under a node. */
+    removedUnder: (num: string) => number
+    /** A click on a removed row's minus: the viewer has seen it go. */
+    onSeenRemoved: (node: RemovedNode) => void
     /** The nodes under a node with a change to open, and opening them all. */
     unreadUnder: (num: string) => string[]
     onOpenUnreadUnder: (node: OutlineNode) => void
@@ -283,9 +289,9 @@ function Asks({ node }: { node: OutlineNode }) {
  * nodes. A click opens the node's change and every change under it.
  */
 function Diff({ node }: { node: OutlineNode }) {
-    const { pending, unreadUnder, isOpen, onOpenChange } = useOutlineCtx()
+    const { pending, unreadUnder, removedUnder, isOpen, onOpenChange } = useOutlineCtx()
     const own = pending.get(node.num)
-    const under = !own && node.children.length > 0 && !isOpen(node) ? unreadUnder(node.num).length : 0
+    const under = !own && !isOpen(node) ? unreadUnder(node.num).length + removedUnder(node.num) : 0
     if (!own && !under) return null
     const added = own?.kind === 'added'
     const title = added
@@ -384,8 +390,63 @@ const useShown = (node: OutlineNode): NodeContent => {
 /** Clicks on controls, and text being selected, do not toggle a row. */
 const isRowClick = (e: MouseEvent) => !(e.target as Element).closest('input,button,a,.extras') && !String(getSelection()).trim()
 
-export function NodeList({ nodes }: { nodes: OutlineNode[] }) {
-    return <div className="nodes">{nodes.map(n => (n.children.length ? <Group key={n.num} node={n} /> : <Leaf key={n.num} node={n} />))}</div>
+/**
+ * The nodes under a node (`under`: its number, or `''` for the topics), with the rows of those taken out since the
+ * viewer last looked, each where it stood.
+ */
+export function withRemoved<T>(rows: T[], removed: RemovedNode[]): (T | RemovedNode)[] {
+    const out: (T | RemovedNode)[] = [...rows]
+    // A place is one among the nodes that stayed: each removed row put in before it moves the later ones along.
+    ;[...removed].sort((a, b) => a.index - b.index).forEach((r, k) => out.splice(Math.min(r.index + k, out.length), 0, r))
+    return out
+}
+
+export const isRemoved = (row: OutlineNode | RemovedNode): row is RemovedNode => 'id' in row
+
+export function NodeList({ nodes, under }: { nodes: OutlineNode[]; under: string }) {
+    const { removedIn } = useOutlineCtx()
+    return (
+        <div className="nodes">
+            {withRemoved(nodes, removedIn(under)).map(n =>
+                // A node whose only nodes were taken out is still drawn as a parent: their rows stand under it.
+                isRemoved(n) ? <RemovedRow key={`removed:${n.id}`} node={n} /> : n.children.length || removedIn(n.num).length ? <Group key={n.num} node={n} /> : <Leaf key={n.num} node={n} />,
+            )}
+        </div>
+    )
+}
+
+/**
+ * A node the agent took out, where it stood: its old number struck through, its title, and the minus that lets it go.
+ * It is not a node of the outline any more: it is not counted, and the nodes after it carry their new numbers.
+ */
+export function RemovedRow({ node, topic }: { node: RemovedNode; topic?: boolean }) {
+    const { onSeenRemoved } = useOutlineCtx()
+    return (
+        <div className={topic ? 'topic-head removed' : 'row leaf removed'} data-removed={node.id}>
+            <button
+                type="button"
+                className="env"
+                data-change="removed"
+                title="Removed since you last looked: click to let it go"
+                aria-label={`Let the removed node ${node.num} go`}
+                onClick={e => {
+                    e.stopPropagation()
+                    onSeenRemoved(node)
+                }}
+            >
+                {MINUS_ICON}
+            </button>
+            {!topic && (
+                <span className="num">
+                    <s>{node.num}</s>
+                </span>
+            )}
+            <span className="node-title">
+                {topic && <s>{node.num}.</s>} <span className="title-html" dangerouslySetInnerHTML={{ __html: node.titleHtml }} />
+                {node.count > 0 && <span className="removed-count"> and {node.count} under it</span>}
+            </span>
+        </div>
+    )
 }
 
 /** A node with children: a header row that sticks while they scroll by, and collapses them. */
@@ -427,7 +488,7 @@ function Group({ node }: { node: OutlineNode }) {
             <div className="kids" hidden={!open}>
                 {/* Kept when empty: the diff animation may fill it. */}
                 <NodeText node={node} className="group-text node-html" html={shown.html} hidden={!shown.html} />
-                <NodeList nodes={node.children} />
+                <NodeList nodes={node.children} under={node.num} />
             </div>
         </div>
     )
@@ -498,7 +559,7 @@ export function Topic({ node }: { node: OutlineNode }) {
             <div className="topic-body" hidden={!open}>
                 {/* Kept when empty: the diff animation may fill it. */}
                 <NodeText node={node} className="topic-text node-html" html={shown.html} hidden={!shown.html} />
-                {node.children.length > 0 && <NodeList nodes={node.children} />}
+                <NodeList nodes={node.children} under={node.num} />
             </div>
         </section>
     )

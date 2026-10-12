@@ -42,6 +42,9 @@ const today = () => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** Most removed nodes an outline's ledger keeps for the page; past this the oldest go. */
+const MAX_REMOVED = 100
+
 /** The title of an outline opened before its conversation has a subject; the agent names it once it has one. */
 const UNTITLED = 'Untitled'
 
@@ -100,8 +103,9 @@ export function markLedgered(root) {
  * @param tickPause how long after the user's last tick the agent is told of the ticks, in ms
  * @param onLedger (project, file) => called after the ticks the agent has not acknowledged changed
  * @param prompting (project, file) => whether a permission prompt of the outline's session waits for the user
+ * @param viewerRead (project, file) => what the viewer has read of the outline, by node number (state.js `read`)
  */
-export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onMessages = () => {}, typeInto, tickPause = TICK_PAUSE, onLedger = () => {}, prompting = () => false }) {
+export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onMessages = () => {}, typeInto, tickPause = TICK_PAUSE, onLedger = () => {}, prompting = () => false, viewerRead = () => ({}) }) {
     const fileOf = (project, file) => path.join(root, project, `${file}.md`)
     /** When this server started, as the transcripts write times. */
     const started = new Date().toISOString()
@@ -124,6 +128,11 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
      * - untitled: true while the outline has the placeholder title, which the agent may still replace
      * - sessionName: the title the user gave on the page that the linked session is still to be renamed to (nameSession)
      * - renamedTo: the title the server last renamed the linked session to; that command's output is not a message
+     * - removed: the nodes the agent took out that the viewer had read: `{ id, at, num, title, parent, index, count }`,
+     *   the number and title each had, the parent it stood under (by the parent's number now) and its place there, and
+     *   how many nodes went with it. The page shows each as a removed row until the user has seen it go
+     * - changedAt: node number → when the agent last changed that node, in ms: the order of the page's change
+     *   indicators by time
      */
     function readLedger(project, file) {
         const ledger = { events: [], unacked: {}, shown: {}, messages: [], cwd: '' }
@@ -460,6 +469,24 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             throw new Refusal(sections(`Nothing was applied. ${e.message}`, e.hint, e.text, events))
         }
         normalize(model, result.touched)
+        const live = new Set(allNodes(model.nodes).map(n => n.num))
+        // What the page needs beside the outline to show this change as one that waits (the removed rows, and when
+        // each node changed) is written first: the write of the outline is what sends both to the open pages.
+        const moved = num => result.renumbered.get(num) ?? num
+        const read = viewerRead(at.project, at.file)
+        const now = Date.now()
+        ledger.removed = [
+            ...(ledger.removed ?? []).filter(t => !result.removed.includes(t.parent)).map(t => ({ ...t, parent: t.parent && moved(t.parent) })),
+            // Only what the viewer had read: a node that came and went before they looked was never there for them.
+            ...result.taken.filter(t => t.num in read).map(t => ({ id: crypto.randomUUID().slice(0, 8), at: now, ...t })),
+        ]
+            .filter(t => !t.parent || live.has(t.parent))
+            .slice(-MAX_REMOVED)
+        const changedAt = {}
+        for (const [num, at_] of Object.entries(ledger.changedAt ?? {})) if (!result.removed.includes(num) && live.has(moved(num))) changedAt[moved(num)] = at_
+        for (const num of result.touchedAll) if (live.has(num)) changedAt[num] = now
+        ledger.changedAt = changedAt
+        writeLedger(at.project, at.file, ledger)
         writeModel(at.project, at.file, model)
         // The action log: first what became of the numbers, then what the user decided in chat, by the numbers the
         // nodes have now.
@@ -471,7 +498,6 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         )
 
         // Children of a renumbered or rolled-up node keep the hash they had; nodes that are gone lose theirs.
-        const live = new Set(allNodes(model.nodes).map(n => n.num))
         ledger.shown = Object.fromEntries(Object.entries(shown).filter(([num]) => live.has(num)))
         if (result.messages.length) {
             const at_ = new Date().toISOString()
@@ -699,6 +725,12 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         if (event.kind === 'renamed') nameSession(project, file)
     }
 
+    /** What the page shows beside the outline for the changes that wait: the nodes taken out, and when each node changed. */
+    function changes(project, file) {
+        const ledger = readLedger(project, file)
+        return { removed: ledger.removed ?? [], changedAt: ledger.changedAt ?? {} }
+    }
+
     /** Whether the outline still has the placeholder title: the page then shows the field that names it. */
     const untitled = (project, file) => !!readLedger(project, file).untitled
 
@@ -727,5 +759,5 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         }
     }
 
-    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, nameSession, untitled, messages, unacknowledged, commands, outlineOf, note, actions: actionLog.read }
+    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, nameSession, untitled, changes, messages, unacknowledged, commands, outlineOf, note, actions: actionLog.read }
 }

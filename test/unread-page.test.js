@@ -319,3 +319,118 @@ describe('unread changes', () => {
         assert.match(await text('2.3'), /and the index version/)
     })
 })
+
+// What only the server knows of a change: that its agent took a node out, and when it changed each node. So these run
+// on an outline in server mode, changed through the agent's API as its tools do.
+describe('removed nodes, and the order of the changes, in server mode', () => {
+    let server, browser, page
+    before(async () => {
+        server = await startServer()
+        browser = await launchBrowser()
+    })
+    after(async () => {
+        await browser?.close()
+        await server?.stop()
+    })
+    beforeEach(async () => {
+        server.swap('demo/sample', 'demo/sample', 'server')
+        server.resetState()
+        fs.rmSync(path.join(server.dir, '.ledger'), { recursive: true, force: true })
+        page = await browser.newPage({ viewport: { width: 1200, height: 900 } })
+        const errors = []
+        page.on('pageerror', e => errors.push(e))
+        page.checkErrors = () => {
+            if (errors.length) throw errors[0]
+        }
+        await page.goto(`${server.url}/demo/sample`)
+        await page.locator('[data-topbar] [data-title]').waitFor()
+        await until(async () => Object.keys((await (await fetch(`${server.url}/api/state/demo/sample`)).json()).read).length >= 20, { what: 'the first visit to be recorded' })
+    })
+    afterEach(async () => {
+        page.checkErrors()
+        await page.close()
+    })
+
+    const node = num => page.locator(`.outline-tab [data-num="${num}"]`)
+    /** A change of the outline, as the agent's `change` tool sends it. */
+    const change = async ops => {
+        const res = await fetch(`${server.url}/api/agent/change`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-outline-agent': '1' }, body: JSON.stringify({ outline: 'demo/sample', ops }) })
+        const result = await res.json()
+        assert.equal(result.ok, true, result.text)
+        return result
+    }
+    /** The rows under topic 2, in the order they are drawn: a node's number, or `-` and the number a removed one had. */
+    const rows = () =>
+        page.locator('.outline-tab .topic:has(> [data-num="2"]) > .topic-body > .nodes').evaluate(list => [...list.children].map(el => (el.matches('[data-removed]') ? `-${el.querySelector('s').textContent}` : (el.dataset.num ?? el.querySelector('[data-num]').dataset.num))))
+
+    test('a node the agent takes out stays where it stood, struck through with a minus, until the minus is clicked', async () => {
+        const title = await node('2.4').locator('.title-html').textContent()
+        await change([{ op: 'remove', num: '2.3' }])
+        const row = page.locator('.outline-tab [data-removed]')
+        await row.waitFor()
+        // Its row is where it was. The nodes after it carry their new numbers at once, and that is not a change to open.
+        assert.deepEqual(await rows(), ['2.1', '2.2', '-2.3', '2.3', '2.4'])
+        assert.equal(await row.locator('.title-html').textContent(), 'Cache key')
+        assert.equal(await node('2.3').locator('.title-html').textContent(), title)
+        assert.equal(await page.locator('.outline-tab [data-num] > .env').count(), 0)
+        // The column has its indicator, a minus, which shows the row and points at its minus.
+        const indicator = page.locator('[aria-label="Changes to open"] [data-removed-item]')
+        assert.equal(await indicator.getAttribute('data-change'), 'removed')
+        assert.equal((await indicator.textContent()).trim(), '2.3')
+        await indicator.click()
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-removed] > .env')?.hasAttribute('data-pulse'))
+        // The minus lets it go, for good.
+        await row.locator('> .env').click()
+        await row.waitFor({ state: 'detached' })
+        assert.equal(await indicator.count(), 0)
+        assert.deepEqual(await rows(), ['2.1', '2.2', '2.3', '2.4'])
+        await page.reload()
+        await node('2.4').waitFor()
+        assert.equal(await page.locator('.outline-tab [data-removed]').count(), 0)
+    })
+
+    test('a parent taken out is one row that counts what went with it; a closed parent shows the diff button for a removal under it', async () => {
+        await change([{ op: 'remove', num: '3.1' }])
+        const row = page.locator('.outline-tab [data-removed]')
+        await row.waitFor()
+        assert.equal(await row.count(), 1)
+        assert.match(await row.textContent(), /Events that drop entries\s+and 4 under it/)
+        // Collapsed, topic 3 says something waits under it, and a click on its button opens that too.
+        await node('3').click()
+        const button = node('3').locator('> .env')
+        await button.waitFor()
+        assert.match(await button.getAttribute('title'), /^1 change under this node/)
+        await button.click()
+        await page.locator('[data-removed-item]').waitFor({ state: 'detached' })
+        await node('3').click()
+        assert.equal(await page.locator('.outline-tab [data-removed]').count(), 0)
+    })
+
+    test('a node that came and went before the viewer opened it leaves no row', async () => {
+        await change([{ op: 'add', num: '2.6', title: 'Short lived' }])
+        await node('2.6').locator('> .env[data-change="added"]').waitFor()
+        await change([{ op: 'remove', num: '2.6' }])
+        await node('2.6').waitFor({ state: 'detached' })
+        assert.equal(await page.locator('.outline-tab [data-removed]').count(), 0)
+        assert.equal(await page.locator('[data-removed-item], [data-unread]').count(), 0)
+    })
+
+    test('the changes are in the outline’s order, or by the button on the divider the oldest first', async () => {
+        await change([{ op: 'add', num: '4.3', title: 'Then everyone' }])
+        await new Promise(r => setTimeout(r, 20))
+        await change([{ op: 'add', num: '2.6', title: 'Cache size' }])
+        const shown = () => page.locator('[aria-label="Changes to open"] [data-unread]').evaluateAll(els => els.map(e => e.dataset.unread))
+        await page.locator('[data-unread="2.6"]').waitFor()
+        assert.deepEqual(await shown(), ['2.6', '4.3'])
+        const order = page.locator('[data-queue-order]')
+        assert.equal(await order.getAttribute('data-queue-order'), 'number')
+        await order.click()
+        await page.locator('[data-queue-order="time"]').waitFor()
+        assert.deepEqual(await shown(), ['4.3', '2.6'])
+        // The choice is the viewer's, kept with the rest of what the page remembers for them.
+        assert.equal((await (await fetch(`${server.url}/api/state/demo/sample`)).json()).order, 'time')
+        await page.reload()
+        await page.locator('[data-queue-order="time"]').waitFor()
+        assert.deepEqual(await shown(), ['4.3', '2.6'])
+    })
+})

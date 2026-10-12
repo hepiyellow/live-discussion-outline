@@ -546,12 +546,13 @@ const depthOf = node => 1 + Math.max(0, ...node.children.map(depthOf))
  * (for the stale-write guard) and is kept up to date. Throws an OpError naming the operation that broke a rule; the
  * caller applies the operations to a copy, so a refused change leaves nothing behind.
  *
- * Returns what the result reports: the node last touched, notes, the numbers that changed, the messages to post, and
- * what the user decided in chat (`decisions`: approval log entries, each with its `node`, whose number may change yet).
+ * Returns what the result reports: the node last touched, notes, the numbers that changed, the messages to post, what
+ * was taken out (`taken`: each removed node with where it stood), and what the user decided in chat (`decisions`:
+ * approval log entries, each with its `node`, whose number may change yet).
  */
 export function applyOperations(model, ops, shown = {}) {
     if (!Array.isArray(ops) || !ops.length) throw new OpError('A change needs a list of operations.', 'Pass ops: [{ op: "add", … }, …].')
-    const result = { touched: '', touchedAll: [], notes: [], renumbered: new Map(), messages: [], removed: [], decisions: [], ordered: [] }
+    const result = { touched: '', touchedAll: [], notes: [], renumbered: new Map(), messages: [], removed: [], taken: [], decisions: [], ordered: [] }
     const touch = num => {
         result.touched = num
         result.touchedAll.push(num)
@@ -567,6 +568,7 @@ export function applyOperations(model, ops, shown = {}) {
         if (!map.size) return
         for (const item of model.queue) item.num = map.get(item.num) ?? item.num
         result.ordered = result.ordered.map(num => map.get(num) ?? num)
+        for (const taken of result.taken) taken.parent = map.get(taken.parent) ?? taken.parent
         const moved = Object.entries(shown).map(([num, hash]) => [map.get(num) ?? num, hash])
         for (const key of Object.keys(shown)) delete shown[key]
         Object.assign(shown, Object.fromEntries(moved))
@@ -684,8 +686,12 @@ export function applyOperations(model, ops, shown = {}) {
         remove(op) {
             const { node, parent } = get(op.num)
             const from = parent ? parent.children : model.nodes
-            from.splice(from.indexOf(node), 1)
             const gone = allNodes([node]).map(n => n.num)
+            // What was taken out and where it stood: the page keeps its row there until the user has seen it go. A node
+            // taken out with its parent goes with it.
+            result.taken = result.taken.filter(taken => !gone.includes(taken.parent))
+            result.taken.push({ num: node.num, title: `${node.option ? `(${node.option}) ` : ''}${node.title}`, parent: parent?.num ?? '', index: from.indexOf(node), count: gone.length - 1 })
+            from.splice(from.indexOf(node), 1)
             result.removed.push(...gone)
             for (const num of gone) delete shown[num]
             model.queue = model.queue.filter(item => !gone.includes(item.num))

@@ -15,7 +15,7 @@ describe('the state store', () => {
     after(() => fs.rmSync(root, { recursive: true, force: true }))
 
     test('an outline without state starts empty', () => {
-        assert.deepEqual(store.read('demo', 'sample'), { open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline' })
+        assert.deepEqual(store.read('demo', 'sample'), { open: {}, overrides: {}, sent: {}, backTo: {}, read: {}, runs: {}, seen: {}, undo: [], draft: '', chips: [], tab: 'outline', order: 'number' })
     })
 
     test('a patch changes single entries, and null deletes one', () => {

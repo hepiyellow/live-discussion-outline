@@ -11,7 +11,7 @@ import { UNTITLED, allNodes, currentPath, duplicateNums, isParent, nodeLabel, pa
 import { shownNodes } from '@/lib/pending'
 import { Statuses, type KindKey } from '@/lib/status'
 import { scrollToNode } from '@/lib/sticky'
-import type { Chip, Outline, OutlineNode, QueueItem, StatePatch, TabName, ViewerState } from '@/types'
+import type { Chip, Outline, OutlineNode, QueueItem, RemovedNode, StatePatch, TabName, ViewerState } from '@/types'
 import { InboxButton } from './Inbox'
 import { InputBox } from './InputBox'
 import { useNotify } from './Notice'
@@ -110,6 +110,13 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
     const { pending, unread, opening, openChange, unreadNums, unreadUnder, openUnreadUnder } = useUnread(outline, viewer, stateLoaded, patch)
     // The outline as the viewer sees it: a node whose change waits is as they read it, and an added one a bare row.
     const shown = useMemo(() => shownNodes(outline.nodes, pending), [outline, pending])
+    // The nodes taken out that the viewer has not seen go, each where it stood, as long as that place is shown.
+    const removed = useMemo<RemovedNode[]>(() => {
+        if (!stateLoaded) return []
+        const there = new Set(allNodes(shown).map(n => n.num))
+        return outline.removed.filter(t => !viewer.seen[`removed:${t.id}`] && (!t.parent || there.has(t.parent)))
+    }, [outline.removed, viewer.seen, shown, stateLoaded])
+    const removedUnder = useCallback((num: string) => removed.filter(t => t.parent === num || t.parent.startsWith(`${num}.`)), [removed])
     const actions = useMemo<NodeActions>(() => {
         // The rows hold the nodes as they are shown; what the user does applies to the node as it is. A node whose
         // change waits takes no approval: the user has not seen what they would approve.
@@ -128,7 +135,15 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
             pending,
             unread,
             opening,
-            onOpenChange: node => openChange(live(node)),
+            // A node's diff button opens everything under it: the nodes taken out there are seen to go with it.
+            onOpenChange: node => {
+                openChange(live(node))
+                const gone = removedUnder(node.num)
+                if (gone.length) onSeen(gone.map(t => `removed:${t.id}`))
+            },
+            removedIn: parent => removed.filter(t => t.parent === parent),
+            removedUnder: num => removedUnder(num).length,
+            onSeenRemoved: t => onSeen([`removed:${t.id}`]),
             unreadUnder,
             onOpenUnreadUnder: node => openUnreadUnder(live(node)),
             messagesFor,
@@ -136,23 +151,33 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
             onSeen,
             onReveal: (num: string, then?: (el: HTMLElement) => void, inside?: boolean) => revealRef.current(num, then, inside),
         }
-    }, [outline, linked, clickNode, clickTopic, run, onReference, onRemove, pending, unread, opening, openChange, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen])
+    }, [outline, linked, clickNode, clickTopic, run, onReference, onRemove, pending, unread, opening, openChange, removed, removedUnder, unreadUnder, openUnreadUnder, messagesFor, viewer.seen, onSeen])
     const statuses = useMemo(() => new Statuses(outline.nodes, viewer.overrides), [outline, viewer.overrides])
     /**
-     * The change indicators of the queue column, in outline order. One of a node whose own kind mark changes is drawn
-     * with the new mark, which is what opening the change brings.
+     * The change indicators of the queue column: in outline order, or the oldest change first when the viewer chose
+     * so (the server says when its agent changed each node). One of a node whose own kind mark changes is drawn with
+     * the new mark, which is what opening the change brings.
      */
     const changes = useMemo<ChangeIndicator[]>(() => {
         const was = new Statuses(shown, viewer.overrides)
         const before = new Map(allNodes(shown).map(n => [n.num, n]))
         const after = new Map(allNodes(outline.nodes).map(n => [n.num, n]))
         const keyOf = (s: Statuses, node?: OutlineNode): KindKey | undefined => node && (node.level === 1 ? s.topicBox(node) : s.box(node)).markKey
-        return unreadNums.map(num => {
-            const change = pending.get(num)!
-            const mark = change.kind === 'changed' ? keyOf(statuses, after.get(num)) : undefined
-            return { num, kind: change.kind, done: change.done, mark: mark && mark !== keyOf(was, before.get(num)) ? mark : undefined }
-        })
-    }, [outline, shown, viewer.overrides, statuses, unreadNums, pending])
+        const list: (ChangeIndicator & { at: number })[] = [
+            ...unreadNums.map(num => {
+                const change = pending.get(num)!
+                const mark = change.kind === 'changed' ? keyOf(statuses, after.get(num)) : undefined
+                return { num, kind: change.kind, done: change.done, mark: mark && mark !== keyOf(was, before.get(num)) ? mark : undefined, at: outline.changedAt[num] ?? 0 }
+            }),
+            ...removed.map(t => ({ num: t.num, kind: 'removed' as const, id: t.id, at: t.at })),
+        ]
+        const byNumber = (a: ChangeIndicator, b: ChangeIndicator) => {
+            const [x, y] = [a.num.split('.').map(Number), b.num.split('.').map(Number)]
+            for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? -1) !== (y[i] ?? -1)) return (x[i] ?? -1) - (y[i] ?? -1)
+            return 0
+        }
+        return list.sort((a, b) => (viewer.order === 'time' && a.at !== b.at ? a.at - b.at : byNumber(a, b)))
+    }, [outline, shown, viewer.overrides, viewer.order, statuses, unreadNums, pending, removed])
     const duplicates = useMemo(() => duplicateNums(outline.nodes), [outline])
 
     const onToggle = useCallback((node: OutlineNode, value: boolean) => patch({ open: { [node.num]: value } }), [patch])
@@ -196,6 +221,25 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
         if (!found) return notify('Not in the outline', true)
         const node = item.kind === 'read' ? allNodes(outline.nodes).find(n => n.num === item.num) : undefined
         if (node) onSeen([readId(item, node)])
+    }
+    /** The indicator of a removed node shows the row where it stood, and points at its minus. */
+    const openRemovedItem = (id: string) => {
+        const gone = removed.find(t => t.id === id)
+        if (!gone) return
+        flushSync(() => {
+            if (tab !== 'outline') setTab('outline')
+            if (gone.parent) patch({ open: Object.fromEntries(pathNums(gone.parent).map(n => [n, true])) })
+        })
+        const el = document.querySelector<HTMLElement>(`.outline-tab [data-removed="${CSS.escape(id)}"]`)
+        if (!el) return
+        setTimeout(() =>
+            scrollToNode(el, () => {
+                const env = el.querySelector<HTMLElement>(':scope > .env')
+                env?.removeAttribute('data-pulse')
+                void env?.offsetWidth
+                env?.setAttribute('data-pulse', '')
+            }),
+        )
     }
     /** An unread item shows its node, and points at its diff button: the change opens from there. */
     const openUnreadItem = (num: string) =>
@@ -262,7 +306,9 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                     seen={viewer.seen}
                     onOpen={openQueued}
                     changes={changes}
-                    onOpenUnread={openUnreadItem}
+                    onOpenUnread={change => (change.kind === 'removed' ? openRemovedItem(change.id ?? '') : openUnreadItem(change.num))}
+                    order={viewer.order}
+                    onOrder={outline.mode === 'server' ? order => patch({ order }) : undefined}
                     ready={stateLoaded}
                     footer={<InboxButton messages={session.messages} seen={viewer.seen} onSeen={onSeen} onReveal={reveal} />}
                 />

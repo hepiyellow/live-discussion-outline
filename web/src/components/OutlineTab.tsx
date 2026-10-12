@@ -5,7 +5,7 @@ import { markStuck } from '@/lib/sticky'
 import { cn } from '@/lib/utils'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
 import { NodeHistory } from './NodeHistory'
-import { OutlineCtx, Topic, type OutlineContext } from './NodeView'
+import { OutlineCtx, RemovedRow, Topic, isRemoved, withRemoved, type OutlineContext } from './NodeView'
 import { waiting } from './queue'
 import { RenameTitle } from './RenameTitle'
 
@@ -27,7 +27,25 @@ export const isOpenIn = (open: OpenNodes, statuses: Statuses) => (node: OutlineN
 /** The user's actions on nodes, from useApprovals. */
 export type NodeActions = Pick<
     OutlineContext,
-    'linked' | 'onCheck' | 'onTopicCheck' | 'onRun' | 'onReference' | 'onRemove' | 'pending' | 'unread' | 'opening' | 'onOpenChange' | 'unreadUnder' | 'onOpenUnreadUnder' | 'messagesFor' | 'seen' | 'onSeen' | 'onReveal'
+    | 'linked'
+    | 'onCheck'
+    | 'onTopicCheck'
+    | 'onRun'
+    | 'onReference'
+    | 'onRemove'
+    | 'pending'
+    | 'unread'
+    | 'opening'
+    | 'onOpenChange'
+    | 'removedIn'
+    | 'removedUnder'
+    | 'onSeenRemoved'
+    | 'unreadUnder'
+    | 'onOpenUnreadUnder'
+    | 'messagesFor'
+    | 'seen'
+    | 'onSeen'
+    | 'onReveal'
 >
 
 interface Props {
@@ -173,9 +191,7 @@ export function OutlineTab({ outline, shown, viewer, actions, onToggle }: Props)
                         {EMPTY[!actions.linked ? 'unlinked' : outline.mode === 'server' && !outline.session ? 'starting' : 'linked']}
                     </p>
                 )}
-                {shown.map(n => (
-                    <Topic key={n.num} node={n} />
-                ))}
+                {withRemoved(shown, actions.removedIn('')).map(n => (isRemoved(n) ? <RemovedRow key={`removed:${n.id}`} node={n} topic /> : <Topic key={n.num} node={n} />))}
             </div>
         </OutlineCtx.Provider>
     )
