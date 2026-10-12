@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { allNodes, currentPath } from '@/lib/outline'
+import { UNTITLED, allNodes, currentPath } from '@/lib/outline'
 import { SHOW_TITLE_CHECKBOX, Statuses, kindColumnsInView } from '@/lib/status'
 import { markStuck } from '@/lib/sticky'
+import { cn } from '@/lib/utils'
 import type { Outline, OutlineNode, ViewerState } from '@/types'
 import { NodeHistory } from './NodeHistory'
 import { OutlineCtx, Topic, type OutlineContext } from './NodeView'
 import { waiting } from './queue'
+import { RenameTitle } from './RenameTitle'
 
 /** Which topics and parents the viewer opened or closed; the rest follow the statuses' `startsOpen`. */
 export type OpenNodes = Record<string, boolean>
@@ -15,7 +17,10 @@ const SETTLE_PAUSE = 700
 
 export const isOpenIn = (open: OpenNodes, statuses: Statuses) => (node: OutlineNode) => (node.num in open ? open[node.num] : statuses.startsOpen(node))
 
-/** The Outline tab: the title, any text before the first topic, then the topics with their nodes. */
+/**
+ * The Outline tab: any text before the first topic, then the topics with their nodes. An outline nobody has named yet
+ * starts with the field that names it; once it has a title, the top bar shows it.
+ */
 /** The user's actions on nodes, from useApprovals. */
 export type NodeActions = Pick<OutlineContext, 'linked' | 'onCheck' | 'onTopicCheck' | 'onRun' | 'onReference' | 'onRemove' | 'unread' | 'opening' | 'onOpenUnread' | 'unreadUnder' | 'onOpenUnreadUnder' | 'messagesFor' | 'seen' | 'onSeen' | 'onReveal'>
 
@@ -117,9 +122,16 @@ export function OutlineTab({ outline, viewer, actions, onToggle }: Props) {
         <OutlineCtx.Provider value={ctx}>
             {historyOf && <NodeHistory project={outline.project} file={outline.file} node={historyOf} onClose={() => setHistoryOf(null)} />}
             <div ref={root} className="outline-tab" data-ck={SHOW_TITLE_CHECKBOX ? undefined : 'hidden'}>
+                {outline.untitled && (
+                    <h1 data-untitled className="mt-10 text-center text-xl font-semibold">
+                        <RenameTitle project={outline.project} file={outline.file} title="" className="mx-auto max-w-md">
+                            <span className="text-muted-foreground">{UNTITLED}</span>
+                        </RenameTitle>
+                    </h1>
+                )}
                 {outline.intro && <div className="outline-intro" dangerouslySetInnerHTML={{ __html: outline.intro }} />}
                 {!outline.intro && !outline.nodes.length && (
-                    <p data-empty role="status" className="mt-10 text-center text-sm text-muted-foreground">
+                    <p data-empty role="status" className={cn(outline.untitled ? 'mt-3' : 'mt-10', 'text-center text-sm text-muted-foreground')}>
                         {EMPTY[!actions.linked ? 'unlinked' : outline.mode === 'server' && !outline.session ? 'starting' : 'linked']}
                     </p>
                 )}

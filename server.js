@@ -129,11 +129,16 @@ const agent = createAgentApi({
     onMessages: (project, file) => pushNotes(project, file),
     onLedger: () => pushOutlines(),
     typeInto: sendToTerminal,
+    prompting: (project, file) => permissions.list(project, file).length > 0,
 })
 
 /** The permission prompts of the outlines' sessions that wait for the user (permission.js). */
 const permissions = createPermissions({
-    onChange: (project, file) => pushPermissions(project, file),
+    onChange(project, file) {
+        pushPermissions(project, file)
+        // A title that waited for a permission prompt to be answered (agent.js nameSession).
+        agent.nameSession(project, file)
+    },
     note: (project, file, text) => agent.note(project, file, text),
 })
 
@@ -241,7 +246,9 @@ function readOutline(project, file) {
     const outline = outlinePayload(fs.readFileSync(full, 'utf8'), { markdown: true })
     // In server mode a tick is pending until the agent acknowledges it (agent.js); in file mode the page works it out.
     const unacked = outline.mode === 'server' ? agent.unacknowledged(project, file) : []
-    return { project, file, ...outline, unacked, folder: (outline.session && sessionFolder(outline.session)) || '', terminalTab: terminalEnabled && !!outline.terminal }
+    // Only the server gives a placeholder title: an outline in file mode has the title its agent wrote.
+    const untitled = outline.mode === 'server' && agent.untitled(project, file)
+    return { project, file, ...outline, unacked, untitled, folder: (outline.session && sessionFolder(outline.session)) || '', terminalTab: terminalEnabled && !!outline.terminal }
 }
 
 /**
@@ -592,7 +599,8 @@ function renameOutline({ project, file, title }) {
     if (i < 0) throw new Error('This outline has no Title line.')
     lines[i] = `Title: ${name}${lines[i].endsWith('\r') ? '\r' : ''}`
     fs.writeFileSync(full, lines.join('\n'))
-    // In server mode the agent is told with the user's next prompt; in file mode it reads the line in its own file.
+    // In server mode the agent is told with the user's next prompt, and its session takes the name; in file mode it
+    // reads the line in its own file.
     if (extractHeaders(text).mode === 'server') agent.userEvent(project, file, { kind: 'renamed', title: name })
     return { title: name }
 }
@@ -666,7 +674,8 @@ function listMaps() {
             if (!f.endsWith('.md')) continue
             const full = path.join(ROOT, project.name, f)
             const slug = f.slice(0, -3)
-            out.push({ project: project.name, file: slug, ...summarize(full, slug), mtime: fs.statSync(full).mtimeMs })
+            const summary = summarize(full, slug)
+            out.push({ project: project.name, file: slug, ...summary, untitled: summary.mode === 'server' && agent.untitled(project.name, slug), mtime: fs.statSync(full).mtimeMs })
         }
     }
     return out.sort((a, b) => b.mtime - a.mtime)

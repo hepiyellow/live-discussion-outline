@@ -43,7 +43,7 @@ const today = () => {
 }
 
 /** The title of an outline opened before its conversation has a subject; the agent names it once it has one. */
-const UNTITLED = 'New outline'
+const UNTITLED = 'Untitled'
 
 /** What an agent does with an outline that has no name yet: nothing is asked of the user before they write. */
 const UNNAMED_NEXT =
@@ -99,8 +99,9 @@ export function markLedgered(root) {
  * @param typeInto async (terminal, text) => types a line into a session terminal; throws when there is none
  * @param tickPause how long after the user's last tick the agent is told of the ticks, in ms
  * @param onLedger (project, file) => called after the ticks the agent has not acknowledged changed
+ * @param prompting (project, file) => whether a permission prompt of the outline's session waits for the user
  */
-export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onMessages = () => {}, typeInto, tickPause = TICK_PAUSE, onLedger = () => {} }) {
+export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onMessages = () => {}, typeInto, tickPause = TICK_PAUSE, onLedger = () => {}, prompting = () => false }) {
     const fileOf = (project, file) => path.join(root, project, `${file}.md`)
     /** When this server started, as the transcripts write times. */
     const started = new Date().toISOString()
@@ -121,6 +122,8 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
      * - commandsAt: the time of the last local command looked at; those after it are still to become messages
      * - cwd: the working folder of the session that started it
      * - untitled: true while the outline has the placeholder title, which the agent may still replace
+     * - sessionName: the title the user gave on the page that the linked session is still to be renamed to (nameSession)
+     * - renamedTo: the title the server last renamed the linked session to; that command's output is not a message
      */
     function readLedger(project, file) {
         const ledger = { events: [], unacked: {}, shown: {}, messages: [], cwd: '' }
@@ -265,6 +268,33 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         telling.set(key, timer)
     }
 
+    /** The line that renames a Claude session: its own `/rename`, a local command, which takes no turn of the agent. */
+    const renameLine = title => `/rename ${title.replace(/[\x00-\x1f\x7f]/g, '').trim()}`
+
+    /**
+     * Gives the linked session the title the user gave the outline on the page, as the session's own name: `/rename`
+     * typed into its session terminal. Claude Code takes the command at its prompt and in the middle of a turn, but
+     * loses it while it is still starting, so the title waits in the ledger until the session's agent has attached. A
+     * line typed while a permission prompt waits would answer the prompt, so it waits for that too. Without a session
+     * terminal, or with one that is not running, the session keeps its name.
+     */
+    async function nameSession(project, file) {
+        if (!typeInto) return
+        try {
+            const ledger = readLedger(project, file)
+            if (!ledger.sessionName) return
+            const { terminal, session } = readModel(project, file).headers
+            if (!terminal || !session || prompting(project, file)) return
+            const line = renameLine(ledger.sessionName)
+            ledger.renamedTo = ledger.sessionName
+            delete ledger.sessionName
+            writeLedger(project, file, ledger)
+            if (line !== renameLine('')) await typeInto(terminal, line)
+        } catch {
+            // The session is not running, or the outline is gone.
+        }
+    }
+
     const sections = (...parts) => parts.filter(Boolean).join('\n\n')
 
     const resumeOf = sessionId => (sessionId && config.resumeTemplate ? config.resumeTemplate.replaceAll('{session}', sessionId) : '')
@@ -318,6 +348,8 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
             if (cwd) ledger.cwd = cwd
             const events = takeEvents(ledger)
             writeLedger(found.project, found.file, ledger)
+            // A title the user gave while the session was starting: the session takes it now.
+            nameSession(found.project, found.file)
             const map = mapText(model)
             return {
                 outline: `${found.project}/${found.file}`,
@@ -484,8 +516,10 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
      */
     function takeCommands(at, ledger) {
         const found = localCommandsSince(headersOf(at).session || '', ledger.commandsAt ?? started)
-        if (!found.length) return false
-        for (const c of found) ledger.messages.push({ id: c.id, at: c.at, num: '', text: c.command ? `\`${c.command}\`\n\n${c.output}` : c.output })
+        // The server's own renaming of the session (nameSession) is not news.
+        const news = found.filter(c => !(ledger.renamedTo && c.command === renameLine(ledger.renamedTo)))
+        if (!news.length) return false
+        for (const c of news) ledger.messages.push({ id: c.id, at: c.at, num: '', text: c.command ? `\`${c.command}\`\n\n${c.output}` : c.output })
         ledger.messages = ledger.messages.slice(-MAX_MESSAGES)
         ledger.commandsAt = found.at(-1).at
         return true
@@ -626,13 +660,23 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         return { text: '' }
     }
 
-    /** Something the user did to the outline outside its nodes (renaming it), for the agent to be told. */
+    /**
+     * Something the user did to the outline outside its nodes (renaming it), for the agent to be told. The linked
+     * session takes the outline's new title as its own name (nameSession).
+     */
     function userEvent(project, file, event) {
         const ledger = readLedger(project, file)
-        if (event.kind === 'renamed') ledger.untitled = false
+        if (event.kind === 'renamed') {
+            ledger.untitled = false
+            ledger.sessionName = event.title
+        }
         ledger.events.push({ at: Date.now(), num: '', ...event })
         writeLedger(project, file, ledger)
+        if (event.kind === 'renamed') nameSession(project, file)
     }
+
+    /** Whether the outline still has the placeholder title: the page then shows the field that names it. */
+    const untitled = (project, file) => !!readLedger(project, file).untitled
 
     /** The outline of a session, as the hooks find it: `{ project, file }`, or undefined when it has none in server mode. */
     const outlineOf = ({ session = '', cwd = '' }) => locate({ session: isSessionId(session) ? session : '', cwd })
@@ -659,5 +703,5 @@ export function createAgentApi({ root, config, linkBase, onWrite = () => {}, onM
         }
     }
 
-    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, messages, unacknowledged, commands, outlineOf, note, actions: actionLog.read }
+    return { start: tool(start), read: tool(read), change: tool(change), pending, reload, ending, open, act, userEvent, nameSession, untitled, messages, unacknowledged, commands, outlineOf, note, actions: actionLog.read }
 }

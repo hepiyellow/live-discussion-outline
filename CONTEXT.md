@@ -33,7 +33,7 @@ A skill that tells an agent how this user wants to work with an outline: when to
 _Avoid_: Template (a template is a workflow skill the plugin suggests), settings, preferences
 
 **Title**:
-The name of an outline session. The user gives it as the topic when starting the outline session, or else the agent gives it once the work has a subject; until then the outline has no title of its own and shows a placeholder. The user can rename it from the page.
+The name of an outline session. The user gives it as the topic when starting the outline session, or on the page afterwards; else the agent gives it once the work has a subject. Until then the outline is **untitled**: it has no title of its own, and the page shows the placeholder "Untitled" with the field that names it. The user can rename it from the page at any time. A title the user gives on the page is also given to the linked session, as that session's own name.
 _Avoid_: Name, heading (a heading is a node)
 
 **Node**:

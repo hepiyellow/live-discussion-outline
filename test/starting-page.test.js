@@ -136,7 +136,7 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         const { terminal, outline } = await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic: '', mode: 'server' })
         assert.match(outline.file, /^\d{4}-\d\d-\d\d-[0-9a-f]{8}$/)
         const file = path.join(server.dir, 'proj', `${outline.file}.md`)
-        assert.match(fs.readFileSync(file, 'utf8'), /^Title: New outline\n/)
+        assert.match(fs.readFileSync(file, 'utf8'), /^Title: Untitled\n/)
         const session = 'ffffffff-1111-4222-8333-444444444444'
         const attached = await agentStart({ session, terminal, cwd: path.join(scratch, 'proj'), project: 'proj' })
         assert.equal(attached.outline, `proj/${outline.file}`)
@@ -148,6 +148,63 @@ describe('a session started from New', { skip: !hasTmux && 'no tmux' }, () => {
         assert.match(named.text, /The outline is now named "Rate limiting"/)
         assert.match(fs.readFileSync(file, 'utf8'), /^Title: Rate limiting\n/)
         fs.rmSync(file)
+    })
+
+    test('an outline nobody has named shows the field that names it; the title then shows in the top bar, and the session takes it once its agent has attached', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        /** What the session terminal shows: a line typed into it is echoed there. */
+        const screen = terminal => execFileSync('tmux', ['capture-pane', '-p', '-t', `=${terminal}:`], { env: { ...process.env, ...tmuxEnv }, encoding: 'utf8' })
+        const { terminal, outline } = await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic: '', mode: 'server' })
+        const file = path.join(server.dir, 'proj', `${outline.file}.md`)
+        await page.goto(`${server.url}/proj/${outline.file}`)
+        // The field is above the empty message, and nothing else names the outline but the placeholder.
+        const field = page.locator('[data-untitled]')
+        assert.equal((await field.textContent()).trim(), 'Untitled')
+        assert.match(await page.locator('.outline-tab > [data-untitled]:first-child + [data-empty]').textContent(), /This outline is empty, and its agent is starting\./)
+        assert.equal(await page.locator('[data-topbar] [data-title]').count(), 0)
+        assert.equal(await page.title(), 'Untitled')
+        const row = pane().locator(`[data-pane-outline="proj/${outline.file}"]`)
+        assert.equal(await row.textContent(), 'Untitled')
+        // The pencil opens an empty box; Escape leaves the outline unnamed.
+        await field.getByRole('button', { name: 'Rename' }).click()
+        const box = field.getByRole('textbox', { name: 'Outline name' })
+        assert.equal(await box.inputValue(), '')
+        await box.press('Escape')
+        assert.equal((await field.textContent()).trim(), 'Untitled')
+        // Enter saves: the field goes, the empty message stays, and the top bar and the pane show the title.
+        await field.getByRole('button', { name: 'Rename' }).click()
+        await box.fill('Rate limiting')
+        await box.press('Enter')
+        await field.waitFor({ state: 'detached' })
+        assert.equal(await page.locator('[data-topbar] [data-title]').textContent(), 'Rate limiting')
+        assert.match(await page.locator('[data-empty]').textContent(), /This outline is empty/)
+        await until(async () => (await row.textContent()) === 'Rate limiting', { what: 'the pane to show the title' })
+        assert.match(fs.readFileSync(file, 'utf8'), /^Title: Rate limiting\n/)
+        // The session is still starting, and would lose the line: nothing is typed yet.
+        await new Promise(r => setTimeout(r, 400))
+        assert.doesNotMatch(screen(terminal), /\/rename/)
+        // Its agent attaches: the user's title stays, and the session is renamed to it.
+        const attached = await agentStart({ session: '99999999-1111-4222-8333-444444444444', terminal, cwd: path.join(scratch, 'proj'), project: 'proj', title: 'What the agent would call it' })
+        assert.match(attached.text, /Reattached to the outline "Rate limiting"/)
+        await until(() => /\/rename Rate limiting/.test(screen(terminal)), { what: 'the session to be renamed' })
+        fs.rmSync(file)
+    })
+
+    test('a title the agent gives takes the field away too, and is not typed into the session', async () => {
+        page = await openPage(browser, `${server.url}/`, { viewport: { width: 1280, height: 800 } })
+        const { terminal, outline } = await post({ kind: 'folder', path: path.join(scratch, 'proj'), topic: '', mode: 'server' })
+        await page.goto(`${server.url}/proj/${outline.file}`)
+        await page.locator('[data-untitled]').waitFor()
+        const session = '88888888-1111-4222-8333-444444444444'
+        await agentStart({ session, terminal, cwd: path.join(scratch, 'proj'), project: 'proj' })
+        await page.locator('[data-empty]').filter({ hasText: 'Write to the agent below to begin.' }).waitFor()
+        assert.equal(await page.locator('[data-untitled]').count(), 1)
+        await agentStart({ session, terminal, title: 'Named by the agent' })
+        await page.locator('[data-untitled]').waitFor({ state: 'detached' })
+        assert.equal(await page.locator('[data-topbar] [data-title]').textContent(), 'Named by the agent')
+        await new Promise(r => setTimeout(r, 400))
+        assert.doesNotMatch(execFileSync('tmux', ['capture-pane', '-p', '-t', `=${terminal}:`], { env: { ...process.env, ...tmuxEnv }, encoding: 'utf8' }), /\/rename/)
+        fs.rmSync(path.join(server.dir, 'proj', `${outline.file}.md`))
     })
 
     test('in file mode it shows at once, under its project, and turns into its outline when the outline names its terminal', async () => {

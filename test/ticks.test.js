@@ -90,3 +90,60 @@ describe('the user’s ticks reach the agent once the user pauses', () => {
         assert.match(api.pending({ outline: o.outline }).text, /approved 1\.1 At the gateway/)
     })
 })
+
+describe('a title the user gives on the page names the linked session', () => {
+    let root, api, typed, prompting
+    const session = n => `aaaaaaaa-2222-4333-8444-55555555555${n}`
+
+    before(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'outline-only-named-'))
+        typed = []
+        prompting = false
+        api = createAgentApi({ root, config: {}, linkBase: () => 'http://localhost:1', typeInto: async (terminal, text) => typed.push([terminal, text]), prompting: () => prompting })
+    })
+    after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+    test('as /rename typed into its session terminal, once its agent has attached: a session still starting loses what is typed', async () => {
+        const { project, file } = api.open({ project: 'shop', cwd: root, terminal: 'shop-1' })
+        assert.equal(api.untitled(project, file), true)
+        api.userEvent(project, file, { kind: 'renamed', title: 'Rate limiting' })
+        assert.equal(api.untitled(project, file), false)
+        await wait(10)
+        assert.deepEqual(typed, [])
+        const attached = api.start({ session: session(1), terminal: 'shop-1', cwd: root, project: 'shop', title: 'What the agent would call it' })
+        assert.match(attached.text, /renamed the outline to "Rate limiting"/)
+        await wait(10)
+        assert.deepEqual(typed, [['shop-1', '/rename Rate limiting']])
+        // Attached, a later rename is typed at once, as one line without control characters, and only once.
+        api.userEvent(project, file, { kind: 'renamed', title: 'Throttling\u001b[201~\nnow' })
+        await wait(10)
+        api.start({ session: session(1), terminal: 'shop-1' })
+        await wait(10)
+        assert.deepEqual(typed.slice(1), [['shop-1', '/rename Throttling[201~now']])
+    })
+
+    test('not while a permission prompt waits: the line would answer it', async () => {
+        typed.length = 0
+        const { project, file } = api.open({ project: 'shop', cwd: root, terminal: 'shop-2' })
+        api.start({ session: session(2), terminal: 'shop-2', cwd: root, project: 'shop' })
+        prompting = true
+        api.userEvent(project, file, { kind: 'renamed', title: 'Quotas' })
+        await wait(10)
+        assert.deepEqual(typed, [])
+        // The prompt is answered: the server asks again.
+        prompting = false
+        await api.nameSession(project, file)
+        assert.deepEqual(typed, [['shop-2', '/rename Quotas']])
+    })
+
+    test('a title the agent gives is not typed, and without a session terminal the session keeps its name', async () => {
+        typed.length = 0
+        const opened = api.open({ project: 'shop', cwd: root, terminal: 'shop-3' })
+        assert.match(api.start({ session: session(3), terminal: 'shop-3', cwd: root, project: 'shop', title: 'Named by the agent' }).text, /The outline is now named "Named by the agent"/)
+        assert.equal(api.untitled(opened.project, opened.file), false)
+        const [project, file] = api.start({ session: session(4), cwd: path.join(root, 'elsewhere'), project: 'docs' }).outline.split('/')
+        api.userEvent(project, file, { kind: 'renamed', title: 'Named on the page' })
+        await wait(10)
+        assert.deepEqual(typed, [])
+    })
+})

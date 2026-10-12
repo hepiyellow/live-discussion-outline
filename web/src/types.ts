@@ -66,6 +66,8 @@ export interface Outline {
     file: string
     /** The `Title:` line: the outline session's name. Empty when the file has none. */
     title: string
+    /** The title is the server's placeholder: nobody has named the outline yet, and the page shows the field that does. */
+    untitled: boolean
     /** The `Resume:` line: a link or command that reopens the chat. */
     resume: string
     /** The `Model:` line, as written (`Claude Opus 5.5, high`). */
@@ -197,6 +199,8 @@ export interface OutlineSummary {
     project: string
     file: string
     title: string
+    /** The title is the server's placeholder: nobody has named the outline yet. */
+    untitled: boolean
     /** Status counts over the nodes below the topics. */
     checkbox: { total: number; done: number; agent: number; open: number }
     /** Older outlines without status tags: emoji counts. */

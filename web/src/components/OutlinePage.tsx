@@ -7,7 +7,7 @@ import type { Transcript } from '@/hooks/useTranscript'
 import { referenceTo, removalOf } from '@/lib/references'
 import { useUnread } from '@/hooks/useUnread'
 import { useOutline } from '@/hooks/useOutline'
-import { allNodes, currentPath, duplicateNums, isParent, nodeLabel, pathNums } from '@/lib/outline'
+import { UNTITLED, allNodes, currentPath, duplicateNums, isParent, nodeLabel, pathNums } from '@/lib/outline'
 import { Statuses } from '@/lib/status'
 import { scrollToNode } from '@/lib/sticky'
 import type { Chip, Outline, OutlineNode, QueueItem, StatePatch, TabName, ViewerState } from '@/types'
@@ -32,8 +32,8 @@ export function OutlinePage({ project, file }: { project: string; file: string }
     const outline = state.status === 'ready' || state.status === 'gone' ? state.outline : null
 
     useEffect(() => {
-        document.title = outline?.title || file
-    }, [outline?.title, file])
+        document.title = outline?.untitled ? UNTITLED : outline?.title || file
+    }, [outline?.title, outline?.untitled, file])
 
     if (!outline)
         return (

@@ -70,14 +70,20 @@ function Archived({ outline }: { outline: Outline }) {
     )
 }
 
-/** The bar over every tab: the session's name, the mark of an archived outline, the Outline tab's tools, then the project, resume link and the tab dropdown. */
+/**
+ * The bar over every tab: the session's name, the mark of an archived outline, the Outline tab's tools, then the
+ * project, resume link and the tab dropdown. An outline nobody has named yet has no name here: the Outline tab shows
+ * the field that names it.
+ */
 export function TopBar({ outline, tab, onTab, onExpandAll, onCollapseAll, onJump, undoSteps, onUndo }: Props) {
     return (
         <header data-topbar className="sticky top-0 z-40 -ml-(--pane-w) flex h-11 items-center gap-1 border-b bg-background pr-2 whitespace-nowrap">
             <PaneToggle />
-            <span data-title className="mr-2 min-w-0 max-w-[40%] truncate text-sm font-medium" title={outline.title || outline.file}>
-                {outline.title || outline.file}
-            </span>
+            {!outline.untitled && (
+                <span data-title className="mr-2 min-w-0 max-w-[40%] truncate text-sm font-medium" title={outline.title || outline.file}>
+                    {outline.title || outline.file}
+                </span>
+            )}
             {outline.archived && <Archived outline={outline} />}
             {tab === 'outline' && (
                 <>

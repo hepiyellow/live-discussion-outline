@@ -354,7 +354,7 @@ describe('an agent keeps an outline through the MCP tools', () => {
             assert.match(opened.text, /Do not ask the user what they want to work on/)
             assert.match(opened.text, /Page: \S+\/\d{4}-\d\d-\d\d-[0-9a-f]{8}\n/)
             const target = path.join(server.dir, 'other-project', `${/Page: \S+\/(\S+)/.exec(opened.text)[1]}.md`)
-            assert.match(fs.readFileSync(target, 'utf8'), /^Title: New outline\n/)
+            assert.match(fs.readFileSync(target, 'utf8'), /^Title: Untitled\n/)
             const named = await other.tool('start', { title: 'Understand project design' })
             assert.match(named.text, /The outline is now named "Understand project design"/)
             assert.match(fs.readFileSync(target, 'utf8'), /^Title: Understand project design\n/)

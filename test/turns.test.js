@@ -154,4 +154,26 @@ describe('what a turn leaves in the inbox', () => {
         api.pending({ outline })
         assert.deepEqual(inbox().slice(before), ['Kept model as Opus 5.5'])
     })
+
+    test("the server's own renaming of the session is not a message; a /rename the user typed is", async () => {
+        const before = inbox().length
+        // The session has a session terminal, and the user names the outline on the page: the server types /rename.
+        api.start({ session: SESSION, terminal: 'shop-t' })
+        api.userEvent(project, file, { kind: 'renamed', title: 'Throttling' })
+        await wait(5)
+        const renamed = (name, id) => {
+            const at = new Date().toISOString()
+            return [
+                { type: 'system', subtype: 'local_command', uuid: `${id}-a`, timestamp: at, content: `<command-name>/rename</command-name>\n            <command-message>rename</command-message>\n            <command-args>${name}</command-args>` },
+                { type: 'system', subtype: 'local_command', uuid: `${id}-b`, timestamp: at, content: `<local-command-stdout>Session renamed to: ${name}</local-command-stdout>` },
+            ]
+        }
+        log(renamed('Throttling', 'r-1'))
+        api.commands(project, file)
+        assert.equal(inbox().length, before)
+        await wait(5)
+        log(renamed('Quotas', 'r-2'))
+        api.commands(project, file)
+        assert.deepEqual(inbox().slice(before), ['/rename Quotas\nSession renamed to: Quotas'])
+    })
 })

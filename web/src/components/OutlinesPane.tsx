@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Archive as ArchiveIcon, ArchiveRestore, ChevronRight, Folder, Layers, List, LoaderCircle, Plus, Search, Trash2, X } from 'lucide-react'
 import { api, liveHref, outlineHref } from '@/lib/api'
+import { UNTITLED } from '@/lib/outline'
 import { cn } from '@/lib/utils'
 import type { OutlineList } from '@/types'
 import { NewSession } from './NewSession'
@@ -13,6 +14,8 @@ interface Row {
     /** An outline's file name, without `.md`. */
     file?: string
     title: string
+    /** Nobody has named the outline yet: `title` is the placeholder, and renaming it starts from an empty box. */
+    untitled?: boolean
     href: string
     /** Its last change, or when the session started. */
     mtime: number
@@ -24,7 +27,7 @@ interface Row {
 
 /** The pane's rows: the starting sessions as well as the outlines. */
 const rowsOf = (list: OutlineList | null): Row[] => [
-    ...(list?.outlines ?? []).map(o => ({ key: `${o.project}/${o.file}`, project: o.project, file: o.file, title: o.title, href: outlineHref(o.project, o.file), mtime: o.mtime, archived: !!o.archived })),
+    ...(list?.outlines ?? []).map(o => ({ key: `${o.project}/${o.file}`, project: o.project, file: o.file, title: o.untitled ? UNTITLED : o.title, untitled: o.untitled, href: outlineHref(o.project, o.file), mtime: o.mtime, archived: !!o.archived })),
     ...(list?.starting ?? []).map(s => ({ key: `starting:${s.terminal}`, project: s.project, title: s.title, href: liveHref(s.terminal), mtime: s.started, starting: s.terminal })),
 ]
 
@@ -184,7 +187,7 @@ function PaneRow({ row: o, on, marked }: { row: Row; on: boolean; marked: RefObj
         <li className={cn('group/row flex items-center rounded-md pr-1 hover:bg-sidebar-accent', on && 'bg-sidebar-accent')}>
             {o.file ? (
                 <>
-                    <RenameTitle project={o.project} file={o.file} title={o.title} className="flex min-w-0 flex-1 items-center" buttonClassName="ml-0.5 hidden group-focus-within/row:inline-flex group-hover/row:inline-flex">
+                    <RenameTitle project={o.project} file={o.file} title={o.untitled ? '' : o.title} className="flex min-w-0 flex-1 items-center" buttonClassName="ml-0.5 hidden group-focus-within/row:inline-flex group-hover/row:inline-flex">
                         {link}
                     </RenameTitle>
                     <ArchiveToggle project={o.project} file={o.file} archived={!!o.archived} />

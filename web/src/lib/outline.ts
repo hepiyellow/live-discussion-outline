@@ -1,5 +1,8 @@
 import type { OutlineNode } from '@/types'
 
+/** What the page shows for the title of an outline nobody has named yet. */
+export const UNTITLED = 'Untitled'
+
 /** Every node of the tree, depth first, parents before their children. */
 export function allNodes(nodes: OutlineNode[]): OutlineNode[] {
     return nodes.flatMap(n => [n, ...allNodes(n.children)])
