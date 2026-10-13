@@ -231,6 +231,14 @@ describe('inbox, input box and spinner', () => {
             assert.deepEqual(await shown(), ['claude-opus-5-5', 'high'])
         })
 
+        test('the agent shows as text before the model, not as a dropdown', async () => {
+            assert.equal(await page.locator('[data-agent]').textContent(), 'Claude')
+            assert.equal(await page.locator('select[aria-label="Agent"]').count(), 0)
+            const agent = await page.locator('[data-agent]').boundingBox()
+            const model = await page.getByLabel('Model').boundingBox()
+            assert.ok(agent.x + agent.width <= model.x, 'the agent is left of the model')
+        })
+
         test('what the agent last answered with, whatever the Model line says', async () => {
             answers('claude-sonnet-5-5', 'medium')
             await shows('claude-sonnet-5-5', 'medium')

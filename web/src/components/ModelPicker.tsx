@@ -19,6 +19,17 @@ function fromLine(line: string) {
     return { model, effort }
 }
 
+/**
+ * The agent a model belongs to, for the label before the pickers: told from the model id the transcript names, or the
+ * name the outline's `Model:` line gives ("Claude Sonnet 5.5"). Empty when it is not known, so nothing is guessed.
+ */
+function agentOf(model: string, line: string) {
+    const name = `${model} ${line}`.toLowerCase()
+    if (/\bclaude\b|claude-/.test(name)) return 'Claude'
+    if (/\bcodex\b|\bgpt-|\bgpt\b/.test(name)) return 'Codex'
+    return ''
+}
+
 /** The picker's value for a model as the transcript names it: a dated or suffixed id is the model it starts with. */
 const modelOf = (id: string) => MODELS.find(([known]) => id.startsWith(known))?.[0] ?? id
 
@@ -65,6 +76,7 @@ export function ModelPicker({ outline, using, busy }: { outline: Outline; using?
     const base = using ? { model: modelOf(using.model), effort: using.effort } : fromLine(outline.model)
     const pick = picks.get(key)
     const shown = { model: pick?.model ?? base.model, effort: pick?.effort ?? base.effort }
+    const agent = agentOf(using?.model ?? shown.model, outline.model)
     const tip = outline.terminal
         ? `Sends /model or /effort to the session (tmux ${outline.terminal}). Claude Code also saves the choice as your default for new sessions.`
         : 'Only for outlines whose session runs in tmux'
@@ -85,7 +97,13 @@ export function ModelPicker({ outline, using, busy }: { outline: Outline; using?
     }
     const select = 'rounded-md border bg-background px-1.5 py-[3px] text-[13px] text-foreground disabled:text-muted-foreground'
     return (
-        <span className="inline-flex gap-1.5" title={tip}>
+        <span className="inline-flex items-center gap-1.5" title={tip}>
+            {/* The agent, as text: it is what the session runs, not something the page changes. */}
+            {agent && (
+                <span data-agent className="text-[13px] text-muted-foreground">
+                    {agent}
+                </span>
+            )}
             <select aria-label="Model" className={select} disabled={!outline.terminal || sending} value={shown.model} onChange={e => choose('model', e.target.value)}>
                 {!shown.model && <option value="">Model</option>}
                 {/* A model the list does not know still shows, by its id. */}

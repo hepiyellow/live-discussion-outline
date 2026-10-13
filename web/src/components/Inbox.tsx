@@ -65,12 +65,15 @@ interface InboxProps {
     onReveal: (num: string) => void
 }
 
+/** Where the inbox button is drawn: the queue column's footer, or the row under the input box (its popover opens upward there). */
+type Placement = 'queue' | 'composer'
+
 /**
- * The queue column's envelope, under the queue: the last ten messages from the agent, with the count of those not read
+ * The inbox envelope, under the queue or, with a session linked, under the input box's divider: the last ten messages from the agent, with the count of those not read
  * yet. Opening it reads them all, and so does a message that arrives while it is open. The ones that were unread keep
  * their red bar until it closes, so what is new can still be told apart.
  */
-export function InboxButton({ messages, seen, onSeen, onReveal }: InboxProps) {
+export function InboxButton({ messages, seen, onSeen, onReveal, placement = 'queue' }: InboxProps & { placement?: Placement }) {
     const [open, setOpen] = useState(false)
     const [fresh, setFresh] = useState<Set<string>>(new Set())
     const last = messages.slice(-10)
@@ -100,13 +103,17 @@ export function InboxButton({ messages, seen, onSeen, onReveal }: InboxProps) {
                     type="button"
                     aria-label="Messages from the agent"
                     title={`${messages.length} message${messages.length === 1 ? '' : 's'} from the agent${unseen ? `, ${unseen} unread` : ''}`}
-                    className="flex w-16 shrink-0 flex-col items-center gap-[3px] rounded-lg border pt-[7px] pb-[5px] text-[11px] text-foreground hover:bg-accent"
+                    className={
+                        placement === 'composer'
+                            ? 'flex h-[26px] shrink-0 items-center gap-1.5 rounded-md border px-2 text-[11px] text-foreground hover:bg-accent'
+                            : 'flex w-16 shrink-0 flex-col items-center gap-[3px] rounded-lg border pt-[7px] pb-[5px] text-[11px] text-foreground hover:bg-accent'
+                    }
                 >
                     <Mail className="size-3.5" aria-hidden="true" />
                     {unseen > 0 && <span className="min-w-3.5 rounded-lg bg-danger px-1 text-center text-[10px] leading-3.5 text-white">{unseen}</span>}
                 </button>
             </PopoverTrigger>
-            <PopoverContent side="right" align="end" className="w-[min(440px,calc(100vw-100px))] p-0">
+            <PopoverContent side={placement === 'composer' ? 'top' : 'right'} align={placement === 'composer' ? 'start' : 'end'} className="w-[min(440px,calc(100vw-100px))] p-0">
                 <MessageList
                     heading="Messages from the agent"
                     messages={last}

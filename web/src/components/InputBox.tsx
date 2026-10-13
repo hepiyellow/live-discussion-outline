@@ -4,7 +4,8 @@ import { Command, CommandItem, CommandList } from '@/components/ui/command'
 import { sendToSession, stopSession } from '@/lib/send'
 import { cn } from '@/lib/utils'
 import type { Using } from '@/hooks/useSession'
-import type { Chip, Outline, SlashCommand, StatePatch, ViewerState } from '@/types'
+import type { Chip, Message, Outline, SlashCommand, StatePatch, ViewerState } from '@/types'
+import { InboxButton } from './Inbox'
 import { ModelPicker } from './ModelPicker'
 import { useNotify } from './Notice'
 
@@ -15,6 +16,9 @@ interface Props {
     busy: boolean
     /** The model and effort the agent last answered with, for the pickers. */
     using?: Using
+    /** The agent's messages, for the inbox button under the box. */
+    messages: Message[]
+    onSeen: (ids: string[]) => void
     /** Something was sent: the agent is in a turn. */
     onSent: () => void
     onReveal: (num: string) => void
@@ -39,7 +43,7 @@ const chipNum = (c: Chip) => /^(\d+(?:\.\d+)*)\.?\s/.exec(c.label)?.[1]
  * At the end of the box, the Enter key in a circle sends. While the agent works, a dot blinks at its corner, and with
  * nothing typed it stops the agent instead of sending; typing a new message makes it send again, the dot still blinking.
  */
-export function InputBox({ outline, viewer, patch, busy, using, onSent, onReveal, added, inOutline }: Props) {
+export function InputBox({ outline, viewer, patch, busy, using, messages, onSeen, onSent, onReveal, added, inOutline }: Props) {
     const notify = useNotify()
     const root = useRef<HTMLFormElement>(null)
     const box = useRef<HTMLTextAreaElement>(null)
@@ -283,8 +287,9 @@ export function InputBox({ outline, viewer, patch, busy, using, onSent, onReveal
                         </span>
                     </div>
                 </div>
-                {/* Under the box, outside it: the session's model and effort, ending where the box does. */}
-                <div className="mt-1.5 flex justify-end pr-1">
+                {/* Under the box, outside it: the inbox at the start, the session's agent, model and effort at the end, where the box ends. */}
+                <div className="mt-1.5 flex items-center justify-between gap-2 pr-1">
+                    <InboxButton messages={messages} seen={viewer.seen} onSeen={onSeen} onReveal={onReveal} placement="composer" />
                     <ModelPicker outline={outline} using={using} busy={busy} />
                 </div>
             </div>

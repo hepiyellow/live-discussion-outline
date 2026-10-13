@@ -172,6 +172,27 @@ describe('unread changes', () => {
         assert.match(await text('2.4'), /On production instead\./)
     })
 
+    test('a task the agent carried out collapses once its diff has been shown, also one the viewer had collapsed', async () => {
+        await open({ reducedMotion: 'reduce' })
+        await firstVisit()
+        rewrite(text => text.replace(/(## 2\.4 @action Measure the hit rate on staging\n)/, '$1\nOn production instead.\n'))
+        await node('2.4').locator('> .env').click()
+        await node('2.4').locator('[data-run]').waitFor()
+        // The viewer closes it: from now on the diff has to open it again to be shown.
+        await node('2.4').locator('.node-title').click()
+        assert.equal(await node('2.4').getAttribute('aria-expanded'), 'false')
+        rewrite(text => text.replace('## 2.4 @action Measure', '## 2.4 @action @ran Measure').replace('On production instead.', 'Hit rate was 91%.'))
+        await node('2.4').locator('> .env').click()
+        await page.waitForFunction(() => /Hit rate was 91%/.test(document.querySelector('.outline-tab [data-num="2.4"] .node-html')?.textContent ?? ''))
+        // After the pause that lets the diff be read it closes by itself, and the viewer can open it again. Nothing is
+        // open under topic 2 any more, so that closes too: the viewer opens it to see the row.
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="2.4"]')?.getAttribute('aria-expanded') === 'false')
+        await node('2.4').locator('.node-title').waitFor({ state: 'hidden' })
+        await node('2').locator('.node-title').click()
+        await node('2.4').locator('.node-title').click()
+        assert.equal(await node('2.4').getAttribute('aria-expanded'), 'true')
+    })
+
     test('nodes renumbered after a removed one are not changes to read', async () => {
         await open()
         await firstVisit()

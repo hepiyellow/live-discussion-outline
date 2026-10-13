@@ -20,6 +20,9 @@ const PULSE_MS = 700
 
 export const isOpenIn = (open: OpenNodes, statuses: Statuses) => (node: OutlineNode) => (node.num in open ? open[node.num] : statuses.startsOpen(node))
 
+/** Whether a node has nothing left to show: a parent that is settled, or a task the agent carried out and did not fail. */
+const finished = (node: OutlineNode, statuses: Statuses) => (node.children.length ? statuses.isSettled(node) : statuses.ran(node) && !node.tags.includes('failed'))
+
 /**
  * The Outline tab: any text before the first topic, then the topics with their nodes. An outline nobody has named yet
  * starts with the field that names it; once it has a title, the top bar shows it.
@@ -129,23 +132,30 @@ export function OutlineTab({ outline, shown, viewer, actions, onToggle }: Props)
 
     // A parent that becomes settled collapses, also one the viewer had opened themselves: such a parent would stay
     // open by their choice, so it is closed here. After a pause, since a click that settles a parent closes it itself,
-    // with its own animation.
+    // with its own animation. A task that becomes done does too, once its diff has been shown (the node is read with
+    // its old tags until then): opening the diff of a collapsed task pins it open for the animation. A failed task
+    // stays, since it can be run again.
     const settled = useRef<Set<string> | null>(null)
     const latest = useRef({ shown, open: viewer.open, statuses: ctx.statuses, onToggle })
     latest.current = { shown, open: viewer.open, statuses: ctx.statuses, onToggle }
+    // The pauses run on, whatever the outline does meanwhile: opening a diff changes the statuses again at once, which
+    // would clear a pause that a re-run of the effect below owned. What is open and settled is read when one ends.
+    const settleTimers = useRef(new Set<ReturnType<typeof setTimeout>>())
+    useEffect(() => () => settleTimers.current.forEach(clearTimeout), [])
     useEffect(() => {
-        const now = new Set(allNodes(shown).filter(n => ctx.statuses.isSettled(n)).map(n => n.num))
+        const now = new Set(allNodes(shown).filter(n => finished(n, ctx.statuses)).map(n => n.num))
         const before = settled.current
         settled.current = now
         // On the first pass nothing became settled: it is how the outline was found.
         if (!before) return
-        const turned = [...now].filter(num => !before.has(num) && viewer.open[num])
+        const turned = [...now].filter(num => !before.has(num))
         if (!turned.length) return
         const timer = setTimeout(() => {
+            settleTimers.current.delete(timer)
             const { shown, open, statuses, onToggle } = latest.current
-            for (const n of allNodes(shown)) if (turned.includes(n.num) && open[n.num] && statuses.isSettled(n)) onToggle(n, false)
+            for (const n of allNodes(shown)) if (turned.includes(n.num) && open[n.num] && finished(n, statuses)) onToggle(n, false)
         }, SETTLE_PAUSE)
-        return () => clearTimeout(timer)
+        settleTimers.current.add(timer)
         // Only a change of what is settled matters: the viewer opening a node is not one.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [shown, ctx.statuses])

@@ -51,6 +51,13 @@ export function useOutline(project: string, file: string) {
             setState({ status: 'loading' })
             setStateLoaded(false)
             setNotes([])
+            // What the previous session answered with, did, asked and wrote is not the new one's: the model and effort
+            // pickers must not show it for the moment before the new stream names its session.
+            setUsing(undefined)
+            setBusy(false)
+            setMessages([])
+            setPermissions([])
+            setTranscript(emptyTranscript)
         }
         const custom = { current: false }
         const es = new EventSource(`/api/outline/${apiPath(project, file)}/events${withTranscript ? '?transcript=1' : ''}`)

@@ -311,7 +311,8 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                     order={viewer.order ?? 'number'}
                     onOrder={outline.mode === 'server' && outline.changedAt ? order => patch({ order }) : undefined}
                     ready={stateLoaded}
-                    footer={<InboxButton messages={session.messages} seen={viewer.seen} onSeen={onSeen} onReveal={reveal} />}
+                    // With a session linked the inbox sits under the input box's divider; otherwise it stays under the queue.
+                    footer={linked ? undefined : <InboxButton messages={session.messages} seen={viewer.seen} onSeen={onSeen} onReveal={reveal} />}
                 />
                 <OutlineTab outline={outline} shown={shown} viewer={viewer} actions={actions} onToggle={onToggle} />
             </TabsContent>
@@ -329,7 +330,7 @@ function Loaded({ outline, gone, viewer, stateLoaded, patch, session, transcript
                 <>
                     {/* Room under the content for the input box. */}
                     <div aria-hidden="true" style={{ height: 'var(--composer-h, 60px)' }} />
-                    <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} using={session.using} onSent={session.working} onReveal={reveal} added={added} inOutline={tab === 'outline'} />
+                    <InputBox outline={outline} viewer={viewer} patch={patch} busy={session.busy} using={session.using} messages={session.messages} onSeen={onSeen} onSent={session.working} onReveal={reveal} added={added} inOutline={tab === 'outline'} />
                 </>
             )}
             {/* File mode only: in server mode a tick is recorded at once, and nothing waits to be copied. */}
