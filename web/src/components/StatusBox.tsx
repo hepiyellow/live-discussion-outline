@@ -2,7 +2,7 @@ import { CircleHelp, Sparkle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { INDICATOR_LAYOUT, KEY_TITLE, markOfKey, type Box, type BoxState, type KindKey, type Mark, type MarksChange } from '@/lib/status'
 
-function Tick({ state, radio }: { state: BoxState; radio: boolean }) {
+export function Tick({ state, radio }: { state: BoxState; radio: boolean }) {
     if (state === 'open') return null
     return (
         <svg viewBox="0 0 12 12" aria-hidden="true">
@@ -92,6 +92,8 @@ interface MarksProps {
     columns: KindKey[]
     /** An option's bubbles say "Below", a parent's "Under it". */
     below?: boolean
+    /** An option the user picked: its row shows their tick before its marks, so the pick reads with the row closed. */
+    picked?: boolean
     isRunning: (num: string) => boolean
     /** The marks that changed as a change was opened: they grow and shrink once, and what went is drawn until then. */
     pulse?: MarksChange
@@ -106,7 +108,7 @@ interface MarksProps {
  * outlined bubble: a button that shows the first node under the parent with that kind, with the count of them after
  * the icon when there are more than one, and a ring turning while an action among them runs.
  */
-export function Marks({ box, ownRole, ownRunning, columns, below, isRunning, pulse, onShow }: MarksProps) {
+export function Marks({ box, ownRole, ownRunning, columns, below, picked, isRunning, pulse, onShow }: MarksProps) {
     const byKey = new Map(box.extras.map(i => [i.key, i]))
     const own = box.mark
     const table = INDICATOR_LAYOUT === 'indicators-table'
@@ -116,6 +118,11 @@ export function Marks({ box, ownRole, ownRunning, columns, below, isRunning, pul
             data-layout={table ? 'table' : 'condensed'}
             style={table ? { width: `calc(var(--kcell) * ${columns.length})` } : undefined}
         >
+            {picked && (
+                <span className="pick-tick" data-picked={box.state} data-waiting={box.waiting || undefined} role="img" title="Picked: your answer to the question" aria-label="Picked">
+                    <Tick state="approved" radio={false} />
+                </span>
+            )}
             {columns.map(key => {
                 if (own && key === box.markKey) return <OwnMark key={key} box={box} kindKey={key} role={ownRole} running={ownRunning} pulse={pulse?.keys.has(key)} />
                 const item = byKey.get(key)

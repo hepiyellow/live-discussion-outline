@@ -140,7 +140,7 @@ html {
     /* The first cell holds the approval box, 20px in. The triangle's place stays empty on a node without text, so that
        every row starts its number in one column. */
     grid-template-columns: 48px 22px auto minmax(0, max-content) minmax(0, 1fr) auto auto auto;
-    grid-template-areas: 'ck tri num title . msg tags ask' 'ck . body body body body body body';
+    grid-template-areas: 'ck tri num title . msg tags ask' 'ck . pick pick pick pick pick pick' 'ck . body body body body body body';
     align-items: baseline;
     margin: 0 0 4px;
     padding-left: 12px;
@@ -393,10 +393,37 @@ button.pill.run:hover { background: color-mix(in srgb, var(--done) 30%, transpar
     animation: playwait 0.9s linear infinite;
 }
 @keyframes playwait { to { transform: rotate(360deg); } }
-/* An option that is not the picked one: its Run button looks off, and a click on it points at the option's checkbox. */
+/* An option that is not the picked one: its Run button looks off, and a click on it points at the option's pick button. */
 button.pill.run[data-off], button.pill.run[data-off]:hover { opacity: 0.45; background: color-mix(in srgb, var(--done) 18%, transparent); }
 @media (prefers-reduced-motion: reduce) {
     [data-run-sent] .run-icon::after { animation-duration: 3s; }
+}
+
+/* An option's pick button, first in its text, with the line that says what a click does. It is the one place an
+   option is picked: nothing left of a title does it. Outlined until picked, then filled with the user's tick. */
+.pick-line { display: flex; align-items: baseline; gap: 8px; color: var(--muted-foreground); font-size: 13px; }
+.pick-line[hidden] { display: none; }
+.row.leaf > .pick-line { grid-area: pick; padding: 6px 14px 2px 38px; }
+.group-pick { margin-left: 76px; padding: 6px 14px 0 0; }
+button.pill.pick { flex: none; margin-left: 0; border: 1px solid var(--tick); background: transparent; color: var(--tick); font-family: inherit; line-height: inherit; cursor: pointer; }
+button.pill.pick:hover { background: color-mix(in srgb, var(--tick) 16%, transparent); }
+button.pill.pick:is([data-state='approved'], [data-state='pending']) { background: color-mix(in srgb, var(--tick) 18%, transparent); }
+button.pill.pick svg { width: 10px; height: 10px; margin-right: 4px; }
+/* On its way to the agent, or taken back and not acknowledged yet: it fades out and in, as a tick does. */
+:is(button.pill.pick, .pick-tick):is([data-state='pending'], [data-picked='pending'], [data-waiting]) { animation: ckpending 1.6s ease-in-out infinite; }
+/* The option's change waits to be opened: the button looks off, and a click picks nothing. */
+button.pill.pick[data-off], button.pill.pick[data-off]:hover { opacity: 0.45; background: transparent; cursor: default; }
+.pick[data-pulse] { animation: pickpulse 0.6s ease-in-out 1; }
+@keyframes pickpulse { 50% { transform: scale(1.2); background: color-mix(in srgb, var(--tick) 35%, transparent); } }
+/* The user's tick at the right of a picked option's row, before its kind marks: the pick reads with the row closed. */
+.pick-tick { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--kcell); color: var(--tick); }
+.pick-tick svg { width: 12px; height: 12px; }
+.marks[data-layout='condensed'] > .pick-tick { width: auto; }
+/* In the table layout it hangs left of the first column, so the columns of this row stay under the others'. */
+.marks[data-layout='table'] > .pick-tick { margin-left: calc(-1 * var(--kcell)); }
+@media (prefers-reduced-motion: reduce) {
+    :is(button.pill.pick, .pick-tick):is([data-state='pending'], [data-picked='pending'], [data-waiting]) { animation: none; opacity: 0.6; }
+    .pick[data-pulse] { animation: none; box-shadow: 0 0 0 3px var(--tick); }
 }
 
 /* The reference button, shown on hover. */

@@ -113,7 +113,7 @@ describe('approvals, picks, runs and undo in file mode', () => {
     })
 
     test('picking an option sends the choice and collapses its completed question', async () => {
-        await box('2.1.1').click()
+        await click(node('2.1.1').locator('> .pick-line [data-pick]'))
         assert.equal(await state('2.1.1'), 'pending')
         assert.equal(await state('2.1.2'), 'open')
         assert.equal(await nextSent(), 'Chosen in the outline: 2.1.1 (A) In each service instance.')

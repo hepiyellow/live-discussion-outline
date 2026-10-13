@@ -50,6 +50,8 @@ describe('approvals, picks, runs and undo in server mode', () => {
     const node = num => page.locator(`.outline-tab [data-num="${num}"]`)
     const box = num => ({ click: () => click(node(num).locator('> .ck')), getAttribute: name => node(num).locator('> .ck').getAttribute(name) })
     const state = num => box(num).getAttribute('data-state')
+    /** The button in an option's text that picks it. */
+    const pick = num => node(num).locator('> .pick-line [data-pick]')
     /** A node's kind mark (null when it has none: at its left, or on a parent first among the bubbles at its right), and the kind marks found under a parent. */
     const mark = num => node(num).evaluate(el => el.querySelector(':scope > .marks .km[data-own]')?.dataset.kind ?? null)
     /** The columns of the kinds under a parent, in the order they are drawn: a claim you approved is its own column. */
@@ -95,7 +97,9 @@ describe('approvals, picks, runs and undo in server mode', () => {
     })
 
     test('picking an option answers its question and collapses it', async () => {
-        await box('2.1.1').click()
+        assert.equal((await pick('2.1.1').textContent()).trim(), 'Pick this option')
+        assert.equal(await node('2.1.1').locator('.pick-what').textContent(), 'Answers 2.1 with this option.')
+        await click(pick('2.1.1'))
         await shows('2.1.1', 'pending')
         assert.equal(await state('2.1.2'), 'open')
         assert.equal(heading('2.1.1'), '### 2.1.1 @user-approved @option_A In each service instance')
@@ -109,6 +113,50 @@ describe('approvals, picks, runs and undo in server mode', () => {
         await box('2.1').click()
         await shows('2.1', 'pending')
         assert.equal(heading('2.1.2'), '### 2.1.2 @user-approved @recommended @option_B A shared Redis cluster')
+    })
+
+    test('the pick moves to another option, and a click on a picked option takes it back', async () => {
+        await click(pick('2.1.1'))
+        await shows('2.1.1', 'pending')
+        // The picked option says so in its button and, for when its row is closed, with a tick at the right of its row.
+        assert.equal((await pick('2.1.1').textContent()).trim(), 'Picked')
+        assert.equal(await node('2.1.1').locator('> .marks .pick-tick').count(), 1)
+        assert.equal(await node('2.1.2').locator('> .marks .pick-tick').count(), 0)
+        assert.equal(await node('2.1.2').locator('.pick-what').textContent(), 'Answers 2.1 with this option instead of (A).')
+        await expanded('2.1', false)
+        await expand('2.1')
+        await click(pick('2.1.2'))
+        await until(async () => heading('2.1.2') === '### 2.1.2 @user-approved @recommended @option_B A shared Redis cluster', { what: 'the pick to move to 2.1.2' })
+        assert.equal(heading('2.1.1'), '### 2.1.1 @option_A In each service instance')
+        await until(async () => (await node('2.1.1').locator('> .marks .pick-tick').count()) === 0, { what: 'the tick of 2.1.1 to go' })
+        // Picked, an option's text closes like any node the user approved: its button is in it.
+        await expand('2.1.2')
+        assert.equal((await pick('2.1.2').textContent()).trim(), 'Picked')
+        assert.equal(await node('2.1.2').locator('.pick-what').textContent(), 'Your answer to 2.1. A click takes it back.')
+        await click(pick('2.1.2'))
+        await until(async () => heading('2.1.2') === '### 2.1.2 @recommended @option_B A shared Redis cluster', { what: 'the pick to be taken back' })
+        assert.equal(heading('2.1'), '## 2.1 @options Cache placement')
+    })
+
+    test('an option that is a task is picked first: its Run button is off until then, and points at the pick button', async () => {
+        const added = await change([{ op: 'add', num: '3.4', title: 'How to roll out', text: 'Pick one of the options below.', options: [{ title: 'Canary first', task: 'Roll out to one instance.' }, { title: 'All at once' }] }])
+        assert.equal(added.ok, true)
+        // An option just added is a bare row, with no button to pick what the user has not seen.
+        await node('3.4').locator('> .env').waitFor()
+        await node('3.4').locator('> .env').click()
+        await pick('3.4.1').waitFor()
+        const run = node('3.4.1').locator('[data-run]')
+        await until(async () => (await run.getAttribute('aria-disabled')) === 'true', { what: 'the Run button of 3.4.1 to be off' })
+        assert.equal(await run.getAttribute('title'), 'Pick this option first: click to see its button')
+        // Off, it still takes the click (Playwright does not click what says it is disabled, so the click is forced).
+        await run.click({ force: true })
+        await page.waitForFunction(() => document.querySelector('.outline-tab [data-num="3.4.1"] [data-pick]').hasAttribute('data-pulse'))
+        assert.equal(await told(), '')
+        await click(pick('3.4.1'))
+        await until(async () => /^### 3\.4\.1 @user-approved /.test(heading('3.4.1') ?? ''), { what: '3.4.1 to be picked' })
+        // The pick runs nothing: the button is on now, and the task waits for it.
+        await until(async () => (await run.getAttribute('aria-disabled')) === 'false', { what: 'the Run button of 3.4.1 to be on' })
+        assert.doesNotMatch(await told(), /pressed Run/)
     })
 
     test('the Action tag is the button that runs the action, then waits', async () => {

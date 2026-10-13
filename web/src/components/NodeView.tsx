@@ -10,7 +10,7 @@ import { NodeMessages } from './Inbox'
 import { useNotify } from './Notice'
 import type { PendingChange } from '@/lib/pending'
 import { DIFF_ICON, MINUS_ICON, PLUS_ICON } from './queue'
-import { Marks, StatusBox, type OwnRole } from './StatusBox'
+import { Marks, StatusBox, Tick, type OwnRole } from './StatusBox'
 
 /** What every node of the Outline tab needs: statuses, which nodes are open, the current path, and the user's actions. */
 export interface OutlineContext {
@@ -123,12 +123,62 @@ function pulseBox(box: HTMLElement) {
     box.setAttribute('data-pulse', '')
 }
 
-/** Shows the option's own checkbox and pulses it: the action's button waits for it to be picked. */
-function pointAtBox(num: string) {
-    const box = document.querySelector<HTMLElement>(`.outline-tab [data-num="${CSS.escape(num)}"] > .ck`)
-    if (!box) return
-    box.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    pulseBox(box)
+/** Shows the button that picks an option and pulses it: the option's Run button waits for the pick. */
+function pointAtPick(num: string) {
+    const button = document.querySelector<HTMLElement>(`.outline-tab [data-pick-of="${CSS.escape(num)}"] [data-pick]`)
+    if (!button) return
+    button.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    pulseBox(button)
+}
+
+/** Whether a row holds the button that picks it: an option, once the viewer has opened it (one just added is a bare row). */
+const usePickable = (node: OutlineNode) => {
+    const { statuses, pending } = useOutlineCtx()
+    return statuses.isOption(node) && pending.get(node.num)?.kind !== 'added'
+}
+
+/**
+ * An option's pick button, first in its text, with a line that says what a click on it does. It is where an option is
+ * picked: nothing left of a title does that. Once picked it says so, and a click takes the pick back; picking another
+ * option moves the pick. An option whose change waits is not picked: the user has not seen what they would pick.
+ */
+function PickLine({ node, className, hidden }: { node: OutlineNode; className?: string; hidden?: boolean }) {
+    const { statuses, pending, onCheck } = useOutlineCtx()
+    const box = statuses.box(node)
+    const question = statuses.parent(node)
+    const picked = box.state !== 'open'
+    const other = question?.children.find(c => c !== node && statuses.effective(c))
+    const unread = pending.has(node.num)
+    const line = unread
+        ? 'Open the change of this option before you pick it.'
+        : picked
+          ? `Your answer to ${question?.num}. A click takes it back.`
+          : other
+            ? `Answers ${question?.num} with this option instead of ${other.option ? `(${other.option})` : other.num}.`
+            : `Answers ${question?.num} with this option.`
+    return (
+        <div className={cn('pick-line', className)} hidden={hidden} data-pick-of={node.num}>
+            <button
+                type="button"
+                className="pill pick"
+                data-pick
+                data-state={box.state}
+                data-waiting={box.waiting || undefined}
+                data-off={unread || undefined}
+                aria-pressed={picked}
+                aria-disabled={unread}
+                title={box.waiting || box.state === 'pending' ? box.title : undefined}
+                onClick={e => {
+                    e.stopPropagation()
+                    onCheck(node)
+                }}
+            >
+                {picked && <Tick state="approved" radio={false} />}
+                {picked ? 'Picked' : 'Pick this option'}
+            </button>
+            <span className="pick-what">{line}</span>
+        </div>
+    )
 }
 
 /**
@@ -143,12 +193,12 @@ function NodeText({ node, html, className, hidden }: { node: OutlineNode; html: 
     const root = useRef<HTMLDivElement>(null)
     useLayoutEffect(() => {
         for (const button of root.current?.querySelectorAll<HTMLButtonElement>('[data-run]') ?? []) {
-            // Looks off but takes the click: it points at the option's checkbox, which is what to do first.
+            // Looks off but takes the click: it points at the option's pick button, which is what to do first.
             button.toggleAttribute('data-off', unpicked)
             button.setAttribute('aria-disabled', String(unpicked))
             // The button's own title comes back once its option is picked.
             button.dataset.title ??= button.title
-            button.title = unpicked ? 'Pick this option first: click to see its checkbox' : button.dataset.title
+            button.title = unpicked ? 'Pick this option first: click to see its button' : button.dataset.title
         }
     }, [html, unpicked])
     return (
@@ -162,7 +212,7 @@ function NodeText({ node, html, className, hidden }: { node: OutlineNode; html: 
             onClick={e => {
                 if (!(e.target as Element).closest('[data-run]')) return
                 e.stopPropagation()
-                if (unpicked) return pointAtBox(node.num)
+                if (unpicked) return pointAtPick(node.num)
                 if (!sent) onRun(node)
             }}
             dangerouslySetInnerHTML={{ __html: html }}
@@ -349,6 +399,7 @@ function RowMarks({ node, box }: { node: OutlineNode; box: Box }) {
             columns={kindColumns}
             pulse={pulse.get(node.num)}
             below={option}
+            picked={option && box.state !== 'open'}
             isRunning={num => !!runs[num]}
             onShow={(num, key) =>
                 onReveal(
@@ -456,6 +507,7 @@ function Group({ node }: { node: OutlineNode }) {
     const box = statuses.box(node)
     const shown = useShown(node)
     const asked = useAsked(node)
+    const pickable = usePickable(node)
     const count = node.children.length
     const onKey = (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -486,6 +538,7 @@ function Group({ node }: { node: OutlineNode }) {
                 <Asks node={node} />
             </div>
             <div className="kids" hidden={!open}>
+                {pickable && <PickLine node={node} className="group-pick" />}
                 {/* Kept when empty: the diff animation may fill it. */}
                 <NodeText node={node} className="group-text node-html" html={shown.html} hidden={!shown.html} />
                 <NodeList nodes={node.children} under={node.num} />
@@ -494,15 +547,16 @@ function Group({ node }: { node: OutlineNode }) {
     )
 }
 
-/** A node without children: a title row with its number and title, and its text below, which an approved or done node starts with hidden. */
+/** A node without children: a title row with its number and title, and its text below (an option's starts with its pick button), which an approved or done node starts with hidden. */
 function Leaf({ node }: { node: OutlineNode }) {
     const { statuses, isOpen, toggle, current, onCheck } = useOutlineCtx()
     const box = statuses.box(node)
     const shown = useShown(node)
     const asked = useAsked(node)
     const open = isOpen(node)
-    // Only a node with text has something to hide.
-    const text = !!shown.html
+    const pickable = usePickable(node)
+    // Only a node with text has something to hide; an option's pick button is in its text.
+    const text = !!shown.html || pickable
     return (
         <div
             className={cn('row leaf', text && 'has-text', text && !open && 'closed', box.done && 'done', current.has(node.num) && 'current')}
@@ -524,6 +578,7 @@ function Leaf({ node }: { node: OutlineNode }) {
                 <HistoryButton node={node} />
                 <RemoveButton node={node} />
             </span>
+            {pickable && <PickLine node={node} hidden={!open} />}
             <NodeText node={node} className="node-html" html={shown.html} hidden={!open} />
         </div>
     )

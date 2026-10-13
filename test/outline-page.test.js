@@ -99,6 +99,24 @@ for (const mode of ['file', 'server']) describe(`the Outline tab, in ${mode} mod
         assert.equal(await box('2.3').getAttribute('role'), 'checkbox')
     })
 
+    test('an option is picked from the button in its text, and nothing left of its title does it', async () => {
+        const pick = num => node(num).locator('> .pick-line [data-pick]')
+        // An option nobody picked starts open, with its button first in its text and a line that says what a click does.
+        assert.equal(await pick('2.1.1').isVisible(), true)
+        assert.equal((await pick('2.1.1').textContent()).trim(), 'Pick this option')
+        assert.equal(await node('2.1.2').locator('.pick-what').textContent(), 'Answers 2.1 with this option.')
+        assert.equal(await node('2.1.1').evaluate(el => el.querySelector(':scope > .pick-line').nextElementSibling.classList.contains('node-html')), true)
+        // No radio button is drawn left of the title.
+        assert.equal(await box('2.1.1').isVisible(), false)
+        // The picked option of an answered question: its button says so, and its row has the tick at its right.
+        assert.equal((await pick('2.2.1').textContent()).trim(), 'Picked')
+        assert.equal(await node('2.2.1').locator('> .marks .pick-tick').count(), 1)
+        assert.equal(await node('2.2.2').locator('> .marks .pick-tick').count(), 0)
+        assert.equal(await node('2.2.2').locator('.pick-what').textContent(), 'Answers 2.2 with this option instead of (A).')
+        // A node that is not an option has no such button.
+        for (const num of ['2.3', '2.4', '3.3']) assert.equal(await node(num).locator('[data-pick]').count(), 0, num)
+    })
+
     test('only a row in the queue calls for the user: its empty box is drawn in full; left of a title there is no icon for it', async () => {
         const asked = num => node(num).getAttribute('data-asked')
         const border = num => box(num).evaluate(e => getComputedStyle(e).borderTopColor)

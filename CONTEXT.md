@@ -65,7 +65,7 @@ A node that asks the user to choose exactly one of the options under it. When th
 _Avoid_: Choice, poll, decision (a decide item is a queue item)
 
 **Option**:
-A child node of a question, shown with a letter; the agent may recommend one, and the user picks one, which answers the question.
+A child node of a question, shown with a letter; the agent may recommend one, and the user picks one, which answers the question. The user picks it with the **pick button**, which stands first in the option's text with a line that says what a click does; nothing left of a title picks an option. Once picked, the button says so and a click takes the pick back, picking another option moves the pick, and the option's row shows the user's tick at its right.
 _Avoid_: Alternative, answer, choice
 
 **Summary**:
