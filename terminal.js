@@ -42,6 +42,24 @@ export async function sendToTerminal(name, text) {
     execFileSync('tmux', ['send-keys', '-t', pane, 'Enter'])
 }
 
+/** How much of the foot of a session's screen is read for a question: the agent's UI draws its questions there. */
+const FOOT_LINES = 16
+
+/**
+ * Presses Enter in the session's active pane when the foot of its screen shows a question of the agent's UI, told by
+ * every one of `parts`; Enter takes the question's first choice. True when it did. False without such a question, or
+ * without the session.
+ */
+export function answerInTerminal(name, parts) {
+    if (!isSessionName(name) || !hasSession(name)) return false
+    const pane = `=${name}:`
+    const screen = execFileSync('tmux', ['capture-pane', '-p', '-t', pane], { encoding: 'utf8' })
+    const foot = screen.split('\n').filter(line => line.trim()).slice(-FOOT_LINES).join('\n')
+    if (!parts.every(part => foot.includes(part))) return false
+    execFileSync('tmux', ['send-keys', '-t', pane, 'Enter'])
+    return true
+}
+
 /** Presses Escape in the session's active pane: the agent stops the turn it is in, as if the user pressed it there. */
 export function stopInTerminal(name) {
     if (!isSessionName(name) || !hasSession(name)) throw new Error(`no tmux session ${name}`)

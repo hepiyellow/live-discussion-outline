@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { TITLE_MAX, countCheckboxProgress, extractHeaders, outlinePayload , inlineHtml } from './outline.js'
 import { HISTORY_DIR, createHistory } from './history.js'
 import { loadConfig } from './config.js'
-import { attachTerminals, endTerminal, fromLocalPage, hasSession, sendToTerminal, stopInTerminal } from './terminal.js'
+import { answerInTerminal, attachTerminals, endTerminal, fromLocalPage, hasSession, sendToTerminal, stopInTerminal } from './terminal.js'
 import { followSession, isSessionId, streamActivity, streamMessages } from './transcript.js'
 import { findWorkspaces, listDirs, recentSessions, runningSessions, sessionFolder, startedSessions, startSession } from './start.js'
 import { slashCommands } from './commands.js'
@@ -14,6 +14,7 @@ import { installLogging } from './log.js'
 import { LEDGER_DIR, createAgentApi, markLedgered } from './agent.js'
 import { ACTIONS_DIR } from './actions.js'
 import { createPermissions } from './permission.js'
+import { createSwitches } from './switching.js'
 import { OpError } from './model.js'
 
 installLogging()
@@ -109,6 +110,12 @@ function baselineHistory() {
 baselineHistory()
 
 /**
+ * The model and effort switches the page asks for (switching.js). Everything the server types into a session terminal
+ * goes through it: a message from the page, and the lines the server types itself.
+ */
+const switches = createSwitches({ type: sendToTerminal, answer: answerInTerminal })
+
+/**
  * The agent's side of the outlines in server mode (agent.js): the server writes each of them, and each write goes to
  * the node history and to the open pages at once, without waiting for the folder's watcher.
  */
@@ -129,7 +136,7 @@ const agent = createAgentApi({
     onMessages: (project, file) => pushNotes(project, file),
     onLedger: () => pushOutlines(),
     viewerRead: (project, file) => viewerState.read(project, file).read,
-    typeInto: sendToTerminal,
+    typeInto: switches.typeInto,
     prompting: (project, file) => permissions.list(project, file).length > 0,
 })
 
@@ -450,19 +457,32 @@ async function askPermission(req, res) {
     if (!res.writableEnded && !res.destroyed) json(res, 200, { ok: true, decision: answer?.behavior || '', message: answer?.message || '' })
 }
 
+/**
+ * /api/agent/switching: the plugin's PreModelSwitch hook asks whether the model switch Claude Code is about to make in
+ * its session is one the page's model picker asked for, and is answered `{ ok, asked }`. Claude Code then skips its
+ * own question about the switch (switching.js). A session without an outline in server mode, or one whose switch was
+ * typed in its terminal, is not asked for by the page.
+ */
+async function askSwitching(req, res) {
+    const at = agent.outlineOf(await readJson(req))
+    const terminal = at ? extractHeaders(fs.readFileSync(path.join(ROOT, at.project, `${at.file}.md`), 'utf8')).terminal : ''
+    json(res, 200, { ok: true, asked: !!terminal && switches.asked(terminal) })
+}
+
 const fromAgent = req => fromLocalPage(req, PORT, { write: false }) && req.headers['x-outline-agent'] === '1' && !req.headers.origin
 
 /**
  * /api/agent/<tool>: the MCP tools `start`, `read` and `change`, and what the hooks ask for (`pending`, `reload`, `ending`,
- * and `permission`, which answers only once the user has), each
+ * `switching`, and `permission`, which answers only once the user has), each
  * a POST of JSON answered with `{ ok, text }`.
  */
 async function agentApi(req, res, name) {
     if (!fromAgent(req)) return send(res, 403, 'text/plain', 'forbidden')
-    const asked = name === 'permission' || (Object.hasOwn(agent, name) && !['open', 'act', 'userEvent', 'messages', 'unacknowledged', 'commands', 'outlineOf', 'note'].includes(name))
+    const asked = name === 'permission' || name === 'switching' || (Object.hasOwn(agent, name) && !['open', 'act', 'userEvent', 'messages', 'unacknowledged', 'commands', 'outlineOf', 'note'].includes(name))
     if (req.method !== 'POST' || !asked) return send(res, 404, 'text/plain', 'not found')
     try {
         if (name === 'permission') return await askPermission(req, res)
+        if (name === 'switching') return await askSwitching(req, res)
         json(res, 200, agent[name](await readJson(req)))
     } catch (e) {
         console.error(`agent ${name}: ${e.stack || e.message}`)
@@ -753,7 +773,7 @@ const server = http.createServer((req, res) => {
         readJson(req)
             .then(async ({ terminal, text }) => {
                 if (typeof text !== 'string' || !text.trim() || text.length > 20000) return send(res, 400, 'text/plain', 'empty or too long')
-                await sendToTerminal(String(terminal), text)
+                await switches.typeInto(String(terminal), text)
                 send(res, 200, 'text/plain', 'sent')
             })
             .catch(e => send(res, 409, 'text/plain', e.message))

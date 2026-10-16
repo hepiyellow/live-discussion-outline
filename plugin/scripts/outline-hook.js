@@ -5,6 +5,7 @@
 // At the end of a turn the server is handed the agent's final reply: it shows in the inbox when the turn changed nothing
 // in the outline, since the user reads the page and not the chat.
 // A permission prompt of the session shows on the outline's page too, and the user's answer there is handed back.
+// A model switch the user asked for on the outline's page goes through without Claude Code's own question about it.
 // A session without an outline, or with no server running, gets nothing, and never an error.
 import { call, findServer } from './lib.js'
 
@@ -30,12 +31,26 @@ async function askPermission(event) {
     console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: answer } }))
 }
 
+/**
+ * Claude Code is about to switch the session's model. When the outline's page asked for the switch (its model picker
+ * typed `/model`), the pick there was the user's decision, and Claude Code skips its question about it ("Switch
+ * model?"), which the page cannot show and the next thing typed into the session would answer. Any other switch gets
+ * no answer here, and Claude Code asks as it does without this hook.
+ */
+async function askSwitching(event) {
+    const port = await findServer()
+    if (!port) return
+    const { asked } = await call(port, 'switching', { session: event.session_id || '', cwd: event.cwd || process.cwd() }, 2000)
+    if (asked) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreModelSwitch', permissionDecision: 'allow' } }))
+}
+
 async function main() {
     let input = ''
     for await (const chunk of process.stdin) input += chunk
     const event = JSON.parse(input || '{}')
     const name = event.hook_event_name
     if (name === 'PermissionRequest') return askPermission(event)
+    if (name === 'PreModelSwitch') return askSwitching(event)
     // At the end of a turn: the server answers with the ticks the agent was told of and has not acknowledged, and the
     // turn is held open with them. Once per turn: the server does not hold a turn that already goes on because of this
     // hook (`stop_hook_active`).

@@ -51,7 +51,8 @@ const picks = new Map<string, Pick>()
  * The model and effort pickers. They show what the session's agent last answered with, which Claude Code writes in
  * its transcript on every answer; before the first answer, or without a transcript, what the outline's `Model:` line
  * names (the agent writes that line, and it can be out of date). Changing one types /model or /effort into the session
- * and shows at once; the agent's next answer confirms it, or shows what the session uses instead.
+ * and shows at once; the agent's next answer confirms it, or shows what the session uses instead. Claude Code's own
+ * question about a switch is answered for the user (switching.js on the server): the pick here is their decision.
  */
 export function ModelPicker({ outline, using, busy }: { outline: Outline; using?: Using; busy: boolean }) {
     const notify = useNotify()
@@ -78,7 +79,7 @@ export function ModelPicker({ outline, using, busy }: { outline: Outline; using?
     const shown = { model: pick?.model ?? base.model, effort: pick?.effort ?? base.effort }
     const agent = agentOf(using?.model ?? shown.model, outline.model)
     const tip = outline.terminal
-        ? `Sends /model or /effort to the session (tmux ${outline.terminal}). Claude Code also saves the choice as your default for new sessions.`
+        ? `Sends /model or /effort to the session (tmux ${outline.terminal}). When the conversation is cached for the current one, the next response is slower and uses more tokens: Claude Code asks before such a switch, and a pick here answers yes. Claude Code also saves the choice as your default for new sessions.`
         : 'Only for outlines whose session runs in tmux'
     // The choice shows at once, and goes back if it cannot be sent.
     const choose = async (kind: 'model' | 'effort', value: string) => {

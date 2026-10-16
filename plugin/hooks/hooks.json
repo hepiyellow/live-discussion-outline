@@ -1,5 +1,5 @@
 {
-    "description": "Hands the agent what the user did on the outline's page with each prompt, and the outline's map after compaction or resume; at the end of a turn, holds it open once when the agent has not acknowledged the user's ticks, and hands the server the agent's reply, which shows in the inbox when the turn changed nothing in the outline; shows a permission prompt on the outline's page too, and hands back the user's answer there; refuses a write to the file of an outline the server keeps.",
+    "description": "Hands the agent what the user did on the outline's page with each prompt, and the outline's map after compaction or resume; at the end of a turn, holds it open once when the agent has not acknowledged the user's ticks, and hands the server the agent's reply, which shows in the inbox when the turn changed nothing in the outline; shows a permission prompt on the outline's page too, and hands back the user's answer there; refuses a write to the file of an outline the server keeps; lets a model switch the user asked for on the outline's page go through without Claude Code's own question about it.",
     "hooks": {
         "UserPromptSubmit": [
             {
@@ -42,6 +42,17 @@
                     {
                         "type": "command",
                         "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/outline-guard.js\"",
+                        "timeout": 5
+                    }
+                ]
+            }
+        ],
+        "PreModelSwitch": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/outline-hook.js\"",
                         "timeout": 5
                     }
                 ]
